@@ -13,13 +13,15 @@ Active task list. This is the working checklist — for the phased overview see
 
 ## Next — backend skeleton
 
-- [ ] `backend/` FastAPI app: `app/main.py`, settings via Pydantic `BaseSettings`
-- [ ] `/healthz` route
-- [ ] SQLAlchemy models: `User`, `Project`
-- [ ] Alembic migrations wired up, initial migration committed
-- [ ] JWT auth: signup, login, refresh, current-user dependency
-- [ ] `docker-compose.yml`: backend + Postgres for local dev
-- [ ] Basic pytest setup with one passing test per route
+- [x] `backend/` FastAPI app: `app/main.py`, settings via Pydantic `BaseSettings`
+- [x] `/healthz` route
+- [x] SQLAlchemy models: `User`, `Project` (`Entity`/`EntityField` added early —
+      needed together for the vertical slice below)
+- [x] Alembic migrations wired up, initial migration committed
+- [x] JWT auth: signup, login, refresh, current-user dependency
+- [x] `docker-compose.yml`: backend + Postgres for local dev (host ports 5433/8001
+      to avoid clashing with other local services — see docker-compose.yml)
+- [x] Basic pytest setup with one passing test per route (8 tests, `backend/tests/`)
 
 ## Next — frontend skeleton
 
@@ -31,14 +33,16 @@ Active task list. This is the working checklist — for the phased overview see
 
 ## Then — first vertical slice (entity → generate → view)
 
-- [ ] Entity model: fields with type + constraints (string, int, float, bool,
+- [x] Entity model: fields with type + constraints (string, int, float, bool,
       date, datetime, uuid, enum, array, object, json)
-- [ ] Entity CRUD API + schema builder UI (no relationships yet — Phase 2)
-- [ ] Generation engine: batch-generate N rows for one entity using
-      Faker/Mimesis/Polyfactory, respecting field constraints
+- [x] Entity CRUD API (no relationships yet — Phase 2) — `backend/app/api/routes/entities.py`
+- [ ] Schema builder UI (frontend — depends on the frontend skeleton above)
+- [x] Generation engine: batch-generate N rows for one entity using Faker,
+      respecting type/min/max/regex/enum/unique/nullable constraints —
+      `backend/app/services/generator.py`
 - [ ] "Generate" button in UI → table/JSON preview of generated rows
-- [ ] Export generated batch as JSON/CSV (minimum viable output, ahead of the
-      full Phase 3 plugin system)
+- [ ] Export generated batch as CSV (JSON is already the API's native response;
+      CSV endpoint still open, ahead of the full Phase 3 plugin system)
 
 ## Backlog (not started, roughly in order)
 

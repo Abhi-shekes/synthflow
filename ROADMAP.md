@@ -13,15 +13,17 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 Goal: a user can sign in, create a project, define an entity by hand, and
 generate a batch of fake rows for it.
 
-- [ ] Repo scaffolding: `frontend/`, `backend/`, `docker/`, `docs/`
-- [ ] FastAPI backend skeleton (Uvicorn, Pydantic settings, health check route)
-- [ ] PostgreSQL + SQLite support via SQLAlchemy, Alembic migrations
-- [ ] JWT authentication (signup, login, refresh, protected routes)
-- [ ] Project workspace model (a project owns entities/rules/settings/outputs)
-- [ ] Entity + field data model (string, int, float, bool, date, datetime, uuid,
+- [~] Repo scaffolding: `frontend/`, `backend/`, `docker/`, `docs/` (`backend/`
+      done; `frontend/` next)
+- [x] FastAPI backend skeleton (Uvicorn, Pydantic settings, health check route)
+- [x] PostgreSQL + SQLite support via SQLAlchemy, Alembic migrations
+- [x] JWT authentication (signup, login, refresh, protected routes)
+- [x] Project workspace model (a project owns entities; rules/settings/outputs
+      arrive in Phase 2/3 as their own engines)
+- [x] Entity + field data model (string, int, float, bool, date, datetime, uuid,
       enum, array, object, json) with constraints (required, nullable, unique,
       default, min/max, regex)
-- [ ] Basic generation engine using Faker/Mimesis/Polyfactory, batch mode only
+- [x] Basic generation engine using Faker, batch mode only
 - [ ] Next.js frontend skeleton (App Router, Tailwind, shadcn/ui, TanStack Query,
       Zustand)
 - [ ] Auth pages + project list/create UI

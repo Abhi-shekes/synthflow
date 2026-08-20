@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: synthflow
+      POSTGRES_PASSWORD: synthflow
+      POSTGRES_DB: synthflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - synthflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synthflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://synthflow:synthflow@postgres:5432/synthflow
+      SECRET_KEY: change-me-in-production
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  synthflow_postgres_data:
