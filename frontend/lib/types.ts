@@ -74,3 +74,31 @@ export interface FieldCreateInput {
   regex?: string | null;
   enum_values?: string[] | null;
 }
+
+export type RelationshipType = "one_to_one" | "one_to_many" | "many_to_many" | "parent_child";
+
+export const RELATIONSHIP_TYPES: RelationshipType[] = [
+  "one_to_one",
+  "one_to_many",
+  "many_to_many",
+  "parent_child",
+];
+
+export interface Relationship {
+  id: string;
+  project_id: string;
+  relationship_type: RelationshipType;
+  source_entity_id: string;
+  source_field_id: string;
+  target_entity_id: string;
+  target_field_id: string;
+  created_at: string;
+}
+
+export interface RelationshipCreateInput {
+  relationship_type: RelationshipType;
+  source_entity_id: string;
+  source_field_id: string;
+  target_entity_id: string;
+  target_field_id: string;
+}

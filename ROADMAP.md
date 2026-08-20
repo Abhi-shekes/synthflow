@@ -36,8 +36,10 @@ generate a batch of fake rows for it.
 Goal: entities can reference each other, carry state, and be shaped by rules
 and formulas instead of pure randomness.
 
-- [ ] Relationship builder (one-to-one, one-to-many, many-to-many, parent-child,
-      foreign keys) + referential generation (e.g. Orders reference real Customers)
+- [x] Relationship builder (one-to-one, one-to-many, many-to-many, parent-child,
+      foreign keys) + referential generation (e.g. Orders reference real Customers) —
+      many-to-many is stored but generated like one-to-many for now; true
+      join-table modeling is a later refinement, not blocking
 - [ ] Rules engine: logical, mathematical, conditional, cross-entity rules
 - [ ] Formula engine: derived/computed fields (`Total = Price × Quantity`)
 - [ ] Stateful entities: define allowed state transitions, generation respects them

@@ -2,23 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useAuthHydrated } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/store";
 
 export default function Home() {
   const router = useRouter();
   const accessToken = useAuthStore((s) => s.accessToken);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    if (useAuthStore.persist.hasHydrated()) {
-      setHydrated(true);
-      return;
-    }
-    return useAuthStore.persist.onFinishHydration(() => setHydrated(true));
-  }, []);
+  const hydrated = useAuthHydrated();
 
   useEffect(() => {
     if (hydrated && accessToken) router.replace("/projects");

@@ -1,4 +1,11 @@
-import type { Entity, FieldCreateInput, Project, User } from "@/lib/types";
+import type {
+  Entity,
+  FieldCreateInput,
+  Project,
+  Relationship,
+  RelationshipCreateInput,
+  User,
+} from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
@@ -137,4 +144,33 @@ export const api = {
     }
     return res.blob();
   },
+
+  listRelationships: (token: string, projectId: string) =>
+    request<Relationship[]>(`/api/v1/projects/${projectId}/relationships`, {}, token),
+
+  createRelationship: (token: string, projectId: string, data: RelationshipCreateInput) =>
+    request<Relationship>(
+      `/api/v1/projects/${projectId}/relationships`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteRelationship: (token: string, projectId: string, relationshipId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/relationships/${relationshipId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  generateProject: (
+    token: string,
+    projectId: string,
+    count: number,
+    counts: Record<string, number> = {}
+  ) =>
+    request<Record<string, Record<string, unknown>[]>>(
+      `/api/v1/projects/${projectId}/generate`,
+      { method: "POST", body: JSON.stringify({ count, counts }) },
+      token
+    ),
 };
