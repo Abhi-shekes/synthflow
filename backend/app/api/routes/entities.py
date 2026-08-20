@@ -14,6 +14,7 @@ from app.models.field import EntityField
 from app.models.user import User
 from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateRequest
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
+from app.services.expressions import ExpressionError, evaluate
 from app.services.generator import generate_rows, rows_to_csv
 
 router = APIRouter(prefix="/projects/{project_id}/entities", tags=["entities"])
@@ -102,7 +103,15 @@ def add_field(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EntityField:
-    _get_owned_entity(project_id, entity_id, current_user, db)
+    entity = _get_owned_entity(project_id, entity_id, current_user, db)
+
+    if payload.formula:
+        dummy_values = {f.name: 1 for f in entity.fields}
+        try:
+            evaluate(payload.formula, dummy_values)
+        except ExpressionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     field = EntityField(entity_id=entity_id, **payload.model_dump())
     db.add(field)
     db.commit()
@@ -119,11 +128,20 @@ def update_field(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EntityField:
-    _get_owned_entity(project_id, entity_id, current_user, db)
+    entity = _get_owned_entity(project_id, entity_id, current_user, db)
     field = db.get(EntityField, field_id)
     if field is None or field.entity_id != entity_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
-    for attr, value in payload.model_dump(exclude_unset=True).items():
+
+    updates = payload.model_dump(exclude_unset=True)
+    if updates.get("formula"):
+        dummy_values = {f.name: 1 for f in entity.fields}
+        try:
+            evaluate(updates["formula"], dummy_values)
+        except ExpressionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    for attr, value in updates.items():
         setattr(field, attr, value)
     db.commit()
     db.refresh(field)
@@ -166,7 +184,7 @@ def generate(
             detail=f"count must be between 1 and {settings.MAX_GENERATE_ROWS}",
         )
     try:
-        rows = generate_rows(entity.fields, payload.count)
+        rows = generate_rows(entity.fields, payload.count, rules=entity.rules)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

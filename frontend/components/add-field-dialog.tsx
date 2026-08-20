@@ -35,6 +35,7 @@ interface FormValues {
   max_value: string;
   regex: string;
   enum_values: string;
+  formula: string;
 }
 
 export function AddFieldDialog({
@@ -62,10 +63,12 @@ export function AddFieldDialog({
       max_value: "",
       regex: "",
       enum_values: "",
+      formula: "",
     },
   });
 
   const fieldType = watch("field_type");
+  const formula = watch("formula");
 
   const submit = (values: FormValues) => {
     onSubmit({
@@ -84,6 +87,7 @@ export function AddFieldDialog({
               .split(",")
               .map((v) => v.trim())
               .filter(Boolean),
+      formula: values.formula === "" ? null : values.formula,
     });
     reset();
     setOpen(false);
@@ -134,6 +138,7 @@ export function AddFieldDialog({
               <Checkbox
                 checked={watch("nullable")}
                 onCheckedChange={(v) => setValue("nullable", v === true)}
+                disabled={!!formula}
               />
               Nullable
             </label>
@@ -141,12 +146,27 @@ export function AddFieldDialog({
               <Checkbox
                 checked={watch("unique")}
                 onCheckedChange={(v) => setValue("unique", v === true)}
+                disabled={!!formula}
               />
               Unique
             </label>
           </div>
 
-          {(fieldType === "integer" || fieldType === "float") && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="formula">Formula (optional)</Label>
+            <Input
+              id="formula"
+              placeholder="e.g. price * quantity"
+              {...register("formula")}
+            />
+            <p className="text-xs text-muted-foreground">
+              Computes this field from other fields on the same row instead of
+              generating it randomly. Can only reference fields added above
+              this one.
+            </p>
+          </div>
+
+          {!formula && (fieldType === "integer" || fieldType === "float") && (
             <div className="flex gap-4">
               <div className="flex flex-1 flex-col gap-2">
                 <Label htmlFor="min_value">Min</Label>
@@ -159,14 +179,14 @@ export function AddFieldDialog({
             </div>
           )}
 
-          {fieldType === "string" && (
+          {!formula && fieldType === "string" && (
             <div className="flex flex-col gap-2">
               <Label htmlFor="regex">Regex (optional)</Label>
               <Input id="regex" placeholder="e.g. [A-Z]{3}-[0-9]{4}" {...register("regex")} />
             </div>
           )}
 
-          {fieldType === "enum" && (
+          {!formula && fieldType === "enum" && (
             <div className="flex flex-col gap-2">
               <Label htmlFor="enum_values">Values (comma-separated)</Label>
               <Textarea

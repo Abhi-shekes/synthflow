@@ -17,6 +17,7 @@ class EntityFieldCreate(BaseModel):
     max_value: float | None = None
     regex: str | None = None
     enum_values: list[str] | None = None
+    formula: str | None = None
 
 
 class EntityFieldUpdate(BaseModel):
@@ -31,6 +32,7 @@ class EntityFieldUpdate(BaseModel):
     max_value: float | None = None
     regex: str | None = None
     enum_values: list[str] | None = None
+    formula: str | None = None
 
 
 class EntityFieldRead(BaseModel):
@@ -49,3 +51,4 @@ class EntityFieldRead(BaseModel):
     max_value: float | None
     regex: str | None
     enum_values: list[str] | None
+    formula: str | None

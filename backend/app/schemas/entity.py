@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.field import EntityFieldRead
+from app.schemas.rule import RuleRead
 
 
 class EntityCreate(BaseModel):
@@ -22,6 +23,7 @@ class EntityRead(BaseModel):
     name: str
     created_at: datetime
     fields: list[EntityFieldRead] = []
+    rules: list[RuleRead] = []
 
 
 class GenerateRequest(BaseModel):

@@ -4,6 +4,7 @@ import type {
   Project,
   Relationship,
   RelationshipCreateInput,
+  Rule,
   User,
 } from "@/lib/types";
 
@@ -171,6 +172,23 @@ export const api = {
     request<Record<string, Record<string, unknown>[]>>(
       `/api/v1/projects/${projectId}/generate`,
       { method: "POST", body: JSON.stringify({ count, counts }) },
+      token
+    ),
+
+  listRules: (token: string, projectId: string, entityId: string) =>
+    request<Rule[]>(`/api/v1/projects/${projectId}/entities/${entityId}/rules`, {}, token),
+
+  createRule: (token: string, projectId: string, entityId: string, condition: string) =>
+    request<Rule>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/rules`,
+      { method: "POST", body: JSON.stringify({ condition }) },
+      token
+    ),
+
+  deleteRule: (token: string, projectId: string, entityId: string, ruleId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/rules/${ruleId}`,
+      { method: "DELETE" },
       token
     ),
 };

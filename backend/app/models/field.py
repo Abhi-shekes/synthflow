@@ -44,4 +44,10 @@ class EntityField(Base):
     regex: Mapped[str | None] = mapped_column(String(255), nullable=True)
     enum_values: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
+    # When set, this field's value is computed from other fields on the same
+    # row (see app.services.expressions) instead of being randomly generated.
+    # It must only reference fields with a lower `order` on the same entity —
+    # rows are built in order, so later fields can see earlier ones' values.
+    formula: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     entity: Mapped["Entity"] = relationship(back_populates="fields")

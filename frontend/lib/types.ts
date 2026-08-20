@@ -39,6 +39,14 @@ export interface EntityField {
   max_value: number | null;
   regex: string | null;
   enum_values: string[] | null;
+  formula: string | null;
+}
+
+export interface Rule {
+  id: string;
+  entity_id: string;
+  condition: string;
+  created_at: string;
 }
 
 export interface Entity {
@@ -47,6 +55,7 @@ export interface Entity {
   name: string;
   created_at: string;
   fields: EntityField[];
+  rules: Rule[];
 }
 
 export interface Project {
@@ -73,6 +82,7 @@ export interface FieldCreateInput {
   max_value?: number | null;
   regex?: string | null;
   enum_values?: string[] | null;
+  formula?: string | null;
 }
 
 export type RelationshipType = "one_to_one" | "one_to_many" | "many_to_many" | "parent_child";

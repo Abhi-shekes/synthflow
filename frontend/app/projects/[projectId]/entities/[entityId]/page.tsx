@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { AddFieldDialog } from "@/components/add-field-dialog";
@@ -24,12 +25,17 @@ import { api } from "@/lib/api";
 import { useRequireAuth } from "@/lib/hooks";
 import type { FieldCreateInput } from "@/lib/types";
 
+interface RuleFormValues {
+  condition: string;
+}
+
 export default function EntityDetailPage() {
   const accessToken = useRequireAuth();
   const { projectId, entityId } = useParams<{ projectId: string; entityId: string }>();
   const queryClient = useQueryClient();
   const [count, setCount] = useState(10);
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  const ruleForm = useForm<RuleFormValues>();
 
   const entityQuery = useQuery({
     queryKey: ["entity", projectId, entityId],
@@ -57,6 +63,23 @@ export default function EntityDetailPage() {
     mutationFn: () => api.generate(accessToken!, projectId, entityId, count),
     onSuccess: (data) => setRows(data),
     onError: (error: Error) => toast.error(error.message || "Generation failed"),
+  });
+
+  const addRule = useMutation({
+    mutationFn: (condition: string) => api.createRule(accessToken!, projectId, entityId, condition),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+      ruleForm.reset();
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not add rule"),
+  });
+
+  const deleteRule = useMutation({
+    mutationFn: (ruleId: string) => api.deleteRule(accessToken!, projectId, entityId, ruleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete rule"),
   });
 
   const downloadCsv = useMutation({
@@ -130,6 +153,7 @@ export default function EntityDetailPage() {
                           field.max_value != null && `max ${field.max_value}`,
                           field.regex && `regex ${field.regex}`,
                           field.enum_values && field.enum_values.join(" | "),
+                          field.formula && `= ${field.formula}`,
                         ]
                           .filter(Boolean)
                           .join(", ") || "—"}
@@ -147,6 +171,49 @@ export default function EntityDetailPage() {
                   ))}
                 </TableBody>
               </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Rules</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              A rule is an expression a generated row must satisfy (e.g.{" "}
+              <code className="font-mono">temperature &gt; 60</code>); rows that
+              fail are discarded and regenerated.
+            </p>
+            <form
+              className="flex gap-2"
+              onSubmit={ruleForm.handleSubmit((v) => addRule.mutate(v.condition))}
+            >
+              <Input
+                placeholder="e.g. price > 0 and quantity <= 100"
+                {...ruleForm.register("condition", { required: true })}
+              />
+              <Button type="submit" disabled={addRule.isPending}>
+                Add
+              </Button>
+            </form>
+            {entity?.rules.length === 0 && (
+              <p className="text-sm text-muted-foreground">No rules yet.</p>
+            )}
+            {entity && entity.rules.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {entity.rules.map((rule) => (
+                  <li
+                    key={rule.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                  >
+                    <code className="font-mono">{rule.condition}</code>
+                    <Button variant="ghost" size="sm" onClick={() => deleteRule.mutate(rule.id)}>
+                      Delete
+                    </Button>
+                  </li>
+                ))}
+              </ul>
             )}
           </CardContent>
         </Card>

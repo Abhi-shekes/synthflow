@@ -10,6 +10,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.field import EntityField
     from app.models.project import Project
+    from app.models.rule import Rule
 
 
 class Entity(Base):
@@ -23,4 +24,7 @@ class Entity(Base):
     project: Mapped["Project"] = relationship(back_populates="entities")
     fields: Mapped[list["EntityField"]] = relationship(
         back_populates="entity", cascade="all, delete-orphan", order_by="EntityField.order"
+    )
+    rules: Mapped[list["Rule"]] = relationship(
+        back_populates="entity", cascade="all, delete-orphan", order_by="Rule.created_at"
     )

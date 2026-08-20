@@ -1,10 +1,11 @@
 """Batch generation engine: turns Entity field definitions into fake rows.
 
-Phase 1 covers a single entity in isolation. Phase 2 adds `generate_project`,
-which generates every entity in a project in relationship-dependency order so a
-child entity's foreign-key field draws real values from its already-generated
-parent instead of being randomized independently. Rules, formulas, and state
-machines are still later phases.
+Phase 1 covers a single entity in isolation. Phase 2 adds `generate_project`
+(entities generated in relationship-dependency order so a child's foreign-key
+field draws real values from its already-generated parent), formula fields
+(a field's value computed from other fields on the same row instead of being
+randomized), and rules (a boolean expression a generated row must satisfy,
+enforced by discard-and-retry). State machines are still a later phase.
 """
 
 import csv
@@ -22,11 +23,14 @@ from faker import Faker
 from app.models.entity import Entity
 from app.models.field import EntityField, FieldType
 from app.models.relationship import Relationship
+from app.models.rule import Rule
+from app.services.expressions import ExpressionError, evaluate
 
 faker = Faker()
 
 NULLABLE_PROBABILITY = 0.15
 MAX_UNIQUE_ATTEMPTS = 100
+MAX_RULE_ATTEMPTS = 200
 
 
 def _generate_value(field: EntityField) -> Any:
@@ -86,17 +90,79 @@ def _generate_unique_value(field: EntityField, seen: set) -> Any:
     )
 
 
+def _evaluate_formula(field: EntityField, row_so_far: dict[str, Any]) -> Any:
+    try:
+        return evaluate(field.formula, row_so_far)
+    except ExpressionError as exc:
+        raise ValueError(f"Formula for field '{field.name}' failed: {exc}") from exc
+
+
+def _row_satisfies_rules(row: dict[str, Any], rules: list[Rule]) -> bool:
+    for rule in rules:
+        try:
+            if not evaluate(rule.condition, row):
+                return False
+        except ExpressionError as exc:
+            raise ValueError(f"Rule '{rule.condition}' failed to evaluate: {exc}") from exc
+    return True
+
+
+def _generate_one_row(
+    fields: list[EntityField],
+    fk_pools: dict[str, list[Any]],
+    seen_per_field: dict[str, set],
+    unique_fk_queues: dict[str, list[Any]],
+) -> dict[str, Any]:
+    row: dict[str, Any] = {}
+    for field in fields:
+        if field.formula:
+            row[field.name] = _evaluate_formula(field, row)
+            continue
+
+        if not field.required and field.nullable and random.random() < NULLABLE_PROBABILITY:
+            row[field.name] = None
+            continue
+
+        if field.name in fk_pools:
+            if field.unique:
+                queue = unique_fk_queues[field.name]
+                if not queue:
+                    raise ValueError(
+                        f"Field '{field.name}' is unique and ran out of distinct values "
+                        "from the referenced entity"
+                    )
+                row[field.name] = queue.pop()
+            else:
+                row[field.name] = random.choice(fk_pools[field.name])
+        elif field.unique:
+            row[field.name] = _generate_unique_value(field, seen_per_field[field.name])
+        else:
+            row[field.name] = _generate_value(field)
+    return row
+
+
 def generate_rows(
     fields: list[EntityField],
     count: int,
     fk_pools: dict[str, list[Any]] | None = None,
+    rules: list[Rule] | None = None,
 ) -> list[dict[str, Any]]:
-    """Generate `count` rows for `fields`. `fk_pools` maps a field name to a pool
-    of real values (typically another entity's already-generated column) to draw
-    from instead of randomizing that field independently — this is how
-    relationships are enforced at generation time. A pool field marked `unique`
-    is drawn without replacement; otherwise values are drawn with replacement."""
+    """Generate `count` rows for `fields`.
+
+    `fk_pools` maps a field name to a pool of real values (typically another
+    entity's already-generated column) to draw from instead of randomizing that
+    field independently — this is how relationships are enforced at generation
+    time. A pool field marked `unique` is drawn without replacement; otherwise
+    values are drawn with replacement.
+
+    `rules` are boolean expressions a finished row must satisfy; a row that
+    fails one is discarded and regenerated (bounded retries). A discarded
+    row's values are not "returned" to unique pools/seen-sets, so rules that
+    reject a lot of candidates can exhaust a small unique pool faster than the
+    requested `count` would otherwise need — a known tradeoff, not a bug.
+    """
     fk_pools = fk_pools or {}
+    rules = rules or []
     seen_per_field: dict[str, set] = {
         f.name: set() for f in fields if f.unique and f.name not in fk_pools
     }
@@ -109,27 +175,17 @@ def generate_rows(
 
     rows: list[dict[str, Any]] = []
     for _ in range(count):
-        row: dict[str, Any] = {}
-        for field in fields:
-            if not field.required and field.nullable and random.random() < NULLABLE_PROBABILITY:
-                row[field.name] = None
-                continue
-
-            if field.name in fk_pools:
-                if field.unique:
-                    queue = unique_fk_queues[field.name]
-                    if not queue:
-                        raise ValueError(
-                            f"Field '{field.name}' is unique and ran out of distinct values "
-                            "from the referenced entity"
-                        )
-                    row[field.name] = queue.pop()
-                else:
-                    row[field.name] = random.choice(fk_pools[field.name])
-            elif field.unique:
-                row[field.name] = _generate_unique_value(field, seen_per_field[field.name])
-            else:
-                row[field.name] = _generate_value(field)
+        row = None
+        for _attempt in range(MAX_RULE_ATTEMPTS if rules else 1):
+            candidate = _generate_one_row(fields, fk_pools, seen_per_field, unique_fk_queues)
+            if _row_satisfies_rules(candidate, rules):
+                row = candidate
+                break
+        if row is None:
+            raise ValueError(
+                f"Could not generate a row satisfying all rules after {MAX_RULE_ATTEMPTS} "
+                "attempts — the rules may be too strict or contradictory"
+            )
         rows.append(row)
 
     return rows
@@ -205,7 +261,9 @@ def generate_project(
                 )
             fk_pools[source_field.name] = pool
 
-        generated[entity_id] = generate_rows(entity.fields, counts.get(entity_id, 10), fk_pools)
+        generated[entity_id] = generate_rows(
+            entity.fields, counts.get(entity_id, 10), fk_pools, entity.rules
+        )
 
     return generated
 

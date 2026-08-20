@@ -40,8 +40,15 @@ and formulas instead of pure randomness.
       foreign keys) + referential generation (e.g. Orders reference real Customers) —
       many-to-many is stored but generated like one-to-many for now; true
       join-table modeling is a later refinement, not blocking
-- [ ] Rules engine: logical, mathematical, conditional, cross-entity rules
-- [ ] Formula engine: derived/computed fields (`Total = Price × Quantity`)
+- [x] Rules engine: logical, mathematical, conditional rules — a safe
+      restricted-AST expression evaluator (`app/services/expressions.py`, no
+      `eval()`) backs per-entity validation rules; a row failing a rule is
+      discarded and regenerated. Cross-entity rules (referencing another
+      entity's fields, not just this row's) are not yet supported — see
+      Notes in TODO.md
+- [x] Formula engine: derived/computed fields (`Total = Price × Quantity`) —
+      a field's `formula` is evaluated against the row's already-generated
+      fields using the same expression evaluator
 - [ ] Stateful entities: define allowed state transitions, generation respects them
 - [ ] Workflow / state machine builder (visual, React Flow) for non-entity workflows
 - [ ] Generated-field and auto-increment field support
