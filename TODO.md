@@ -25,24 +25,25 @@ Active task list. This is the working checklist — for the phased overview see
 
 ## Next — frontend skeleton
 
-- [ ] `frontend/` Next.js app (App Router, TypeScript, Tailwind, shadcn/ui)
-- [ ] Auth pages: login, signup
-- [ ] Project list page + create-project flow
-- [ ] TanStack Query + Zustand wiring for API calls and client state
-- [ ] Point frontend at backend via env-configured API base URL
+- [x] `frontend/` Next.js app (App Router, TypeScript, Tailwind, shadcn/ui)
+- [x] Auth pages: login, signup
+- [x] Project list page + create-project flow
+- [x] TanStack Query + Zustand wiring for API calls and client state
+- [x] Point frontend at backend via env-configured API base URL (`NEXT_PUBLIC_API_URL`)
 
 ## Then — first vertical slice (entity → generate → view)
 
 - [x] Entity model: fields with type + constraints (string, int, float, bool,
       date, datetime, uuid, enum, array, object, json)
 - [x] Entity CRUD API (no relationships yet — Phase 2) — `backend/app/api/routes/entities.py`
-- [ ] Schema builder UI (frontend — depends on the frontend skeleton above)
+- [x] Schema builder UI v1 — add/delete entities and fields via forms/dialogs
+      (no drag-and-drop yet, that's the Phase 2+ React Flow work)
 - [x] Generation engine: batch-generate N rows for one entity using Faker,
       respecting type/min/max/regex/enum/unique/nullable constraints —
       `backend/app/services/generator.py`
-- [ ] "Generate" button in UI → table/JSON preview of generated rows
-- [ ] Export generated batch as CSV (JSON is already the API's native response;
-      CSV endpoint still open, ahead of the full Phase 3 plugin system)
+- [x] "Generate" button in UI → table preview of generated rows
+- [ ] Export generated batch as CSV (JSON is already the API's native response and
+      the UI preview; CSV endpoint still open, ahead of the full Phase 3 plugin system)
 
 ## Backlog (not started, roughly in order)
 

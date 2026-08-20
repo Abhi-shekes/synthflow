@@ -13,8 +13,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 Goal: a user can sign in, create a project, define an entity by hand, and
 generate a batch of fake rows for it.
 
-- [~] Repo scaffolding: `frontend/`, `backend/`, `docker/`, `docs/` (`backend/`
-      done; `frontend/` next)
+- [x] Repo scaffolding: `frontend/`, `backend/` (no separate `docker/` — a single
+      root `docker-compose.yml` plus a `Dockerfile` per app; `docs/` still open)
 - [x] FastAPI backend skeleton (Uvicorn, Pydantic settings, health check route)
 - [x] PostgreSQL + SQLite support via SQLAlchemy, Alembic migrations
 - [x] JWT authentication (signup, login, refresh, protected routes)
@@ -24,11 +24,13 @@ generate a batch of fake rows for it.
       enum, array, object, json) with constraints (required, nullable, unique,
       default, min/max, regex)
 - [x] Basic generation engine using Faker, batch mode only
-- [ ] Next.js frontend skeleton (App Router, Tailwind, shadcn/ui, TanStack Query,
-      Zustand)
-- [ ] Auth pages + project list/create UI
-- [ ] Visual schema builder v1 (add/edit/remove entity + fields, no relationships yet)
-- [ ] Docker Compose for local dev (backend, frontend, Postgres)
+- [x] Next.js frontend skeleton (App Router, Tailwind, shadcn/ui, TanStack Query,
+      Zustand, React Hook Form)
+- [x] Auth pages + project list/create UI
+- [x] Visual schema builder v1 (add/edit/remove entity + fields via forms, no
+      drag-and-drop and no relationships yet)
+- [~] Docker Compose for local dev (backend + Postgres done; frontend still runs
+      via `npm run dev`, not yet a compose service)
 
 ## Phase 2 — Simulation
 
