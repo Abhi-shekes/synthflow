@@ -29,8 +29,7 @@ generate a batch of fake rows for it.
 - [x] Auth pages + project list/create UI
 - [x] Visual schema builder v1 (add/edit/remove entity + fields via forms, no
       drag-and-drop and no relationships yet)
-- [~] Docker Compose for local dev (backend + Postgres done; frontend still runs
-      via `npm run dev`, not yet a compose service)
+- [x] Docker Compose for local dev (backend, frontend, Postgres)
 
 ## Phase 2 — Simulation
 

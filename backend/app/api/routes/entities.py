@@ -1,6 +1,8 @@
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -12,7 +14,7 @@ from app.models.field import EntityField
 from app.models.user import User
 from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateRequest
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
-from app.services.generator import generate_rows
+from app.services.generator import generate_rows, rows_to_csv
 
 router = APIRouter(prefix="/projects/{project_id}/entities", tags=["entities"])
 
@@ -144,14 +146,15 @@ def delete_field(
     db.commit()
 
 
-@router.post("/{entity_id}/generate")
+@router.post("/{entity_id}/generate", response_model=None)
 def generate(
     project_id: uuid.UUID,
     entity_id: uuid.UUID,
     payload: GenerateRequest,
+    format: Literal["json", "csv"] = "json",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> list[dict]:
+) -> list[dict] | Response:
     entity = _get_owned_entity(project_id, entity_id, current_user, db)
     if not entity.fields:
         raise HTTPException(
@@ -163,6 +166,16 @@ def generate(
             detail=f"count must be between 1 and {settings.MAX_GENERATE_ROWS}",
         )
     try:
-        return generate_rows(entity.fields, payload.count)
+        rows = generate_rows(entity.fields, payload.count)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if format == "csv":
+        csv_text = rows_to_csv(entity.fields, rows)
+        return Response(
+            content=csv_text,
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{entity.name}.csv"'},
+        )
+
+    return rows

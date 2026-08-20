@@ -3,7 +3,7 @@
 Active task list. This is the working checklist — for the phased overview see
 [ROADMAP.md](ROADMAP.md). Keep this file short: only what's in flight or next up.
 
-## Now — repo bootstrap
+## Repo bootstrap (not blocking, pick up anytime)
 
 - [x] Initialize repo, README, ROADMAP, LICENSE
 - [ ] Add `.github/ISSUE_TEMPLATE` (bug report, feature request)
@@ -11,43 +11,30 @@ Active task list. This is the working checklist — for the phased overview see
 - [ ] Set up CI: lint + typecheck on push (GitHub Actions)
 - [ ] Add branch protection on `main` once CI exists
 
-## Next — backend skeleton
+## Phase 1 — done
 
-- [x] `backend/` FastAPI app: `app/main.py`, settings via Pydantic `BaseSettings`
-- [x] `/healthz` route
-- [x] SQLAlchemy models: `User`, `Project` (`Entity`/`EntityField` added early —
-      needed together for the vertical slice below)
-- [x] Alembic migrations wired up, initial migration committed
-- [x] JWT auth: signup, login, refresh, current-user dependency
-- [x] `docker-compose.yml`: backend + Postgres for local dev (host ports 5433/8001
-      to avoid clashing with other local services — see docker-compose.yml)
-- [x] Basic pytest setup with one passing test per route (8 tests, `backend/tests/`)
+Backend (auth, projects, entities/fields, generation engine, CSV export) and
+frontend (auth pages, project/entity UI, schema builder v1, generate + CSV
+download) are both live and wired together via `docker-compose.yml`
+(postgres:5433, backend:8001, frontend:3000). Verified end-to-end — including
+the CSV download — with a headless-browser smoke test against the full
+containerized stack. Full checklist: ROADMAP.md Phase 1.
 
-## Next — frontend skeleton
+## Now — Phase 2: relationships (backend first)
 
-- [x] `frontend/` Next.js app (App Router, TypeScript, Tailwind, shadcn/ui)
-- [x] Auth pages: login, signup
-- [x] Project list page + create-project flow
-- [x] TanStack Query + Zustand wiring for API calls and client state
-- [x] Point frontend at backend via env-configured API base URL (`NEXT_PUBLIC_API_URL`)
-
-## Then — first vertical slice (entity → generate → view)
-
-- [x] Entity model: fields with type + constraints (string, int, float, bool,
-      date, datetime, uuid, enum, array, object, json)
-- [x] Entity CRUD API (no relationships yet — Phase 2) — `backend/app/api/routes/entities.py`
-- [x] Schema builder UI v1 — add/delete entities and fields via forms/dialogs
-      (no drag-and-drop yet, that's the Phase 2+ React Flow work)
-- [x] Generation engine: batch-generate N rows for one entity using Faker,
-      respecting type/min/max/regex/enum/unique/nullable constraints —
-      `backend/app/services/generator.py`
-- [x] "Generate" button in UI → table preview of generated rows
-- [ ] Export generated batch as CSV (JSON is already the API's native response and
-      the UI preview; CSV endpoint still open, ahead of the full Phase 3 plugin system)
+- [ ] Relationship model: one-to-one, one-to-many, many-to-many, parent-child —
+      a source entity/field pointing at a target entity/field, plus cardinality
+- [ ] Relationship CRUD API (likely nested under `/projects/{id}/entities` or its
+      own `/projects/{id}/relationships`)
+- [ ] Generation engine: when generating a dependent entity, pull real
+      foreign-key values from an already-generated (or existing) parent batch
+      instead of random ones — this is the main behavioral change from Phase 1
+- [ ] Relationship builder UI — start with a plain form (source entity/field →
+      target entity/field + cardinality); the drag-and-drop React Flow canvas
+      from the spec is a later polish pass, not a blocker for Phase 2 to land
 
 ## Backlog (not started, roughly in order)
 
-- [ ] Relationship builder (Phase 2)
 - [ ] Rules + formula engine (Phase 2)
 - [ ] Stateful entities + workflow builder (Phase 2)
 - [ ] Output plugin manager + REST/Kafka/MQTT outputs (Phase 3)
@@ -61,3 +48,7 @@ Active task list. This is the working checklist — for the phased overview see
   now (see ROADMAP.md Phase 5).
 - AI stays fully optional and out of the critical path until Phase 6 — don't let it
   leak into the core data model or generation engine before then.
+- Relationships change generation order: a dependent entity can't be generated
+  before its parent has rows to reference. The generation engine will need an
+  explicit dependency/topological ordering once relationships land — don't bolt
+  this on after the fact.

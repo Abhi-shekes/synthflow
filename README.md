@@ -85,18 +85,28 @@ deployment doesn't pull in Kafka, MongoDB, or MQTT dependencies. See
 
 ## Project status
 
-Early planning stage — no code yet. See [ROADMAP.md](ROADMAP.md) for the phased
-development plan and [TODO.md](TODO.md) for the active task list.
+Phase 1 (core platform) is live: auth, projects, entities/fields with
+constraints, and batch generation (JSON + CSV), backend and frontend both
+working end-to-end. Phase 2 (relationships, rules, stateful entities) is next.
+See [ROADMAP.md](ROADMAP.md) for the phased plan and [TODO.md](TODO.md) for
+the active task list.
 
-## Getting started (once Phase 1 lands)
+## Getting started
 
 ```bash
-synthflow init
+git clone https://github.com/Abhi-shekes/synthflow.git
+cd synthflow
+docker compose up -d --build
+docker compose exec backend alembic upgrade head
 ```
 
-An interactive wizard will scaffold a project, let you pick outputs (Kafka, REST,
-MQTT, ...) and datastores, optionally wire up an LLM provider, generate a Docker
-Compose file, and start only the services you selected.
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend API: [http://localhost:8001](http://localhost:8001) (interactive docs at `/docs`)
+
+See `backend/README.md` and `frontend/README.md` for running each service
+without Docker. The `synthflow init` wizard described below — pick outputs,
+generate a Docker Compose file, start only what you selected — is the Phase 5
+target; today, `docker compose up` is the whole setup story.
 
 ## Contributing
 

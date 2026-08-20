@@ -64,6 +64,32 @@ def test_generate_rows_respects_field_definitions(client, auth_headers):
         assert row["tier"] in {"bronze", "silver", "gold"}
 
 
+def test_generate_csv_format(client, auth_headers):
+    project_id = _create_project(client, auth_headers)
+    entity_id = _create_entity(client, auth_headers, project_id)
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}"
+
+    client.post(
+        f"{base}/fields",
+        json={"name": "ticker", "field_type": "string", "required": True, "nullable": False},
+        headers=auth_headers,
+    )
+    client.post(
+        f"{base}/fields",
+        json={"name": "price", "field_type": "float", "required": True, "nullable": False},
+        headers=auth_headers,
+    )
+
+    resp = client.post(f"{base}/generate?format=csv", json={"count": 5}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert "attachment" in resp.headers["content-disposition"]
+
+    lines = resp.text.strip().splitlines()
+    assert lines[0] == "ticker,price"
+    assert len(lines) == 6  # header + 5 rows
+
+
 def test_generate_requires_fields(client, auth_headers):
     project_id = _create_project(client, auth_headers)
     entity_id = _create_entity(client, auth_headers, project_id)

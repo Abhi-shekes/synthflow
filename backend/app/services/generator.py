@@ -5,6 +5,9 @@ know about relationships, rules, formulas, or state machines — those land in
 Phase 2 as separate engines that compose with this one.
 """
 
+import csv
+import io
+import json
 import random
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -96,3 +99,18 @@ def generate_rows(fields: list[EntityField], count: int) -> list[dict[str, Any]]
         rows.append(row)
 
     return rows
+
+
+def rows_to_csv(fields: list[EntityField], rows: list[dict[str, Any]]) -> str:
+    fieldnames = [f.name for f in fields]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(
+            {
+                name: json.dumps(value) if isinstance(value, (list, dict)) else value
+                for name, value in row.items()
+            }
+        )
+    return buffer.getvalue()

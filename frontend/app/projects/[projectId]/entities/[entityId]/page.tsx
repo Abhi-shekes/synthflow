@@ -59,6 +59,21 @@ export default function EntityDetailPage() {
     onError: (error: Error) => toast.error(error.message || "Generation failed"),
   });
 
+  const downloadCsv = useMutation({
+    mutationFn: () => api.generateCsv(accessToken!, projectId, entityId, count),
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${entity?.name ?? "export"}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    },
+    onError: (error: Error) => toast.error(error.message || "CSV export failed"),
+  });
+
   if (!accessToken) return null;
 
   const entity = entityQuery.data;
@@ -155,6 +170,13 @@ export default function EntityDetailPage() {
                 disabled={generate.isPending || !entity?.fields.length}
               >
                 {generate.isPending ? "Generating…" : "Generate"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => downloadCsv.mutate()}
+                disabled={downloadCsv.isPending || !entity?.fields.length}
+              >
+                {downloadCsv.isPending ? "Preparing…" : "Download CSV"}
               </Button>
             </div>
 

@@ -110,4 +110,31 @@ export const api = {
       { method: "POST", body: JSON.stringify({ count }) },
       token
     ),
+
+  generateCsv: async (
+    token: string,
+    projectId: string,
+    entityId: string,
+    count: number
+  ): Promise<Blob> => {
+    const res = await fetch(
+      `${API_URL}/api/v1/projects/${projectId}/entities/${entityId}/generate?format=csv`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ count }),
+      }
+    );
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        if (body?.detail) detail = body.detail;
+      } catch {
+        // response had no JSON body
+      }
+      throw new ApiError(res.status, detail);
+    }
+    return res.blob();
+  },
 };
