@@ -4,5 +4,6 @@ from app.models.project import Project
 from app.models.relationship import Relationship
 from app.models.rule import Rule
 from app.models.user import User
+from app.models.workflow import Workflow
 
-__all__ = ["User", "Project", "Entity", "EntityField", "Relationship", "Rule"]
+__all__ = ["User", "Project", "Entity", "EntityField", "Relationship", "Rule", "Workflow"]

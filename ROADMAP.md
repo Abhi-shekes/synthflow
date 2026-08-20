@@ -49,8 +49,15 @@ and formulas instead of pure randomness.
 - [x] Formula engine: derived/computed fields (`Total = Price × Quantity`) —
       a field's `formula` is evaluated against the row's already-generated
       fields using the same expression evaluator
-- [ ] Stateful entities: define allowed state transitions, generation respects them
-- [ ] Workflow / state machine builder (visual, React Flow) for non-entity workflows
+- [x] Stateful entities: define allowed state transitions, generation respects
+      them — a `Workflow` (states + initial states + transitions) attaches to
+      one field; generation takes a random walk over the graph from a random
+      initial state (bounded, early-stopping) instead of picking a value
+      independently, and exposes the walk as `<field>_history` alongside the
+      field's final value
+- [x] Workflow / state machine builder UI — plain field-select + comma-list +
+      "source -> target" textarea form, not the React Flow visual canvas from
+      the spec (later polish pass, see TODO.md)
 - [ ] Generated-field and auto-increment field support
 
 ## Phase 3 — Outputs

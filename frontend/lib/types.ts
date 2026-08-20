@@ -49,6 +49,28 @@ export interface Rule {
   created_at: string;
 }
 
+export interface WorkflowTransition {
+  source: string;
+  target: string;
+}
+
+export interface Workflow {
+  id: string;
+  entity_id: string;
+  field_id: string;
+  states: string[];
+  initial_states: string[];
+  transitions: WorkflowTransition[];
+  created_at: string;
+}
+
+export interface WorkflowCreateInput {
+  field_id: string;
+  states: string[];
+  initial_states: string[];
+  transitions: WorkflowTransition[];
+}
+
 export interface Entity {
   id: string;
   project_id: string;
@@ -56,6 +78,7 @@ export interface Entity {
   created_at: string;
   fields: EntityField[];
   rules: Rule[];
+  workflows: Workflow[];
 }
 
 export interface Project {

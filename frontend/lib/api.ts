@@ -6,6 +6,8 @@ import type {
   RelationshipCreateInput,
   Rule,
   User,
+  Workflow,
+  WorkflowCreateInput,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -188,6 +190,28 @@ export const api = {
   deleteRule: (token: string, projectId: string, entityId: string, ruleId: string) =>
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}/rules/${ruleId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listWorkflows: (token: string, projectId: string, entityId: string) =>
+    request<Workflow[]>(`/api/v1/projects/${projectId}/entities/${entityId}/workflows`, {}, token),
+
+  createWorkflow: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    data: WorkflowCreateInput
+  ) =>
+    request<Workflow>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/workflows`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteWorkflow: (token: string, projectId: string, entityId: string, workflowId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/workflows/${workflowId}`,
       { method: "DELETE" },
       token
     ),

@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { AddFieldDialog } from "@/components/add-field-dialog";
+import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useRequireAuth } from "@/lib/hooks";
-import type { FieldCreateInput } from "@/lib/types";
+import type { FieldCreateInput, WorkflowCreateInput } from "@/lib/types";
 
 interface RuleFormValues {
   condition: string;
@@ -82,6 +83,24 @@ export default function EntityDetailPage() {
     onError: (error: Error) => toast.error(error.message || "Could not delete rule"),
   });
 
+  const addWorkflow = useMutation({
+    mutationFn: (values: WorkflowCreateInput) =>
+      api.createWorkflow(accessToken!, projectId, entityId, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not add workflow"),
+  });
+
+  const deleteWorkflow = useMutation({
+    mutationFn: (workflowId: string) =>
+      api.deleteWorkflow(accessToken!, projectId, entityId, workflowId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete workflow"),
+  });
+
   const downloadCsv = useMutation({
     mutationFn: () => api.generateCsv(accessToken!, projectId, entityId, count),
     onSuccess: (blob) => {
@@ -100,7 +119,17 @@ export default function EntityDetailPage() {
   if (!accessToken) return null;
 
   const entity = entityQuery.data;
-  const columns = entity?.fields.map((f) => f.name) ?? [];
+  // Include any extra keys generation adds beyond the declared fields (e.g. a
+  // workflow field's `<field>_history`), so those are visible in the preview.
+  const declaredColumns = entity?.fields.map((f) => f.name) ?? [];
+  const columns =
+    rows && rows.length > 0
+      ? [
+          ...declaredColumns,
+          ...Object.keys(rows[0]).filter((k) => !declaredColumns.includes(k)),
+        ]
+      : declaredColumns;
+  const fieldNameById = new Map(entity?.fields.map((f) => [f.id, f.name]) ?? []);
 
   return (
     <AppShell>
@@ -211,6 +240,56 @@ export default function EntityDetailPage() {
                     <Button variant="ghost" size="sm" onClick={() => deleteRule.mutate(rule.id)}>
                       Delete
                     </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Workflows</CardTitle>
+            {entity && (
+              <AddWorkflowDialog
+                entity={entity}
+                onSubmit={(v) => addWorkflow.mutate(v)}
+                isPending={addWorkflow.isPending}
+              />
+            )}
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              A workflow turns a field into a simulated state machine: instead
+              of a random value, each row gets a random walk from an initial
+              state through the transitions you define, and the walk itself is
+              included as <code className="font-mono">&lt;field&gt;_history</code>.
+            </p>
+            {entity?.workflows.length === 0 && (
+              <p className="text-sm text-muted-foreground">No workflows yet.</p>
+            )}
+            {entity && entity.workflows.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {entity.workflows.map((workflow) => (
+                  <li key={workflow.id} className="rounded-md border px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{fieldNameById.get(workflow.field_id)}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteWorkflow.mutate(workflow.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                    <p className="mt-1 text-muted-foreground">
+                      States: {workflow.states.join(", ")}
+                      <br />
+                      Initial: {workflow.initial_states.join(", ")}
+                      <br />
+                      Transitions:{" "}
+                      {workflow.transitions.map((t) => `${t.source}→${t.target}`).join(", ")}
+                    </p>
                   </li>
                 ))}
               </ul>

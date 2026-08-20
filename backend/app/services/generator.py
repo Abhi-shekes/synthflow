@@ -4,8 +4,9 @@ Phase 1 covers a single entity in isolation. Phase 2 adds `generate_project`
 (entities generated in relationship-dependency order so a child's foreign-key
 field draws real values from its already-generated parent), formula fields
 (a field's value computed from other fields on the same row instead of being
-randomized), and rules (a boolean expression a generated row must satisfy,
-enforced by discard-and-retry). State machines are still a later phase.
+randomized), rules (a boolean expression a generated row must satisfy,
+enforced by discard-and-retry), and workflows (a field's value comes from a
+random walk over a state machine instead of being randomized independently).
 """
 
 import csv
@@ -24,6 +25,7 @@ from app.models.entity import Entity
 from app.models.field import EntityField, FieldType
 from app.models.relationship import Relationship
 from app.models.rule import Rule
+from app.models.workflow import Workflow
 from app.services.expressions import ExpressionError, evaluate
 
 faker = Faker()
@@ -31,6 +33,8 @@ faker = Faker()
 NULLABLE_PROBABILITY = 0.15
 MAX_UNIQUE_ATTEMPTS = 100
 MAX_RULE_ATTEMPTS = 200
+MAX_WORKFLOW_STEPS = 20
+WORKFLOW_STOP_PROBABILITY = 0.35
 
 
 def _generate_value(field: EntityField) -> Any:
@@ -107,16 +111,47 @@ def _row_satisfies_rules(row: dict[str, Any], rules: list[Rule]) -> bool:
     return True
 
 
+def _generate_state_walk(workflow: Workflow) -> list[str]:
+    """A random walk through the workflow's transition graph, starting from a
+    random initial state and stopping (with WORKFLOW_STOP_PROBABILITY chance
+    per step, or when a state has no outgoing transitions) within
+    MAX_WORKFLOW_STEPS hops. Later states are naturally rarer since they
+    require surviving more consecutive "don't stop" draws — a deliberate,
+    simple stand-in for "most records are further along than not yet started,
+    but few reach the very end," not a claim about any real-world process."""
+    if not workflow.initial_states:
+        raise ValueError("Workflow has no initial states")
+
+    by_source: dict[str, list[str]] = {}
+    for t in workflow.transitions:
+        by_source.setdefault(t["source"], []).append(t["target"])
+
+    path = [random.choice(workflow.initial_states)]
+    for _ in range(MAX_WORKFLOW_STEPS - 1):
+        options = by_source.get(path[-1], [])
+        if not options or random.random() < WORKFLOW_STOP_PROBABILITY:
+            break
+        path.append(random.choice(options))
+    return path
+
+
 def _generate_one_row(
     fields: list[EntityField],
     fk_pools: dict[str, list[Any]],
     seen_per_field: dict[str, set],
     unique_fk_queues: dict[str, list[Any]],
+    workflows: dict[str, Workflow],
 ) -> dict[str, Any]:
     row: dict[str, Any] = {}
     for field in fields:
         if field.formula:
             row[field.name] = _evaluate_formula(field, row)
+            continue
+
+        if field.name in workflows:
+            path = _generate_state_walk(workflows[field.name])
+            row[field.name] = path[-1]
+            row[f"{field.name}_history"] = path
             continue
 
         if not field.required and field.nullable and random.random() < NULLABLE_PROBABILITY:
@@ -146,6 +181,7 @@ def generate_rows(
     count: int,
     fk_pools: dict[str, list[Any]] | None = None,
     rules: list[Rule] | None = None,
+    workflows: list[Workflow] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate `count` rows for `fields`.
 
@@ -160,9 +196,15 @@ def generate_rows(
     row's values are not "returned" to unique pools/seen-sets, so rules that
     reject a lot of candidates can exhaust a small unique pool faster than the
     requested `count` would otherwise need — a known tradeoff, not a bug.
+
+    `workflows` are state machines attached to a field; that field's value
+    comes from a random walk over the graph (see _generate_state_walk)
+    instead of the type-based generator, and the walk itself is exposed
+    alongside it as `<field>_history`.
     """
     fk_pools = fk_pools or {}
     rules = rules or []
+    workflows_by_field = {w.field.name: w for w in (workflows or [])}
     seen_per_field: dict[str, set] = {
         f.name: set() for f in fields if f.unique and f.name not in fk_pools
     }
@@ -177,7 +219,9 @@ def generate_rows(
     for _ in range(count):
         row = None
         for _attempt in range(MAX_RULE_ATTEMPTS if rules else 1):
-            candidate = _generate_one_row(fields, fk_pools, seen_per_field, unique_fk_queues)
+            candidate = _generate_one_row(
+                fields, fk_pools, seen_per_field, unique_fk_queues, workflows_by_field
+            )
             if _row_satisfies_rules(candidate, rules):
                 row = candidate
                 break
@@ -262,16 +306,19 @@ def generate_project(
             fk_pools[source_field.name] = pool
 
         generated[entity_id] = generate_rows(
-            entity.fields, counts.get(entity_id, 10), fk_pools, entity.rules
+            entity.fields, counts.get(entity_id, 10), fk_pools, entity.rules, entity.workflows
         )
 
     return generated
 
 
 def rows_to_csv(fields: list[EntityField], rows: list[dict[str, Any]]) -> str:
+    """Renders the declared fields as CSV columns. Workflow `<field>_history`
+    values are intentionally dropped here — they're variable-length arrays,
+    not a tabular column — and remain available in the JSON response."""
     fieldnames = [f.name for f in fields]
     buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
         writer.writerow(

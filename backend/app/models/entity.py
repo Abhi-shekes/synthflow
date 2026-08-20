@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.field import EntityField
     from app.models.project import Project
     from app.models.rule import Rule
+    from app.models.workflow import Workflow
 
 
 class Entity(Base):
@@ -27,4 +28,7 @@ class Entity(Base):
     )
     rules: Mapped[list["Rule"]] = relationship(
         back_populates="entity", cascade="all, delete-orphan", order_by="Rule.created_at"
+    )
+    workflows: Mapped[list["Workflow"]] = relationship(
+        cascade="all, delete-orphan", order_by="Workflow.created_at"
     )

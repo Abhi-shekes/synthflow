@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.schemas.field import EntityFieldRead
 from app.schemas.rule import RuleRead
+from app.schemas.workflow import WorkflowRead
 
 
 class EntityCreate(BaseModel):
@@ -24,6 +25,7 @@ class EntityRead(BaseModel):
     created_at: datetime
     fields: list[EntityFieldRead] = []
     rules: list[RuleRead] = []
+    workflows: list[WorkflowRead] = []
 
 
 class GenerateRequest(BaseModel):
