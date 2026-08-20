@@ -41,23 +41,46 @@ end-to-end in a browser for each. Known simplifications, carried forward:
 - Only one leftover Phase 2 item: generated-field/auto-increment field
   support (see Backlog) — small, not blocking Phase 3.
 
-## Now — Phase 3: outputs
+## Phase 3, part 1: file outputs — done
 
-Goal: generated data can leave the platform through more than a JSON blob in
-an HTTP response. Reasonable build order (each one is independently useful,
-start with whichever unblocks the next thing you want to demo):
+- [x] Excel export, single-entity (`?format=xlsx` on `/entities/{id}/generate`,
+      alongside the existing `?format=csv`)
+- [x] Excel export, project-level: one workbook, one sheet per entity
+- [x] CSV export, project-level: a zip of one `<entity>.csv` per entity (CSV
+      has no multi-table concept, so no single-file project-wide CSV exists)
+- [x] "Download CSV" / "Download Excel" buttons on both the entity page and
+      the project's "Generate all entities" view
+- Verified end-to-end in a browser against the full docker-compose stack:
+  downloaded and inspected all three (entity .xlsx, project .zip, project
+  .xlsx) — correct filenames, correct per-entity sheets/files, row counts
+  matched the requested count.
+- Design choice: Excel includes extra generation-time columns (e.g. a
+  workflow field's `<field>_history`) that CSV drops — CSV is the strict
+  fixed-column format, Excel isn't, so this isn't an inconsistency to fix
+  later, it's intentional.
+
+## Now — Phase 3, part 2: REST output, plugin manager, DB connectors
 
 - [ ] Output plugin manager: a per-project config of which output(s) are
       enabled, modeled so Phase 5's "install only REST" story is possible
-      later without a rewrite (see Notes below)
-- [ ] File outputs: JSON (already have it via the API) + Excel — CSV already
-      exists per-entity; extend it to the project-level `generate` endpoint too
-- [ ] REST output: expose a project's entities as their own read endpoints
-      (distinct from the "generate a batch now" endpoints that exist today)
+      later without a rewrite (see Notes below). Don't build this as an empty
+      shell of toggles for things that don't work yet — let it grow out of
+      the DB-connector config below, which actually needs persisted
+      per-project settings (host/port/credentials/table mapping).
+- [ ] REST output: likely just documentation/framing rather than new code —
+      `POST .../generate` already IS the REST output; decide if this item is
+      "expose it as a stable read endpoint distinct from the generate action"
+      or if it's already satisfied
 - [ ] Database connectors: write generated rows into a real Postgres/MySQL/
-      Mongo target the user configures, instead of just returning them
-- [ ] Streaming outputs (Kafka, MQTT, WebSocket) — likely the biggest lift;
-      probably last in this phase
+      Mongo target the user configures (host, port, credentials, database,
+      table-per-entity mapping), instead of just returning them. Needs: a
+      "test connection" action, safe identifier handling (SQLAlchemy
+      quoting, never raw string interpolation into DDL/DML), and a
+      write-only password field (never echoed back in API responses — this
+      repo doesn't have secret encryption-at-rest yet, so say so plainly in
+      the UI rather than implying more security than exists)
+- [ ] Streaming outputs (Kafka, MQTT, WebSocket) — biggest lift, needs the
+      async execution model called out below; do this last in the phase
 
 ## Backlog (not started, roughly in order)
 

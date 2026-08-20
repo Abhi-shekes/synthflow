@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { useRequireAuth } from "@/lib/hooks";
 import type { FieldCreateInput, WorkflowCreateInput } from "@/lib/types";
 
@@ -103,17 +104,14 @@ export default function EntityDetailPage() {
 
   const downloadCsv = useMutation({
     mutationFn: () => api.generateCsv(accessToken!, projectId, entityId, count),
-    onSuccess: (blob) => {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${entity?.name ?? "export"}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    },
+    onSuccess: (blob) => downloadBlob(blob, `${entity?.name ?? "export"}.csv`),
     onError: (error: Error) => toast.error(error.message || "CSV export failed"),
+  });
+
+  const downloadExcel = useMutation({
+    mutationFn: () => api.generateExcel(accessToken!, projectId, entityId, count),
+    onSuccess: (blob) => downloadBlob(blob, `${entity?.name ?? "export"}.xlsx`),
+    onError: (error: Error) => toast.error(error.message || "Excel export failed"),
   });
 
   if (!accessToken) return null;
@@ -323,6 +321,13 @@ export default function EntityDetailPage() {
                 disabled={downloadCsv.isPending || !entity?.fields.length}
               >
                 {downloadCsv.isPending ? "Preparing…" : "Download CSV"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => downloadExcel.mutate()}
+                disabled={downloadExcel.isPending || !entity?.fields.length}
+              >
+                {downloadExcel.isPending ? "Preparing…" : "Download Excel"}
               </Button>
             </div>
 

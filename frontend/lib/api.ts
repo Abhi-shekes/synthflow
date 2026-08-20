@@ -49,6 +49,32 @@ async function request<T>(
   return res.json();
 }
 
+async function requestBlob(
+  path: string,
+  options: RequestInit,
+  token: string
+): Promise<Blob> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {
+      // response had no JSON body
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return res.blob();
+}
+
 export interface TokenPair {
   access_token: string;
   refresh_token: string;
@@ -121,32 +147,19 @@ export const api = {
       token
     ),
 
-  generateCsv: async (
-    token: string,
-    projectId: string,
-    entityId: string,
-    count: number
-  ): Promise<Blob> => {
-    const res = await fetch(
-      `${API_URL}/api/v1/projects/${projectId}/entities/${entityId}/generate?format=csv`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ count }),
-      }
-    );
-    if (!res.ok) {
-      let detail = res.statusText;
-      try {
-        const body = await res.json();
-        if (body?.detail) detail = body.detail;
-      } catch {
-        // response had no JSON body
-      }
-      throw new ApiError(res.status, detail);
-    }
-    return res.blob();
-  },
+  generateCsv: (token: string, projectId: string, entityId: string, count: number) =>
+    requestBlob(
+      `/api/v1/projects/${projectId}/entities/${entityId}/generate?format=csv`,
+      { method: "POST", body: JSON.stringify({ count }) },
+      token
+    ),
+
+  generateExcel: (token: string, projectId: string, entityId: string, count: number) =>
+    requestBlob(
+      `/api/v1/projects/${projectId}/entities/${entityId}/generate?format=xlsx`,
+      { method: "POST", body: JSON.stringify({ count }) },
+      token
+    ),
 
   listRelationships: (token: string, projectId: string) =>
     request<Relationship[]>(`/api/v1/projects/${projectId}/relationships`, {}, token),
@@ -174,6 +187,20 @@ export const api = {
     request<Record<string, Record<string, unknown>[]>>(
       `/api/v1/projects/${projectId}/generate`,
       { method: "POST", body: JSON.stringify({ count, counts }) },
+      token
+    ),
+
+  generateProjectCsvZip: (token: string, projectId: string, count: number) =>
+    requestBlob(
+      `/api/v1/projects/${projectId}/generate?format=csv`,
+      { method: "POST", body: JSON.stringify({ count, counts: {} }) },
+      token
+    ),
+
+  generateProjectExcel: (token: string, projectId: string, count: number) =>
+    requestBlob(
+      `/api/v1/projects/${projectId}/generate?format=xlsx`,
+      { method: "POST", body: JSON.stringify({ count, counts: {} }) },
       token
     ),
 

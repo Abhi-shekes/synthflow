@@ -66,7 +66,14 @@ Goal: generated data can leave the platform through more than a JSON blob.
 
 - [ ] Plugin manager: register/enable/disable output plugins per project
 - [ ] REST output (expose generated data as an API)
-- [ ] File outputs: CSV, JSON, Excel
+- [x] File outputs: CSV, JSON, Excel — CSV/JSON existed per-entity since Phase 1;
+      this phase added Excel (single entity, and a multi-sheet workbook — one
+      sheet per entity — at the project level) and extended CSV to the
+      project level as a zip of per-entity files (CSV has no multi-table
+      concept, so a zip is the honest shape). Excel intentionally includes
+      extra generation-time columns like a workflow field's `<field>_history`
+      that CSV drops, since CSV is a strict fixed-column format and Excel
+      isn't.
 - [ ] Database connectors: PostgreSQL, MySQL, MongoDB
 - [ ] Kafka producer output
 - [ ] MQTT publisher output

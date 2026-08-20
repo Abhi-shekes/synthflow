@@ -13,13 +13,17 @@ import csv
 import io
 import json
 import random
+import re
 import uuid
+import zipfile
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import exrex
 from faker import Faker
+from openpyxl import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
 from app.models.entity import Entity
 from app.models.field import EntityField, FieldType
@@ -327,4 +331,72 @@ def rows_to_csv(fields: list[EntityField], rows: list[dict[str, Any]]) -> str:
                 for name, value in row.items()
             }
         )
+    return buffer.getvalue()
+
+
+def _cell_value(value: Any) -> Any:
+    if isinstance(value, (list, dict)):
+        return json.dumps(value)
+    return value
+
+
+def _sheet_columns(fields: list[EntityField], rows: list[dict[str, Any]]) -> list[str]:
+    declared = [f.name for f in fields]
+    if not rows:
+        return declared
+    extra = [k for k in rows[0] if k not in declared]
+    return declared + extra
+
+
+def _write_sheet(ws: Worksheet, fields: list[EntityField], rows: list[dict[str, Any]]) -> None:
+    columns = _sheet_columns(fields, rows)
+    ws.append(columns)
+    for row in rows:
+        ws.append([_cell_value(row.get(col)) for col in columns])
+
+
+_INVALID_SHEET_CHARS = re.compile(r"[\[\]:*?/\\]")
+
+
+def _safe_sheet_name(name: str) -> str:
+    return _INVALID_SHEET_CHARS.sub("_", name)[:31] or "Sheet"
+
+
+def rows_to_excel(fields: list[EntityField], rows: list[dict[str, Any]]) -> bytes:
+    """Unlike CSV, this includes any extra keys generation adds (e.g. a
+    workflow field's `<field>_history`) alongside the declared fields —
+    Excel isn't a strict fixed-column format the way CSV is."""
+    wb = Workbook()
+    ws = wb.active
+    assert ws is not None
+    _write_sheet(ws, fields, rows)
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+def project_rows_to_excel(
+    entities: list[Entity], generated: dict[uuid.UUID, list[dict[str, Any]]]
+) -> bytes:
+    """One workbook, one sheet per entity."""
+    wb = Workbook()
+    wb.remove(wb.active)
+    for entity in entities:
+        ws = wb.create_sheet(title=_safe_sheet_name(entity.name))
+        _write_sheet(ws, entity.fields, generated.get(entity.id, []))
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+def project_rows_to_csv_zip(
+    entities: list[Entity], generated: dict[uuid.UUID, list[dict[str, Any]]]
+) -> bytes:
+    """One `<entity>.csv` file per entity, zipped together — CSV has no
+    multi-table concept, so a project-wide export is a zip of flat files."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for entity in entities:
+            csv_text = rows_to_csv(entity.fields, generated.get(entity.id, []))
+            zf.writestr(f"{entity.name}.csv", csv_text)
     return buffer.getvalue()

@@ -15,7 +15,7 @@ from app.models.user import User
 from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateRequest
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
 from app.services.expressions import ExpressionError, evaluate
-from app.services.generator import generate_rows, rows_to_csv
+from app.services.generator import generate_rows, rows_to_csv, rows_to_excel
 
 router = APIRouter(prefix="/projects/{project_id}/entities", tags=["entities"])
 
@@ -169,7 +169,7 @@ def generate(
     project_id: uuid.UUID,
     entity_id: uuid.UUID,
     payload: GenerateRequest,
-    format: Literal["json", "csv"] = "json",
+    format: Literal["json", "csv", "xlsx"] = "json",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[dict] | Response:
@@ -196,6 +196,14 @@ def generate(
             content=csv_text,
             media_type="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{entity.name}.csv"'},
+        )
+
+    if format == "xlsx":
+        xlsx_bytes = rows_to_excel(entity.fields, rows)
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{entity.name}.xlsx"'},
         )
 
     return rows

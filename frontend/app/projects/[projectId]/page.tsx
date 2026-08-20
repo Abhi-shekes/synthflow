@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { useRequireAuth } from "@/lib/hooks";
 import type { RelationshipCreateInput } from "@/lib/types";
 
@@ -98,6 +99,18 @@ export default function ProjectDetailPage() {
     mutationFn: () => api.generateProject(accessToken!, projectId, generateCount),
     onSuccess: (data) => setGenerated(data),
     onError: (error: Error) => toast.error(error.message || "Generation failed"),
+  });
+
+  const downloadCsvZip = useMutation({
+    mutationFn: () => api.generateProjectCsvZip(accessToken!, projectId, generateCount),
+    onSuccess: (blob) => downloadBlob(blob, `${projectQuery.data?.name ?? "project"}.zip`),
+    onError: (error: Error) => toast.error(error.message || "CSV export failed"),
+  });
+
+  const downloadExcel = useMutation({
+    mutationFn: () => api.generateProjectExcel(accessToken!, projectId, generateCount),
+    onSuccess: (blob) => downloadBlob(blob, `${projectQuery.data?.name ?? "project"}.xlsx`),
+    onError: (error: Error) => toast.error(error.message || "Excel export failed"),
   });
 
   if (!accessToken) return null;
@@ -262,6 +275,20 @@ export default function ProjectDetailPage() {
                 disabled={generateAll.isPending || entities.length === 0}
               >
                 {generateAll.isPending ? "Generating…" : "Generate all"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => downloadCsvZip.mutate()}
+                disabled={downloadCsvZip.isPending || entities.length === 0}
+              >
+                {downloadCsvZip.isPending ? "Preparing…" : "Download CSV (zip)"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => downloadExcel.mutate()}
+                disabled={downloadExcel.isPending || entities.length === 0}
+              >
+                {downloadExcel.isPending ? "Preparing…" : "Download Excel"}
               </Button>
             </div>
 

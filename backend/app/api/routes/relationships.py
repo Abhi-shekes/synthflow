@@ -1,6 +1,8 @@
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -16,7 +18,7 @@ from app.schemas.relationship import (
     RelationshipCreate,
     RelationshipRead,
 )
-from app.services.generator import generate_project
+from app.services.generator import generate_project, project_rows_to_csv_zip, project_rows_to_excel
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["relationships"])
 
@@ -113,12 +115,13 @@ def delete_relationship(
 def generate_all(
     project_id: uuid.UUID,
     payload: ProjectGenerateRequest,
+    format: Literal["json", "csv", "xlsx"] = "json",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, list[dict]]:
+) -> dict[str, list[dict]] | Response:
     """Generate every entity in the project at once, honoring relationships so a
     dependent entity's foreign-key field references its parent's generated rows."""
-    _get_owned_project(project_id, current_user, db)
+    project = _get_owned_project(project_id, current_user, db)
     entities = db.query(Entity).filter(Entity.project_id == project_id).all()
     if not entities:
         raise HTTPException(
@@ -143,6 +146,22 @@ def generate_all(
         generated = generate_project(entities, relationships, counts)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if format == "csv":
+        zip_bytes = project_rows_to_csv_zip(entities, generated)
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{project.name}.zip"'},
+        )
+
+    if format == "xlsx":
+        xlsx_bytes = project_rows_to_excel(entities, generated)
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{project.name}.xlsx"'},
+        )
 
     entities_by_id = {e.id: e for e in entities}
     return {entities_by_id[entity_id].name: rows for entity_id, rows in generated.items()}
