@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.error_injection import ErrorInjection
     from app.models.event_trigger import EventTrigger
     from app.models.field import EntityField
+    from app.models.geo_route import GeoRoute
     from app.models.lookup_attachment import LookupAttachment
     from app.models.project import Project
     from app.models.rule import Rule
@@ -47,4 +48,7 @@ class Entity(Base):
     )
     lookup_attachments: Mapped[list["LookupAttachment"]] = relationship(
         cascade="all, delete-orphan", order_by="LookupAttachment.created_at"
+    )
+    geo_routes: Mapped[list["GeoRoute"]] = relationship(
+        cascade="all, delete-orphan", order_by="GeoRoute.created_at"
     )

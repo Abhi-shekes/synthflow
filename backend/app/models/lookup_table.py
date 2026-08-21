@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.geo_route import GeoRoute
     from app.models.lookup_attachment import LookupAttachment
     from app.models.timeline_replay import TimelineReplay
 
@@ -54,6 +55,11 @@ class LookupTable(Base):
         back_populates="lookup_table",
         cascade="all, delete-orphan",
         order_by="TimelineReplay.created_at",
+    )
+    geo_routes: Mapped[list["GeoRoute"]] = relationship(
+        back_populates="lookup_table",
+        cascade="all, delete-orphan",
+        order_by="GeoRoute.created_at",
     )
 
     @property

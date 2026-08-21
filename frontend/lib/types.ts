@@ -234,6 +234,28 @@ export interface TimelineReplayCreateInput {
   speed_multiplier: number;
 }
 
+export interface GeoPoint {
+  lat: number;
+  lon: number;
+}
+
+export interface GeoRoute {
+  id: string;
+  entity_id: string;
+  field_id: string;
+  lookup_table_id: string;
+  lat_column: string;
+  lon_column: string;
+  created_at: string;
+}
+
+export interface GeoRouteCreateInput {
+  field_id: string;
+  lookup_table_id: string;
+  lat_column: string;
+  lon_column: string;
+}
+
 export interface Entity {
   id: string;
   project_id: string;
@@ -246,6 +268,7 @@ export interface Entity {
   trends: Trend[];
   error_injections: ErrorInjection[];
   lookup_attachments: LookupAttachment[];
+  geo_routes: GeoRoute[];
 }
 
 export interface Project {

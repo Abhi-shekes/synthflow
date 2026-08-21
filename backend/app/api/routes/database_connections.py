@@ -121,6 +121,7 @@ def push(
             trends=entity.trends,
             error_injections=entity.error_injections,
             event_triggers=entity.event_triggers,
+            geo_routes=entity.geo_routes,
         )
         rows_written = push_rows(connection, entity.fields, rows, table_name)
     except (ValueError, DatabaseOutputError) as exc:

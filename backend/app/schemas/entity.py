@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 from app.schemas.error_injection import ErrorInjectionRead
 from app.schemas.event_trigger import EventTriggerRead
 from app.schemas.field import EntityFieldRead
+from app.schemas.geo_route import GeoRouteRead
 from app.schemas.lookup_attachment import LookupAttachmentRead
 from app.schemas.rule import RuleRead
 from app.schemas.trend import TrendRead
@@ -34,6 +35,7 @@ class EntityRead(BaseModel):
     trends: list[TrendRead] = []
     error_injections: list[ErrorInjectionRead] = []
     lookup_attachments: list[LookupAttachmentRead] = []
+    geo_routes: list[GeoRouteRead] = []
 
 
 class GenerateRequest(BaseModel):

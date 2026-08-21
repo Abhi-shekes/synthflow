@@ -239,7 +239,33 @@ Goal: data behaves over time, not just at generation time.
       the FK's `ondelete=CASCADE`, since SQLite (local dev/tests, unlike the
       Postgres default in docker-compose) doesn't enforce FK constraints
       without a PRAGMA this app doesn't set.
-- [ ] Geographic simulation: GPS routes, speed, stops, traffic, delivery vehicles
+- [x] Geographic simulation: GPS routes, speed, stops, traffic, delivery
+      vehicles — the last Phase 4 item, and (per the design note in TODO.md
+      before starting) the one genuinely needing new machinery: no existing
+      engine produced a 2D path across rows (`Trend` is scalar-only) or let
+      a field see the previous row's value in a reusable way. `GeoRoute`
+      attaches one OBJECT/JSON field to an ordered waypoint sequence from a
+      project-level `LookupTable` — a *third* consumption mode for that
+      same upload (`LookupAttachment` samples one value, `TimelineReplay`
+      walks in order against a clock, this walks in order across the
+      generated batch, interpolated). The field's value becomes
+      `{"lat": float, "lon": float}`, linearly interpolated between the two
+      waypoints bounding each row's fractional position within the current
+      batch (`app/services/geo_routes.generate_geo_point`) — row 0 is the
+      route's first waypoint, the last row its last, regardless of how many
+      waypoints were uploaded vs. rows requested (a 5-waypoint route
+      sampled into 200 rows produces 200 smoothly interpolated points along
+      that polyline). Resolved design questions, kept deliberately small:
+      "stops" aren't a separate configured concept — upload the same
+      waypoint twice in a row in the source data and however many output
+      rows land in that now-tiny segment interpolate to essentially the
+      same point, a natural consequence of the interpolation rather than a
+      special case; speed and traffic aren't built here at all — compose a
+      plain FLOAT field (optionally with a Trend, or an ErrorInjection
+      `out_of_range` for a "jammed" outlier) the same way latency already
+      does for API-behavior simulation, since a route only owns *where*,
+      not how fast. "Delivery vehicles" needed no separate mechanism either
+      — it's the same route + entity shape, just named for a use case.
 - [x] User behavior simulation: login/logout/search/click/scroll/cart/purchase
       funnels — turned out to already be exactly what a `Workflow` produces:
       a linear chain of states (e.g. `landing -> search -> cart -> checkout

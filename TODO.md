@@ -43,33 +43,35 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   route that bypassed the test suite's DB session override by importing
   `SessionLocal` directly instead of looking it up on the module each call.
 
-## Phase 4, parts 1–11 — done
+## Phase 4 — done (all 12 parts)
 
 probability, trend, correlation, error injection, lookup tables, event
 triggers, log & security-event presets, API-behavior simulation, timeline
-replay, user-behavior simulation. Full detail lives in ROADMAP.md Phase 4;
-the shape worth remembering: four of the eleven (correlation, API-behavior,
-user-behavior, and part of lookup tables) turned out to already be ~90%
-covered by existing engines and only needed a small real gap closed, not a
-new concept — always check existing infra before adding a model/table.
-User-behavior simulation's gap was realism, not capability: `Workflow`
-already produced funnels, it just applied one flat drop-off rate to every
-stage; `weight` (per transition) and `stop_probabilities` (per state) fixed
-that without a new concept.
+replay, user-behavior simulation, geographic simulation. Full detail lives
+in ROADMAP.md Phase 4; the shape worth remembering: four parts (correlation,
+API-behavior, user-behavior, and part of lookup tables) turned out to
+already be ~90% covered by existing engines and only needed a small real
+gap closed, not a new concept — always check existing infra before adding
+a model/table. Geographic simulation was the one exception worth flagging:
+it genuinely needed new machinery (`GeoRoute`, 2D interpolation across
+batch position), confirming the design-pass-first check works both ways —
+sometimes it finds nothing to build, sometimes it confirms there really is
+something to build. It still reused what it could: waypoints are just
+another `LookupTable` upload, a third consumption mode alongside
+`LookupAttachment` (sample) and `TimelineReplay` (walk against a clock).
 
-88 new tests across all eleven parts, 144 passed / 3 skipped total, lint
+98 new tests across all twelve parts, 154 passed / 3 skipped total, lint
 clean. Every part verified end-to-end in a browser, not just by test
-suite — most recently: a funnel configured to always stop right after
-"search" did so in 10/10 generated rows, zero console errors.
+suite — most recently: an 11-row generate over a 2-waypoint route produced
+an exact linear interpolation (endpoints and midpoint matched precisely),
+zero console errors.
 
-## Now — Phase 4, remainder
+## Now
 
-Not started: geographic simulation — the last Phase 4 item. Likely the
-biggest of the eleven: no existing engine produces a 2D path across rows
-(Trend is scalar-only) or lets a field see the *previous* row's value
-(ErrorInjection's `duplicate` does this internally but doesn't expose it),
-so this one probably needs real new machinery, not just a gap-close — do
-the design pass before assuming otherwise.
+Phase 4 is fully done. Next up is either Phase 5 (Extensibility — plugin
+framework, marketplace, monitoring dashboard, modular install; none of it
+scoped yet, needs its own design pass) or one of the smaller backlog items
+below — whichever "next" picks.
 
 ## Backlog (not started, roughly in order)
 

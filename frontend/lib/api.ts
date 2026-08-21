@@ -8,6 +8,8 @@ import type {
   ErrorInjectionCreateInput,
   EventTrigger,
   FieldCreateInput,
+  GeoRoute,
+  GeoRouteCreateInput,
   LookupAttachment,
   LookupAttachmentCreateInput,
   LookupTable,
@@ -528,6 +530,32 @@ export const api = {
   deleteTimelineReplay: (token: string, projectId: string, replayId: string) =>
     request<void>(
       `/api/v1/projects/${projectId}/timeline-replays/${replayId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listGeoRoutes: (token: string, projectId: string, entityId: string) =>
+    request<GeoRoute[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/geo-routes`,
+      {},
+      token
+    ),
+
+  createGeoRoute: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    data: GeoRouteCreateInput
+  ) =>
+    request<GeoRoute>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/geo-routes`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteGeoRoute: (token: string, projectId: string, entityId: string, geoRouteId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/geo-routes/${geoRouteId}`,
       { method: "DELETE" },
       token
     ),

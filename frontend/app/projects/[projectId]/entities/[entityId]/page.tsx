@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { AddErrorInjectionDialog } from "@/components/add-error-injection-dialog";
 import { AddFieldDialog } from "@/components/add-field-dialog";
+import { AddGeoRouteDialog } from "@/components/add-geo-route-dialog";
 import { AddLookupAttachmentDialog } from "@/components/add-lookup-attachment-dialog";
 import { AddTrendDialog } from "@/components/add-trend-dialog";
 import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
@@ -32,6 +33,7 @@ import { useRequireAuth } from "@/lib/hooks";
 import type {
   ErrorInjectionCreateInput,
   FieldCreateInput,
+  GeoRouteCreateInput,
   LookupAttachmentCreateInput,
   TrendCreateInput,
   WorkflowCreateInput,
@@ -197,6 +199,24 @@ export default function EntityDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete lookup"),
+  });
+
+  const addGeoRoute = useMutation({
+    mutationFn: (values: GeoRouteCreateInput) =>
+      api.createGeoRoute(accessToken!, projectId, entityId, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not add geo route"),
+  });
+
+  const deleteGeoRoute = useMutation({
+    mutationFn: (geoRouteId: string) =>
+      api.deleteGeoRoute(accessToken!, projectId, entityId, geoRouteId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete geo route"),
   });
 
   const restOutputsQuery = useQuery({
@@ -675,6 +695,63 @@ export default function EntityDetailPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => deleteLookupAttachment.mutate(attachment.id)}
+                    >
+                      Delete
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Geo routes</CardTitle>
+            {entity && (
+              <AddGeoRouteDialog
+                entity={entity}
+                lookupTables={lookupTables}
+                onSubmit={(v) => addGeoRoute.mutate(v)}
+                isPending={addGeoRoute.isPending}
+              />
+            )}
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Makes an object/json field a {"{"}lat, lon{"}"} point walking a
+              lookup table&apos;s waypoints, interpolated across the
+              generated batch — row 0 is the route&apos;s start, the last
+              row is its end. Upload a route (a lookup table with lat/lon
+              columns) on the project page first.
+            </p>
+            {lookupTables.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No lookup tables in this project yet — upload one from the
+                project page.
+              </p>
+            )}
+            {entity?.geo_routes.length === 0 && lookupTables.length > 0 && (
+              <p className="text-sm text-muted-foreground">No geo routes attached yet.</p>
+            )}
+            {entity && entity.geo_routes.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {entity.geo_routes.map((route) => (
+                  <li
+                    key={route.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">{fieldNameById.get(route.field_id)}</span>
+                      <span className="ml-2 text-muted-foreground">
+                        ← {lookupTableById.get(route.lookup_table_id)?.name ?? "?"} (
+                        {route.lat_column}, {route.lon_column})
+                      </span>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteGeoRoute.mutate(route.id)}
                     >
                       Delete
                     </Button>

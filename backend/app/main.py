@@ -7,6 +7,7 @@ from app.api.routes import (
     entities,
     error_injections,
     event_triggers,
+    geo_routes,
     health,
     lookup_attachments,
     lookup_tables,
@@ -44,6 +45,7 @@ app.include_router(trends.router, prefix=settings.API_V1_PREFIX)
 app.include_router(error_injections.router, prefix=settings.API_V1_PREFIX)
 app.include_router(lookup_tables.router, prefix=settings.API_V1_PREFIX)
 app.include_router(lookup_attachments.router, prefix=settings.API_V1_PREFIX)
+app.include_router(geo_routes.router, prefix=settings.API_V1_PREFIX)
 app.include_router(database_connections.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rest_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(websocket_streams.router, prefix=settings.API_V1_PREFIX)

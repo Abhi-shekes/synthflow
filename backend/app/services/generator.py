@@ -32,12 +32,14 @@ from app.models.entity import Entity
 from app.models.error_injection import ErrorInjection, ErrorType
 from app.models.event_trigger import EventTrigger
 from app.models.field import EntityField, FieldType
+from app.models.geo_route import GeoRoute
 from app.models.lookup_attachment import LookupAttachment
 from app.models.relationship import Relationship
 from app.models.rule import Rule
 from app.models.trend import Trend
 from app.models.workflow import Workflow
 from app.services.expressions import ExpressionError, evaluate
+from app.services.geo_routes import generate_geo_point
 from app.services.log_generators import generate_log_line
 from app.services.lookup_tables import coerce_numeric
 from app.services.trends import generate_trend_value
@@ -270,8 +272,10 @@ def _generate_one_row(
     trends: dict[str, Trend],
     trend_state: dict[str, dict],
     error_injections: dict[str, ErrorInjection],
+    geo_routes: dict[str, GeoRoute],
     previous_row: dict[str, Any] | None,
     position: int,
+    count: int,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {}
     for field in fields:
@@ -285,6 +289,11 @@ def _generate_one_row(
         elif field.name in workflows:
             workflow_path = _generate_state_walk(workflows[field.name])
             value = workflow_path[-1]
+        elif field.name in geo_routes:
+            route = geo_routes[field.name]
+            value = generate_geo_point(
+                route.lookup_table.data, route.lat_column, route.lon_column, position, count
+            )
         elif not field.required and field.nullable and random.random() < NULLABLE_PROBABILITY:
             value = None
         elif field.name in fk_pools:
@@ -322,6 +331,7 @@ def generate_rows(
     trends: list[Trend] | None = None,
     error_injections: list[ErrorInjection] | None = None,
     event_triggers: list[EventTrigger] | None = None,
+    geo_routes: list[GeoRoute] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate `count` rows for `fields`.
 
@@ -363,6 +373,12 @@ def generate_rows(
     has its `label` appended to that row's `_triggered_events` list, added
     only when at least one trigger is configured (see EventTrigger's
     docstring — this doesn't discard the row or send anything externally).
+
+    `geo_routes` make an object/json field's value a `{"lat", "lon"}` point
+    interpolated along an uploaded waypoint sequence, as a function of the
+    row's position within this call's batch (see app.services.geo_routes)
+    — the same "function of batch position" idea as `trends`, just for a 2D
+    path instead of a scalar curve.
     """
     fk_pools = fk_pools or {}
     rules = rules or []
@@ -371,6 +387,7 @@ def generate_rows(
     trends_by_field = {t.field.name: t for t in (trends or [])}
     trend_state: dict[str, dict] = {name: {} for name in trends_by_field}
     error_injections_by_field = {ei.field.name: ei for ei in (error_injections or [])}
+    geo_routes_by_field = {g.field.name: g for g in (geo_routes or [])}
     seen_per_field: dict[str, set] = {
         f.name: set() for f in fields if f.unique and f.name not in fk_pools
     }
@@ -395,8 +412,10 @@ def generate_rows(
                 trends_by_field,
                 trend_state,
                 error_injections_by_field,
+                geo_routes_by_field,
                 previous_row,
                 position,
+                count,
             )
             if _row_satisfies_rules(candidate, rules):
                 row = candidate
@@ -499,6 +518,7 @@ def generate_project(
             entity.trends,
             entity.error_injections,
             entity.event_triggers,
+            entity.geo_routes,
         )
 
     return generated

@@ -3,6 +3,7 @@ from app.models.entity import Entity
 from app.models.error_injection import ErrorInjection
 from app.models.event_trigger import EventTrigger
 from app.models.field import EntityField
+from app.models.geo_route import GeoRoute
 from app.models.lookup_attachment import LookupAttachment
 from app.models.lookup_table import LookupTable
 from app.models.project import Project
@@ -32,4 +33,5 @@ __all__ = [
     "LookupAttachment",
     "EventTrigger",
     "TimelineReplay",
+    "GeoRoute",
 ]
