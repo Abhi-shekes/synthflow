@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.error_injection import ErrorInjection
     from app.models.field import EntityField
     from app.models.project import Project
     from app.models.rule import Rule
@@ -35,4 +36,7 @@ class Entity(Base):
     )
     trends: Mapped[list["Trend"]] = relationship(
         cascade="all, delete-orphan", order_by="Trend.created_at"
+    )
+    error_injections: Mapped[list["ErrorInjection"]] = relationship(
+        cascade="all, delete-orphan", order_by="ErrorInjection.created_at"
     )

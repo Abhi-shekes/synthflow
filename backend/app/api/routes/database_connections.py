@@ -118,6 +118,7 @@ def push(
             rules=entity.rules,
             workflows=entity.workflows,
             trends=entity.trends,
+            error_injections=entity.error_injections,
         )
         rows_written = push_rows(connection, entity.fields, rows, table_name)
     except (ValueError, DatabaseOutputError) as exc:

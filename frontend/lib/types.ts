@@ -113,6 +113,47 @@ export interface TrendCreateInput {
   params: Record<string, number>;
 }
 
+export type ErrorType =
+  | "null"
+  | "empty"
+  | "duplicate"
+  | "truncate"
+  | "wrong_type"
+  | "out_of_range";
+
+export const ERROR_TYPES: ErrorType[] = [
+  "null",
+  "empty",
+  "duplicate",
+  "truncate",
+  "wrong_type",
+  "out_of_range",
+];
+
+// Mirrors backend app.services.error_injection._TYPE_RESTRICTIONS — which
+// error types make sense for which field type. Absent from this map means
+// "valid for every field type" (null, duplicate, wrong_type).
+export const ERROR_TYPE_FIELD_RESTRICTIONS: Partial<Record<ErrorType, FieldType[]>> = {
+  empty: ["string", "array", "object", "json"],
+  truncate: ["string"],
+  out_of_range: ["integer", "float"],
+};
+
+export interface ErrorInjection {
+  id: string;
+  entity_id: string;
+  field_id: string;
+  rate: number;
+  error_types: ErrorType[];
+  created_at: string;
+}
+
+export interface ErrorInjectionCreateInput {
+  field_id: string;
+  rate: number;
+  error_types: ErrorType[];
+}
+
 export interface Entity {
   id: string;
   project_id: string;
@@ -122,6 +163,7 @@ export interface Entity {
   rules: Rule[];
   workflows: Workflow[];
   trends: Trend[];
+  error_injections: ErrorInjection[];
 }
 
 export interface Project {

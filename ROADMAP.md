@@ -146,8 +146,32 @@ Goal: data behaves over time, not just at generation time.
       changes needed there, since weighting only changes how one value is
       picked, not the row-building pipeline around it.
 - [ ] Event triggers: threshold-based actions (e.g. `temp > 80 → fire alert`)
-- [ ] Error injection: missing values, duplicate IDs, corrupted payloads, invalid
-      formats, delayed/out-of-order events, timeouts, random failures
+- [x] Error injection: missing values, duplicate IDs, corrupted payloads, invalid
+      formats — an `ErrorInjection` attaches to one field (same per-field
+      pattern as Rule/Workflow/Trend) with a `rate` (0–1) and a set of
+      `error_types`: `null`, `empty`, `duplicate`, `truncate`, `wrong_type`,
+      `out_of_range`. Corruption is applied in `_corrupt_value` *after* a
+      field's value is otherwise fully computed — formula, trend, workflow,
+      or plain random — so it doesn't care how the clean value was produced,
+      only replaces it on some rows. `duplicate` copies the previous row's
+      already-generated (and possibly already-corrupted) value for that
+      field, which is why it needs `previous_row` threaded through
+      `generate_rows`'s loop; the first row in a batch has no previous row,
+      so it keeps its own value. Type-appropriate restrictions are validated
+      at creation time (e.g. `truncate` only makes sense for strings,
+      `out_of_range` only for numeric fields — see
+      `app/services/error_injection.py`). Documented, deliberately
+      unresolved interaction: a rule evaluates the row *after* corruption, so
+      a rule constraining the same field can discard every corrupted row a
+      config produces, once the retry budget (`MAX_RULE_ATTEMPTS`) is spent —
+      this is a known tradeoff of reusing the existing discard-and-retry rule
+      mechanism rather than a bug to special-case away. Delayed/out-of-order
+      events and timeouts are not covered here — those are properties of a
+      *stream*, not a single row's value, and belong with the eventual
+      Kafka/MQTT background-producer work instead.
+      Random failures (whole-request/whole-batch failure, as opposed to a
+      bad value within an otherwise-successful row) are also out of scope
+      here for the same reason.
 - [ ] Timeline replay: replay a historical dataset as a live stream at N× speed
 - [ ] Lookup tables: import CSV/Excel/JSON as reference data
 - [ ] Geographic simulation: GPS routes, speed, stops, traffic, delivery vehicles

@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
+import { AddErrorInjectionDialog } from "@/components/add-error-injection-dialog";
 import { AddFieldDialog } from "@/components/add-field-dialog";
 import { AddTrendDialog } from "@/components/add-trend-dialog";
 import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
@@ -27,7 +28,12 @@ import {
 import { api } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { useRequireAuth } from "@/lib/hooks";
-import type { FieldCreateInput, TrendCreateInput, WorkflowCreateInput } from "@/lib/types";
+import type {
+  ErrorInjectionCreateInput,
+  FieldCreateInput,
+  TrendCreateInput,
+  WorkflowCreateInput,
+} from "@/lib/types";
 
 interface RuleFormValues {
   condition: string;
@@ -122,6 +128,24 @@ export default function EntityDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete trend"),
+  });
+
+  const addErrorInjection = useMutation({
+    mutationFn: (values: ErrorInjectionCreateInput) =>
+      api.createErrorInjection(accessToken!, projectId, entityId, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not add error injection"),
+  });
+
+  const deleteErrorInjection = useMutation({
+    mutationFn: (errorInjectionId: string) =>
+      api.deleteErrorInjection(accessToken!, projectId, entityId, errorInjectionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete error injection"),
   });
 
   const restOutputsQuery = useQuery({
@@ -418,6 +442,57 @@ export default function EntityDetailPage() {
                       </span>
                     </span>
                     <Button variant="ghost" size="sm" onClick={() => deleteTrend.mutate(trend.id)}>
+                      Delete
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Error injection</CardTitle>
+            {entity && (
+              <AddErrorInjectionDialog
+                entity={entity}
+                onSubmit={(v) => addErrorInjection.mutate(v)}
+                isPending={addErrorInjection.isPending}
+              />
+            )}
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Deliberately corrupts a field&apos;s value on some fraction of
+              generated rows — nulls, empty strings, duplicates, truncated
+              text, wrong types, or out-of-range numbers — to simulate the bad
+              data a real pipeline has to handle. A rule constraining the same
+              field evaluates rows after corruption, so it can end up
+              filtering the corrupted rows back out.
+            </p>
+            {entity?.error_injections.length === 0 && (
+              <p className="text-sm text-muted-foreground">No error injections yet.</p>
+            )}
+            {entity && entity.error_injections.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {entity.error_injections.map((injection) => (
+                  <li
+                    key={injection.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">{fieldNameById.get(injection.field_id)}</span>
+                      <span className="ml-2 text-muted-foreground">
+                        {Math.round(injection.rate * 100)}% ·{" "}
+                        {injection.error_types.map((t) => t.replaceAll("_", " ")).join(", ")}
+                      </span>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteErrorInjection.mutate(injection.id)}
+                    >
                       Delete
                     </Button>
                   </li>

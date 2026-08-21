@@ -1,5 +1,6 @@
 from app.models.database_connection import DatabaseConnection
 from app.models.entity import Entity
+from app.models.error_injection import ErrorInjection
 from app.models.field import EntityField
 from app.models.project import Project
 from app.models.relationship import Relationship
@@ -22,4 +23,5 @@ __all__ = [
     "RestOutput",
     "WebSocketStream",
     "Trend",
+    "ErrorInjection",
 ]

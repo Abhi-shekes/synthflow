@@ -9,6 +9,7 @@ from app.models import (  # noqa: F401
     DatabaseConnection,
     Entity,
     EntityField,
+    ErrorInjection,
     Project,
     Relationship,
     RestOutput,

@@ -102,6 +102,7 @@ def _generate_batch_sync(token: str) -> tuple[list[dict], float] | None:
             rules=entity.rules,
             workflows=entity.workflows,
             trends=entity.trends,
+            error_injections=entity.error_injections,
         )
         return rows, stream.events_per_second
     finally:

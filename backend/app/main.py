@@ -5,6 +5,7 @@ from app.api.routes import (
     auth,
     database_connections,
     entities,
+    error_injections,
     health,
     outputs,
     projects,
@@ -35,6 +36,7 @@ app.include_router(relationships.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rules.router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflows.router, prefix=settings.API_V1_PREFIX)
 app.include_router(trends.router, prefix=settings.API_V1_PREFIX)
+app.include_router(error_injections.router, prefix=settings.API_V1_PREFIX)
 app.include_router(database_connections.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rest_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(websocket_streams.router, prefix=settings.API_V1_PREFIX)

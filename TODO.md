@@ -72,19 +72,35 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   r of -0.985 across 100 rows with 100 distinct humidity values (genuine
   scatter, not a dead-flat line).
 
+## Phase 4, part 4: error injection — done
+
+- `ErrorInjection` attaches to one field (same per-field pattern as
+  Rule/Workflow/Trend): a `rate` (0–1) and a set of `error_types` (`null`,
+  `empty`, `duplicate`, `truncate`, `wrong_type`, `out_of_range`), validated
+  against the field's type at creation time.
+- Corruption happens in `_corrupt_value`, applied *after* a field's value is
+  otherwise fully computed (formula, trend, workflow, or plain random) — it
+  doesn't care how the clean value was produced. `duplicate` needed
+  `previous_row` threaded through `generate_rows`'s per-position loop (the
+  first row has no previous row, so it keeps its own value; every later row
+  copies forward whatever the row before it ended up with, corrupted or not).
+- Documented, deliberately unresolved interaction: a rule evaluates the row
+  *after* corruption, so a rule constraining the same field can discard every
+  corrupted row until the retry budget is spent — reusing the existing
+  discard-and-retry mechanism as-is rather than special-casing it.
+- 12 new backend tests (one per error type's effect, validation rejections,
+  one-per-field constraint, delete, the rule-interaction failure mode), 96
+  passed / 3 skipped total, lint clean. Verified end-to-end in a browser:
+  configured a `null` injection at rate 1 on a string field through the real
+  UI, generated 10 rows, all 10 came back `null`, zero console errors.
+
 ## Now — Phase 4, remainder
 
 Not started. Remaining items, roughly in a reasonable build order:
 
-- **Error injection** (missing values, duplicate IDs, corrupted payloads,
-  invalid formats, delayed/out-of-order events, timeouts, random failures)
-  is the next natural pick — fits the same "attach a config to an
-  entity/field" shape as rules/workflows/trends, no new field types or file
-  handling needed, and is directly the "QA automation / edge-case testing"
-  use case from the spec's problem statement.
 - **Lookup tables** (upload CSV/Excel/JSON as reference data, generate by
-  sampling from it) is the next-most self-contained after that, but needs
-  file upload handling and storage — bigger than error injection.
+  sampling from it) is the next natural pick — needs file upload handling
+  and storage, which nothing built so far has needed.
 - Timeline replay, geographic simulation, user-behavior simulation,
   API-behavior simulation, and log/security-event generators remain
   unscoped. Log/security-event generators are mostly "more Faker-shaped

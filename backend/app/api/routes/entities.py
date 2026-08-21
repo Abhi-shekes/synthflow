@@ -228,6 +228,7 @@ def generate(
             rules=entity.rules,
             workflows=entity.workflows,
             trends=entity.trends,
+            error_injections=entity.error_injections,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

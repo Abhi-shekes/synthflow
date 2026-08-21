@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.error_injection import ErrorInjectionRead
 from app.schemas.field import EntityFieldRead
 from app.schemas.rule import RuleRead
 from app.schemas.trend import TrendRead
@@ -28,6 +29,7 @@ class EntityRead(BaseModel):
     rules: list[RuleRead] = []
     workflows: list[WorkflowRead] = []
     trends: list[TrendRead] = []
+    error_injections: list[ErrorInjectionRead] = []
 
 
 class GenerateRequest(BaseModel):

@@ -4,6 +4,8 @@ import type {
   DatabaseConnectionTestResult,
   DatabasePushResult,
   Entity,
+  ErrorInjection,
+  ErrorInjectionCreateInput,
   FieldCreateInput,
   OutputSummary,
   Project,
@@ -368,6 +370,37 @@ export const api = {
   deleteTrend: (token: string, projectId: string, entityId: string, trendId: string) =>
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}/trends/${trendId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listErrorInjections: (token: string, projectId: string, entityId: string) =>
+    request<ErrorInjection[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/error-injections`,
+      {},
+      token
+    ),
+
+  createErrorInjection: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    data: ErrorInjectionCreateInput
+  ) =>
+    request<ErrorInjection>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/error-injections`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteErrorInjection: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    errorInjectionId: string
+  ) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/error-injections/${errorInjectionId}`,
       { method: "DELETE" },
       token
     ),

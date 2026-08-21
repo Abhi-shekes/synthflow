@@ -29,6 +29,7 @@ from openpyxl import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.models.entity import Entity
+from app.models.error_injection import ErrorInjection, ErrorType
 from app.models.field import EntityField, FieldType
 from app.models.relationship import Relationship
 from app.models.rule import Rule
@@ -146,6 +147,59 @@ def _generate_state_walk(workflow: Workflow) -> list[str]:
     return path
 
 
+def _corrupt_value(
+    value: Any,
+    field: EntityField,
+    error_types: list[str],
+    previous_row: dict[str, Any] | None,
+) -> Any:
+    """Replaces an already-computed field value with a deliberately bad one.
+    Picks one enabled error type at random per corrupted row, so a field with
+    several configured types produces a mix of failure modes across a batch
+    rather than always the same one. See app.models.error_injection for the
+    full design, including the documented rules interaction."""
+    error_type = random.choice(error_types)
+
+    if error_type == ErrorType.NULL:
+        return None
+
+    if error_type == ErrorType.EMPTY:
+        if field.field_type == FieldType.STRING:
+            return ""
+        if field.field_type == FieldType.ARRAY:
+            return []
+        return {}
+
+    if error_type == ErrorType.DUPLICATE:
+        if previous_row is not None and field.name in previous_row:
+            return previous_row[field.name]
+        return value
+
+    if error_type == ErrorType.TRUNCATE:
+        text = str(value)
+        if len(text) <= 1:
+            return text
+        return text[: random.randint(1, len(text) - 1)]
+
+    if error_type == ErrorType.WRONG_TYPE:
+        if field.field_type in (FieldType.INTEGER, FieldType.FLOAT):
+            return faker.word()
+        return faker.random_int(min=0, max=999_999)
+
+    if error_type == ErrorType.OUT_OF_RANGE:
+        if field.field_type == FieldType.INTEGER:
+            low = int(field.min_value) if field.min_value is not None else 0
+            high = int(field.max_value) if field.max_value is not None else 100_000
+            offset = random.randint(1, 1_000)
+            return random.choice([low - offset, high + offset])
+        low = field.min_value if field.min_value is not None else 0.0
+        high = field.max_value if field.max_value is not None else 100_000.0
+        offset = random.uniform(1, 1_000)
+        return random.choice([low - offset, high + offset])
+
+    return value
+
+
 def _generate_one_row(
     fields: list[EntityField],
     fk_pools: dict[str, list[Any]],
@@ -154,33 +208,25 @@ def _generate_one_row(
     workflows: dict[str, Workflow],
     trends: dict[str, Trend],
     trend_state: dict[str, dict],
+    error_injections: dict[str, ErrorInjection],
+    previous_row: dict[str, Any] | None,
     position: int,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {}
     for field in fields:
+        workflow_path: list[str] | None = None
+
         if field.formula:
-            row[field.name] = _evaluate_formula(field, row)
-            continue
-
-        if field.name in trends:
-            value = generate_trend_value(trends[field.name], position, trend_state[field.name])
-            if field.field_type == FieldType.INTEGER:
-                row[field.name] = round(value)
-            else:
-                row[field.name] = round(value, 2)
-            continue
-
-        if field.name in workflows:
-            path = _generate_state_walk(workflows[field.name])
-            row[field.name] = path[-1]
-            row[f"{field.name}_history"] = path
-            continue
-
-        if not field.required and field.nullable and random.random() < NULLABLE_PROBABILITY:
-            row[field.name] = None
-            continue
-
-        if field.name in fk_pools:
+            value = _evaluate_formula(field, row)
+        elif field.name in trends:
+            raw = generate_trend_value(trends[field.name], position, trend_state[field.name])
+            value = round(raw) if field.field_type == FieldType.INTEGER else round(raw, 2)
+        elif field.name in workflows:
+            workflow_path = _generate_state_walk(workflows[field.name])
+            value = workflow_path[-1]
+        elif not field.required and field.nullable and random.random() < NULLABLE_PROBABILITY:
+            value = None
+        elif field.name in fk_pools:
             if field.unique:
                 queue = unique_fk_queues[field.name]
                 if not queue:
@@ -188,13 +234,21 @@ def _generate_one_row(
                         f"Field '{field.name}' is unique and ran out of distinct values "
                         "from the referenced entity"
                     )
-                row[field.name] = queue.pop()
+                value = queue.pop()
             else:
-                row[field.name] = random.choice(fk_pools[field.name])
+                value = random.choice(fk_pools[field.name])
         elif field.unique:
-            row[field.name] = _generate_unique_value(field, seen_per_field[field.name])
+            value = _generate_unique_value(field, seen_per_field[field.name])
         else:
-            row[field.name] = _generate_value(field)
+            value = _generate_value(field)
+
+        injection = error_injections.get(field.name)
+        if injection is not None and random.random() < injection.rate:
+            value = _corrupt_value(value, field, injection.error_types, previous_row)
+
+        row[field.name] = value
+        if workflow_path is not None:
+            row[f"{field.name}_history"] = workflow_path
     return row
 
 
@@ -205,6 +259,7 @@ def generate_rows(
     rules: list[Rule] | None = None,
     workflows: list[Workflow] | None = None,
     trends: list[Trend] | None = None,
+    error_injections: list[ErrorInjection] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate `count` rows for `fields`.
 
@@ -231,12 +286,20 @@ def generate_rows(
     trend replays from its start every `generate_rows` call rather than
     continuing across calls (see Trend's docstring for what that means for a
     WebSocket stream's repeated ticks).
+
+    `error_injections` deliberately corrupt a field's value on some fraction
+    of rows, after that value is otherwise fully computed (see
+    app.models.error_injection and _corrupt_value). Because corruption runs
+    before rule-checking, a rule constraining the same field can discard and
+    regenerate the very rows error injection was meant to produce — see the
+    ErrorInjection model docstring for that tradeoff.
     """
     fk_pools = fk_pools or {}
     rules = rules or []
     workflows_by_field = {w.field.name: w for w in (workflows or [])}
     trends_by_field = {t.field.name: t for t in (trends or [])}
     trend_state: dict[str, dict] = {name: {} for name in trends_by_field}
+    error_injections_by_field = {ei.field.name: ei for ei in (error_injections or [])}
     seen_per_field: dict[str, set] = {
         f.name: set() for f in fields if f.unique and f.name not in fk_pools
     }
@@ -249,6 +312,7 @@ def generate_rows(
 
     rows: list[dict[str, Any]] = []
     for position in range(count):
+        previous_row = rows[-1] if rows else None
         row = None
         for _attempt in range(MAX_RULE_ATTEMPTS if rules else 1):
             candidate = _generate_one_row(
@@ -259,6 +323,8 @@ def generate_rows(
                 workflows_by_field,
                 trends_by_field,
                 trend_state,
+                error_injections_by_field,
+                previous_row,
                 position,
             )
             if _row_satisfies_rules(candidate, rules):
@@ -351,6 +417,7 @@ def generate_project(
             entity.rules,
             entity.workflows,
             entity.trends,
+            entity.error_injections,
         )
 
     return generated
