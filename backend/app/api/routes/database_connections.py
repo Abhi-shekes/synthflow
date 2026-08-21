@@ -18,7 +18,7 @@ from app.schemas.database_connection import (
     DatabasePushResult,
 )
 from app.services.db_output import DatabaseOutputError, push_rows, test_connection
-from app.services.generator import generate_rows
+from app.services.generator import build_lookup_pools, generate_rows
 
 router = APIRouter(
     prefix="/projects/{project_id}/database-connections", tags=["database-connections"]
@@ -115,6 +115,7 @@ def push(
         rows = generate_rows(
             entity.fields,
             payload.count,
+            fk_pools=build_lookup_pools(entity.lookup_attachments),
             rules=entity.rules,
             workflows=entity.workflows,
             trends=entity.trends,

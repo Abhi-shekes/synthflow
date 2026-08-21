@@ -10,7 +10,7 @@ from app.db.session import get_db
 from app.models.rest_output import RestOutput
 from app.models.user import User
 from app.schemas.rest_output import RestOutputCreate, RestOutputRead
-from app.services.generator import generate_rows
+from app.services.generator import build_lookup_pools, generate_rows
 
 router = APIRouter(
     prefix="/projects/{project_id}/entities/{entity_id}/rest-outputs", tags=["rest-outputs"]
@@ -92,6 +92,7 @@ def fetch_public_rest_output(
         return generate_rows(
             entity.fields,
             resolved_count,
+            fk_pools=build_lookup_pools(entity.lookup_attachments),
             rules=entity.rules,
             workflows=entity.workflows,
             trends=entity.trends,

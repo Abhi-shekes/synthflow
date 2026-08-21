@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { AddDatabaseConnectionDialog } from "@/components/add-database-connection-dialog";
+import { AddLookupTableDialog } from "@/components/add-lookup-table-dialog";
 import { AddRelationshipDialog } from "@/components/add-relationship-dialog";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +67,12 @@ export default function ProjectDetailPage() {
   const connectionsQuery = useQuery({
     queryKey: ["database-connections", projectId],
     queryFn: () => api.listDatabaseConnections(accessToken!, projectId),
+    enabled: !!accessToken,
+  });
+
+  const lookupTablesQuery = useQuery({
+    queryKey: ["lookup-tables", projectId],
+    queryFn: () => api.listLookupTables(accessToken!, projectId),
     enabled: !!accessToken,
   });
 
@@ -131,6 +138,27 @@ export default function ProjectDetailPage() {
       else toast.error(result.detail);
     },
     onError: (error: Error) => toast.error(error.message || "Test failed"),
+  });
+
+  const createLookupTable = useMutation({
+    mutationFn: (values: { name: string; file: File }) =>
+      api.createLookupTable(accessToken!, projectId, values.name, values.file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["lookup-tables", projectId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not upload lookup table"),
+  });
+
+  const deleteLookupTable = useMutation({
+    mutationFn: (lookupTableId: string) =>
+      api.deleteLookupTable(accessToken!, projectId, lookupTableId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["lookup-tables", projectId] });
+      // A deleted lookup table cascades to any entity's lookup attachment —
+      // refresh entities so those cards reflect that immediately.
+      queryClient.invalidateQueries({ queryKey: ["entities", projectId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete lookup table"),
   });
 
   const [pushConnectionId, setPushConnectionId] = useState("");
@@ -414,6 +442,52 @@ export default function ProjectDetailPage() {
                   </Button>
                 </div>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Lookup tables</CardTitle>
+            <AddLookupTableDialog
+              onSubmit={(v) => createLookupTable.mutate(v)}
+              isPending={createLookupTable.isPending}
+            />
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Reference data uploaded once (CSV, Excel, or JSON) that any
+              field in this project can draw real values from — see a
+              field&apos;s <span className="font-mono">Add lookup</span> option
+              on its entity page.
+            </p>
+            {lookupTablesQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No lookup tables yet.</p>
+            )}
+            {lookupTablesQuery.data && lookupTablesQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {lookupTablesQuery.data.map((table) => (
+                  <li
+                    key={table.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">{table.name}</span>{" "}
+                      <span className="text-muted-foreground">
+                        {table.row_count} row{table.row_count === 1 ? "" : "s"} ·{" "}
+                        {table.columns.join(", ")}
+                      </span>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteLookupTable.mutate(table.id)}
+                    >
+                      Delete
+                    </Button>
+                  </li>
+                ))}
+              </ul>
             )}
           </CardContent>
         </Card>

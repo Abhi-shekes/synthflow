@@ -2,6 +2,8 @@ from app.models.database_connection import DatabaseConnection
 from app.models.entity import Entity
 from app.models.error_injection import ErrorInjection
 from app.models.field import EntityField
+from app.models.lookup_attachment import LookupAttachment
+from app.models.lookup_table import LookupTable
 from app.models.project import Project
 from app.models.relationship import Relationship
 from app.models.rest_output import RestOutput
@@ -24,4 +26,6 @@ __all__ = [
     "WebSocketStream",
     "Trend",
     "ErrorInjection",
+    "LookupTable",
+    "LookupAttachment",
 ]

@@ -173,7 +173,34 @@ Goal: data behaves over time, not just at generation time.
       bad value within an otherwise-successful row) are also out of scope
       here for the same reason.
 - [ ] Timeline replay: replay a historical dataset as a live stream at N× speed
-- [ ] Lookup tables: import CSV/Excel/JSON as reference data
+- [x] Lookup tables: import CSV/Excel/JSON as reference data — `LookupTable`
+      is project-scoped (uploaded once, reusable across every entity in the
+      project, matching how `DatabaseConnection` is project-scoped rather
+      than per-entity); a `LookupAttachment` then attaches one field to one
+      column of one table, the same per-field pattern as Rule/Workflow/
+      Trend/ErrorInjection. Parsing (`app/services/lookup_tables.py`)
+      dispatches on file extension (.csv/.xlsx/.xls/.json), caps row count
+      at `settings.MAX_LOOKUP_ROWS`, and best-effort coerces CSV/Excel's
+      text-only cells to int/float (JSON keeps its native types as-is).
+      Resolved design question: rather than inventing a new "sample from a
+      table" generation path, a lookup-attached field's column values are
+      fed into the exact same `fk_pools` mechanism a `Relationship`'s
+      foreign-key field already uses (`generate_rows`'s `fk_pools` param;
+      see `app/services/generator.build_lookup_pools`) — `field.unique`
+      controls with/without-replacement the same way it does for a
+      relationship. Because that pool doesn't need another entity generated
+      first (the reference data already exists at upload time), a lookup
+      works from single-entity generation too, not just project-wide
+      generation — a real capability advantage over relationships, not just
+      an implementation shortcut. If a field somehow gets both a
+      `Relationship` and a `LookupAttachment`, the lookup pool wins (dict
+      merge order in `generate_project`) — not cross-validated against each
+      other, consistent with Trend/Workflow also not being cross-validated.
+      Deleting a `LookupTable` cascades to its attachments via an
+      ORM-level `cascade="all, delete-orphan"` rather than relying only on
+      the FK's `ondelete=CASCADE`, since SQLite (local dev/tests, unlike the
+      Postgres default in docker-compose) doesn't enforce FK constraints
+      without a PRAGMA this app doesn't set.
 - [ ] Geographic simulation: GPS routes, speed, stops, traffic, delivery vehicles
 - [ ] User behavior simulation: login/logout/search/click/scroll/cart/purchase funnels
 - [ ] API behavior simulation: status code mixes, latency, timeouts for frontend testing

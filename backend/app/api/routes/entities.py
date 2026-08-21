@@ -15,7 +15,7 @@ from app.models.user import User
 from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateRequest
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
 from app.services.expressions import ExpressionError, evaluate
-from app.services.generator import generate_rows, rows_to_csv, rows_to_excel
+from app.services.generator import build_lookup_pools, generate_rows, rows_to_csv, rows_to_excel
 
 router = APIRouter(prefix="/projects/{project_id}/entities", tags=["entities"])
 
@@ -225,6 +225,7 @@ def generate(
         rows = generate_rows(
             entity.fields,
             payload.count,
+            fk_pools=build_lookup_pools(entity.lookup_attachments),
             rules=entity.rules,
             workflows=entity.workflows,
             trends=entity.trends,

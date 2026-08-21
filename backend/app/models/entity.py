@@ -10,6 +10,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.error_injection import ErrorInjection
     from app.models.field import EntityField
+    from app.models.lookup_attachment import LookupAttachment
     from app.models.project import Project
     from app.models.rule import Rule
     from app.models.trend import Trend
@@ -39,4 +40,7 @@ class Entity(Base):
     )
     error_injections: Mapped[list["ErrorInjection"]] = relationship(
         cascade="all, delete-orphan", order_by="ErrorInjection.created_at"
+    )
+    lookup_attachments: Mapped[list["LookupAttachment"]] = relationship(
+        cascade="all, delete-orphan", order_by="LookupAttachment.created_at"
     )

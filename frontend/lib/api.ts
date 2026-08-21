@@ -7,6 +7,9 @@ import type {
   ErrorInjection,
   ErrorInjectionCreateInput,
   FieldCreateInput,
+  LookupAttachment,
+  LookupAttachmentCreateInput,
+  LookupTable,
   OutputSummary,
   Project,
   Relationship,
@@ -84,6 +87,27 @@ async function requestBlob(
     throw new ApiError(res.status, detail);
   }
   return res.blob();
+}
+
+async function requestUpload<T>(path: string, formData: FormData, token: string): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {
+      // response had no JSON body
+    }
+    throw new ApiError(res.status, detail);
+  }
+
+  return res.json();
 }
 
 export interface TokenPair {
@@ -401,6 +425,58 @@ export const api = {
   ) =>
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}/error-injections/${errorInjectionId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listLookupTables: (token: string, projectId: string) =>
+    request<LookupTable[]>(`/api/v1/projects/${projectId}/lookup-tables`, {}, token),
+
+  createLookupTable: (token: string, projectId: string, name: string, file: File) => {
+    const formData = new FormData();
+    formData.append("name", name);
+    formData.append("file", file);
+    return requestUpload<LookupTable>(
+      `/api/v1/projects/${projectId}/lookup-tables`,
+      formData,
+      token
+    );
+  },
+
+  deleteLookupTable: (token: string, projectId: string, lookupTableId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/lookup-tables/${lookupTableId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listLookupAttachments: (token: string, projectId: string, entityId: string) =>
+    request<LookupAttachment[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/lookup-attachments`,
+      {},
+      token
+    ),
+
+  createLookupAttachment: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    data: LookupAttachmentCreateInput
+  ) =>
+    request<LookupAttachment>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/lookup-attachments`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteLookupAttachment: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    attachmentId: string
+  ) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/lookup-attachments/${attachmentId}`,
       { method: "DELETE" },
       token
     ),

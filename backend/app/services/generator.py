@@ -31,6 +31,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from app.models.entity import Entity
 from app.models.error_injection import ErrorInjection, ErrorType
 from app.models.field import EntityField, FieldType
+from app.models.lookup_attachment import LookupAttachment
 from app.models.relationship import Relationship
 from app.models.rule import Rule
 from app.models.trend import Trend
@@ -104,6 +105,29 @@ def _generate_unique_value(field: EntityField, seen: set) -> Any:
         f"Could not generate a unique value for field '{field.name}' "
         f"after {MAX_UNIQUE_ATTEMPTS} attempts"
     )
+
+
+def build_lookup_pools(attachments: list[LookupAttachment]) -> dict[str, list[Any]]:
+    """Builds a field-name -> value-pool dict from each attachment's lookup
+    table column, in the exact shape `generate_rows` already expects for
+    relationship-sourced `fk_pools` — a lookup-attached field is drawn from
+    this pool the same way a foreign-key field is, including honoring
+    `field.unique` for without-replacement draws (see `_generate_one_row`).
+    Rows missing the column, or holding a null there, are skipped."""
+    pools: dict[str, list[Any]] = {}
+    for attachment in attachments:
+        values = [
+            row[attachment.column]
+            for row in attachment.lookup_table.data
+            if row.get(attachment.column) is not None
+        ]
+        if not values:
+            raise ValueError(
+                f"Lookup table '{attachment.lookup_table.name}' has no non-null values "
+                f"in column '{attachment.column}'"
+            )
+        pools[attachment.field.name] = values
+    return pools
 
 
 def _evaluate_formula(field: EntityField, row_so_far: dict[str, Any]) -> Any:
@@ -232,7 +256,7 @@ def _generate_one_row(
                 if not queue:
                     raise ValueError(
                         f"Field '{field.name}' is unique and ran out of distinct values "
-                        "from the referenced entity"
+                        "in its pool (relationship or lookup table)"
                     )
                 value = queue.pop()
             else:
@@ -263,11 +287,13 @@ def generate_rows(
 ) -> list[dict[str, Any]]:
     """Generate `count` rows for `fields`.
 
-    `fk_pools` maps a field name to a pool of real values (typically another
-    entity's already-generated column) to draw from instead of randomizing that
-    field independently — this is how relationships are enforced at generation
-    time. A pool field marked `unique` is drawn without replacement; otherwise
-    values are drawn with replacement.
+    `fk_pools` maps a field name to a pool of real values to draw from instead
+    of randomizing that field independently — this is how both relationships
+    and lookup tables are enforced at generation time (see
+    build_lookup_pools; a relationship's caller builds this dict from another
+    entity's already-generated column the same way). A pool field marked
+    `unique` is drawn without replacement; otherwise values are drawn with
+    replacement.
 
     `rules` are boolean expressions a finished row must satisfy; a row that
     fails one is discarded and regenerated (bounded retries). A discarded
@@ -372,7 +398,12 @@ def generate_project(
     entity's foreign-key field is populated from its target entity's
     already-generated rows, so targets are always generated before their
     sources (dependency order via topological sort over the relationship
-    graph)."""
+    graph).
+
+    Each entity's lookup attachments are merged into that same fk_pools dict
+    (see build_lookup_pools) after the relationship pools are built, so a
+    lookup pool wins if a field somehow ends up targeted by both — not
+    cross-validated against each other, same as Trend/Workflow aren't."""
     entities_by_id = {e.id: e for e in entities}
     fields_by_id = {f.id: f for e in entities for f in e.fields}
 
@@ -409,6 +440,8 @@ def generate_project(
                     "to reference (check that entity has fields and a non-zero count)"
                 )
             fk_pools[source_field.name] = pool
+
+        fk_pools.update(build_lookup_pools(entity.lookup_attachments))
 
         generated[entity_id] = generate_rows(
             entity.fields,

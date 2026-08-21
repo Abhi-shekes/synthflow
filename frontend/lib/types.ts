@@ -154,6 +154,31 @@ export interface ErrorInjectionCreateInput {
   error_types: ErrorType[];
 }
 
+export interface LookupTable {
+  id: string;
+  project_id: string;
+  name: string;
+  columns: string[];
+  row_count: number;
+  preview: Record<string, unknown>[];
+  created_at: string;
+}
+
+export interface LookupAttachment {
+  id: string;
+  entity_id: string;
+  field_id: string;
+  lookup_table_id: string;
+  column: string;
+  created_at: string;
+}
+
+export interface LookupAttachmentCreateInput {
+  field_id: string;
+  lookup_table_id: string;
+  column: string;
+}
+
 export interface Entity {
   id: string;
   project_id: string;
@@ -164,6 +189,7 @@ export interface Entity {
   workflows: Workflow[];
   trends: Trend[];
   error_injections: ErrorInjection[];
+  lookup_attachments: LookupAttachment[];
 }
 
 export interface Project {

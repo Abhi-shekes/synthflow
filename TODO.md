@@ -43,69 +43,50 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   route that bypassed the test suite's DB session override by importing
   `SessionLocal` directly instead of looking it up on the module each call.
 
-## Phase 4, parts 1–3: probability, trend, correlation engines — done
+## Phase 4, parts 1–5: probability, trend, correlation, error injection,
+lookup tables — done
 
-- **Probability**: `EntityField.enum_weights`, optional array parallel to
-  `enum_values`, for `random.choices`-based weighted selection.
-- **Trend**: `Trend` attaches to one numeric field; its value is a function
-  of the row's 0-indexed position within the *current batch* — linear,
-  exponential, logistic, seasonal, cyclic, random_walk. Resolved design
-  question: position resets to 0 every `generate` call rather than
-  persisting across a WebSocket stream's ticks (documented limitation, not
-  a silent gap — see `Trend`'s docstring).
-- **Correlation** (same-entity): turned out to be ~90% already built —
-  formula fields can already reference any earlier field on their own row.
-  The real gap was formulas being fully deterministic; closed by adding
-  `noise(stddev)` and `uniform(low, high)` to the shared expression
-  evaluator, so `humidity = 100 - temperature * 1.5 + noise(3)` gives a
-  real, scattered correlation instead of new backend machinery.
-  Cross-entity correlation ("Stock A ↑ → Stock B ↑" across two entities)
-  merged into the cross-entity-rules backlog item below — same underlying
-  need (seeing another entity's data, not just this row).
-- None of the three needed changes to relationships/rules/workflows — they
-  all just consume whatever value a field ends up with. 28 new tests across
-  all three, 84 passed / 3 skipped total, lint clean.
-- Verified end-to-end in a browser for all three: a weighted enum's real
-  distribution matched its configured weights (65/10/5/20 → 64/11/5.3/20
-  over 300 rows); a linear trend produced an exact arithmetic sequence over
-  10 rows; a temperature/humidity correlation came back with a real Pearson
-  r of -0.985 across 100 rows with 100 distinct humidity values (genuine
-  scatter, not a dead-flat line).
+Full detail for each lives in ROADMAP.md Phase 4; condensed here:
 
-## Phase 4, part 4: error injection — done
-
-- `ErrorInjection` attaches to one field (same per-field pattern as
-  Rule/Workflow/Trend): a `rate` (0–1) and a set of `error_types` (`null`,
-  `empty`, `duplicate`, `truncate`, `wrong_type`, `out_of_range`), validated
-  against the field's type at creation time.
-- Corruption happens in `_corrupt_value`, applied *after* a field's value is
-  otherwise fully computed (formula, trend, workflow, or plain random) — it
-  doesn't care how the clean value was produced. `duplicate` needed
-  `previous_row` threaded through `generate_rows`'s per-position loop (the
-  first row has no previous row, so it keeps its own value; every later row
-  copies forward whatever the row before it ended up with, corrupted or not).
-- Documented, deliberately unresolved interaction: a rule evaluates the row
-  *after* corruption, so a rule constraining the same field can discard every
-  corrupted row until the retry budget is spent — reusing the existing
-  discard-and-retry mechanism as-is rather than special-casing it.
-- 12 new backend tests (one per error type's effect, validation rejections,
-  one-per-field constraint, delete, the rule-interaction failure mode), 96
-  passed / 3 skipped total, lint clean. Verified end-to-end in a browser:
-  configured a `null` injection at rate 1 on a string field through the real
-  UI, generated 10 rows, all 10 came back `null`, zero console errors.
+- **Probability**: `EntityField.enum_weights` for `random.choices`-based
+  weighted selection.
+- **Trend**: `Trend` attaches to one numeric field; value is a function of
+  the row's 0-indexed position within the *current batch* (position resets
+  every `generate` call — documented, not a silent gap).
+- **Correlation** (same-entity): ~90% already built via formula fields
+  referencing earlier fields on their own row; closed the real gap
+  (formulas being fully deterministic) with `noise(stddev)`/`uniform(low,
+  high)` in the shared expression evaluator. Cross-entity correlation
+  merged into the cross-entity-rules backlog item below.
+- **Error injection**: `ErrorInjection` attaches to one field (rate 0–1 +
+  a set of `error_types`), corrupting its value in `_corrupt_value` after
+  it's otherwise fully computed. Documented interaction: a rule on the same
+  field evaluates post-corruption, so it can discard every corrupted row.
+- **Lookup tables**: `LookupTable` (project-scoped, uploaded once as
+  CSV/Excel/JSON) + `LookupAttachment` (per-field, draws from one column).
+  Resolved design question: reuses the exact same `fk_pools` mechanism a
+  `Relationship`'s foreign key already uses, rather than a new "sample from
+  a table" path — and because a lookup doesn't need another entity
+  generated first, it works from single-entity generation too, not just
+  project-wide (a real capability advantage over relationships).
+- 55 new tests across all five, 111 passed / 3 skipped total, lint clean.
+  Verified end-to-end in a browser for each (weighted enum distribution
+  matched configured weights; linear trend gave an exact arithmetic
+  sequence; temperature/humidity correlation came back with Pearson
+  r = -0.985; a rate-1 null injection returned 10/10 nulls; a lookup
+  attachment returned 10/10 rows drawing the uploaded value).
 
 ## Now — Phase 4, remainder
 
-Not started. Remaining items, roughly in a reasonable build order:
-
-- **Lookup tables** (upload CSV/Excel/JSON as reference data, generate by
-  sampling from it) is the next natural pick — needs file upload handling
-  and storage, which nothing built so far has needed.
-- Timeline replay, geographic simulation, user-behavior simulation,
-  API-behavior simulation, and log/security-event generators remain
-  unscoped. Log/security-event generators are mostly "more Faker-shaped
-  generation content" (closer to Phase 1 field types than a new engine) —
-  likely simpler than they sound once there's a reason to build them.
+Not started. Remaining items: event triggers (threshold-based actions,
+e.g. `temp > 80 → fire alert` — needs a design pass on what "firing" means
+without a notification system yet; likely starts as a flagged/annotated
+row rather than an actual external send), timeline replay, geographic
+simulation, user-behavior simulation, API-behavior simulation, and
+log/security-event generators. Log/security-event generators are mostly
+"more Faker-shaped generation content" (closer to Phase 1 field types than
+a new engine) — likely simpler than they sound once there's a reason to
+build them.
 
 ## Backlog (not started, roughly in order)
 

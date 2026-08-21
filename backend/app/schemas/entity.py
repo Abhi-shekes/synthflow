@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.schemas.error_injection import ErrorInjectionRead
 from app.schemas.field import EntityFieldRead
+from app.schemas.lookup_attachment import LookupAttachmentRead
 from app.schemas.rule import RuleRead
 from app.schemas.trend import TrendRead
 from app.schemas.workflow import WorkflowRead
@@ -30,6 +31,7 @@ class EntityRead(BaseModel):
     workflows: list[WorkflowRead] = []
     trends: list[TrendRead] = []
     error_injections: list[ErrorInjectionRead] = []
+    lookup_attachments: list[LookupAttachmentRead] = []
 
 
 class GenerateRequest(BaseModel):

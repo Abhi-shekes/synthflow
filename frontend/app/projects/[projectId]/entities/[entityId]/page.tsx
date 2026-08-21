@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { AddErrorInjectionDialog } from "@/components/add-error-injection-dialog";
 import { AddFieldDialog } from "@/components/add-field-dialog";
+import { AddLookupAttachmentDialog } from "@/components/add-lookup-attachment-dialog";
 import { AddTrendDialog } from "@/components/add-trend-dialog";
 import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
 import { AppShell } from "@/components/app-shell";
@@ -31,6 +32,7 @@ import { useRequireAuth } from "@/lib/hooks";
 import type {
   ErrorInjectionCreateInput,
   FieldCreateInput,
+  LookupAttachmentCreateInput,
   TrendCreateInput,
   WorkflowCreateInput,
 } from "@/lib/types";
@@ -148,6 +150,30 @@ export default function EntityDetailPage() {
     onError: (error: Error) => toast.error(error.message || "Could not delete error injection"),
   });
 
+  const lookupTablesQuery = useQuery({
+    queryKey: ["lookup-tables", projectId],
+    queryFn: () => api.listLookupTables(accessToken!, projectId),
+    enabled: !!accessToken,
+  });
+
+  const addLookupAttachment = useMutation({
+    mutationFn: (values: LookupAttachmentCreateInput) =>
+      api.createLookupAttachment(accessToken!, projectId, entityId, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not add lookup"),
+  });
+
+  const deleteLookupAttachment = useMutation({
+    mutationFn: (attachmentId: string) =>
+      api.deleteLookupAttachment(accessToken!, projectId, entityId, attachmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete lookup"),
+  });
+
   const restOutputsQuery = useQuery({
     queryKey: ["rest-outputs", projectId, entityId],
     queryFn: () => api.listRestOutputs(accessToken!, projectId, entityId),
@@ -231,6 +257,8 @@ export default function EntityDetailPage() {
         ]
       : declaredColumns;
   const fieldNameById = new Map(entity?.fields.map((f) => [f.id, f.name]) ?? []);
+  const lookupTables = lookupTablesQuery.data ?? [];
+  const lookupTableById = new Map(lookupTables.map((t) => [t.id, t]));
 
   return (
     <AppShell>
@@ -492,6 +520,65 @@ export default function EntityDetailPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => deleteErrorInjection.mutate(injection.id)}
+                    >
+                      Delete
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Lookups</CardTitle>
+            {entity && (
+              <AddLookupAttachmentDialog
+                entity={entity}
+                lookupTables={lookupTables}
+                onSubmit={(v) => addLookupAttachment.mutate(v)}
+                isPending={addLookupAttachment.isPending}
+              />
+            )}
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Draws a field&apos;s value from a column of a project-level
+              lookup table instead of randomizing it — upload reference data
+              on the project page first. Unlike a relationship, this works
+              from this entity&apos;s own Generate button too, not just
+              project-wide generation.
+            </p>
+            {lookupTables.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No lookup tables in this project yet — upload one from the
+                project page.
+              </p>
+            )}
+            {entity?.lookup_attachments.length === 0 && lookupTables.length > 0 && (
+              <p className="text-sm text-muted-foreground">No lookups attached yet.</p>
+            )}
+            {entity && entity.lookup_attachments.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {entity.lookup_attachments.map((attachment) => (
+                  <li
+                    key={attachment.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">
+                        {fieldNameById.get(attachment.field_id)}
+                      </span>
+                      <span className="ml-2 text-muted-foreground">
+                        ← {lookupTableById.get(attachment.lookup_table_id)?.name ?? "?"}.
+                        {attachment.column}
+                      </span>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteLookupAttachment.mutate(attachment.id)}
                     >
                       Delete
                     </Button>

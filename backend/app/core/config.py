@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
     MAX_GENERATE_ROWS: int = 5000
+    MAX_LOOKUP_ROWS: int = 5000
 
 
 settings = Settings()

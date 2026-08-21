@@ -10,6 +10,8 @@ from app.models import (  # noqa: F401
     Entity,
     EntityField,
     ErrorInjection,
+    LookupAttachment,
+    LookupTable,
     Project,
     Relationship,
     RestOutput,

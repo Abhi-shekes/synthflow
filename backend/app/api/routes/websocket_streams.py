@@ -18,7 +18,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.websocket_stream import WebSocketStream
 from app.schemas.websocket_stream import WebSocketStreamCreate, WebSocketStreamRead
-from app.services.generator import generate_rows
+from app.services.generator import build_lookup_pools, generate_rows
 
 router = APIRouter(
     prefix="/projects/{project_id}/entities/{entity_id}/websocket-streams",
@@ -99,6 +99,7 @@ def _generate_batch_sync(token: str) -> tuple[list[dict], float] | None:
         rows = generate_rows(
             entity.fields,
             stream.batch_size,
+            fk_pools=build_lookup_pools(entity.lookup_attachments),
             rules=entity.rules,
             workflows=entity.workflows,
             trends=entity.trends,
