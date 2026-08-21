@@ -12,6 +12,7 @@ import type {
   RestOutput,
   Rule,
   User,
+  WebSocketStream,
   Workflow,
   WorkflowCreateInput,
 } from "@/lib/types";
@@ -321,4 +322,34 @@ export const api = {
 
   listOutputs: (token: string, projectId: string) =>
     request<OutputSummary[]>(`/api/v1/projects/${projectId}/outputs`, {}, token),
+
+  listWebSocketStreams: (token: string, projectId: string, entityId: string) =>
+    request<WebSocketStream[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/websocket-streams`,
+      {},
+      token
+    ),
+
+  createWebSocketStream: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    eventsPerSecond: number,
+    batchSize: number
+  ) =>
+    request<WebSocketStream>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/websocket-streams`,
+      {
+        method: "POST",
+        body: JSON.stringify({ events_per_second: eventsPerSecond, batch_size: batchSize }),
+      },
+      token
+    ),
+
+  deleteWebSocketStream: (token: string, projectId: string, entityId: string, streamId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/websocket-streams/${streamId}`,
+      { method: "DELETE" },
+      token
+    ),
 };

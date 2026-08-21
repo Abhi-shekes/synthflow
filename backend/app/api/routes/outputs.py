@@ -12,12 +12,13 @@ from app.models.database_connection import DatabaseConnection
 from app.models.entity import Entity
 from app.models.rest_output import RestOutput
 from app.models.user import User
+from app.models.websocket_stream import WebSocketStream
 
 router = APIRouter(prefix="/projects/{project_id}/outputs", tags=["outputs"])
 
 
 class OutputSummary(BaseModel):
-    type: Literal["database", "rest"]
+    type: Literal["database", "rest", "websocket"]
     id: uuid.UUID
     detail: str
 
@@ -64,6 +65,21 @@ def list_outputs(
                 type="rest",
                 id=output.id,
                 detail=f"{output.entity.name}: /public/rest/{output.token}",
+            )
+        )
+
+    streams = (
+        db.query(WebSocketStream)
+        .join(Entity, WebSocketStream.entity_id == Entity.id)
+        .filter(Entity.project_id == project_id)
+        .all()
+    )
+    for stream in streams:
+        summaries.append(
+            OutputSummary(
+                type="websocket",
+                id=stream.id,
+                detail=f"{stream.entity.name}: /public/stream/{stream.token}",
             )
         )
 

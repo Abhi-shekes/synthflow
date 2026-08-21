@@ -1,4 +1,3 @@
-import secrets
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -6,14 +5,11 @@ from typing import TYPE_CHECKING
 from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.tokens import generate_token
 from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.entity import Entity
-
-
-def _generate_token() -> str:
-    return secrets.token_urlsafe(24)
 
 
 class RestOutput(Base):
@@ -30,7 +26,7 @@ class RestOutput(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     entity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("entities.id", ondelete="CASCADE"))
-    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=_generate_token)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=generate_token)
     default_count: Mapped[int] = mapped_column(Integer, default=10)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

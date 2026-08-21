@@ -180,8 +180,17 @@ export interface RestOutput {
   created_at: string;
 }
 
+export interface WebSocketStream {
+  id: string;
+  entity_id: string;
+  token: string;
+  events_per_second: number;
+  batch_size: number;
+  created_at: string;
+}
+
 export interface OutputSummary {
-  type: "database" | "rest";
+  type: "database" | "rest" | "websocket";
   id: string;
   detail: string;
 }

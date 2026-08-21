@@ -95,8 +95,21 @@ Goal: generated data can leave the platform through more than a JSON blob.
       as `many_to_many` in the relationship builder above.
 - [ ] Kafka producer output
 - [ ] MQTT publisher output
-- [ ] WebSocket streaming output
-- [ ] Output configuration UI (pick + configure one or more outputs per project)
+- [x] WebSocket streaming output — `WebSocketStream`: `WS /public/stream/{token}`
+      pushes a fresh batch every `1/events_per_second` for as long as a
+      client stays connected. Deliberately connection-scoped rather than a
+      persistent background producer — the production loop *is* the
+      WebSocket handler's loop, so there's no "running" state to persist or
+      leak across a backend restart. Kafka/MQTT don't get this for free:
+      a broker has no equivalent client connection to hang the loop on, so
+      they'll need a real background-task execution model instead — not
+      started yet, see TODO.md.
+- [x] Output configuration UI (pick + configure one or more outputs per
+      project) — a card per output kind on the entity/project pages
+      (Database connections, REST output, Live stream), each with its own
+      add/list/delete; no single unified "pick your outputs" screen yet,
+      but every output type built so far is configurable and usable from
+      the UI, not API-only.
 
 ## Phase 4 — Advanced Simulation
 

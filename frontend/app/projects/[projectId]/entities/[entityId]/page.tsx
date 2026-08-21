@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { AddFieldDialog } from "@/components/add-field-dialog";
 import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
 import { AppShell } from "@/components/app-shell";
+import { StreamPreview } from "@/components/stream-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +33,7 @@ interface RuleFormValues {
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+const WS_URL = API_URL.replace(/^http/, "ws");
 
 export default function EntityDetailPage() {
   const accessToken = useRequireAuth();
@@ -126,6 +128,39 @@ export default function EntityDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["rest-outputs", projectId, entityId] });
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete REST output"),
+  });
+
+  const streamsQuery = useQuery({
+    queryKey: ["websocket-streams", projectId, entityId],
+    queryFn: () => api.listWebSocketStreams(accessToken!, projectId, entityId),
+    enabled: !!accessToken,
+  });
+
+  const [streamEventsPerSecond, setStreamEventsPerSecond] = useState(2);
+  const [streamBatchSize, setStreamBatchSize] = useState(1);
+
+  const addStream = useMutation({
+    mutationFn: () =>
+      api.createWebSocketStream(
+        accessToken!,
+        projectId,
+        entityId,
+        streamEventsPerSecond,
+        streamBatchSize
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["websocket-streams", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not create stream"),
+  });
+
+  const deleteStream = useMutation({
+    mutationFn: (streamId: string) =>
+      api.deleteWebSocketStream(accessToken!, projectId, entityId, streamId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["websocket-streams", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete stream"),
   });
 
   const downloadCsv = useMutation({
@@ -381,6 +416,81 @@ export default function EntityDetailPage() {
                           Delete
                         </Button>
                       </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Live stream (WebSocket)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              A public, unauthenticated WebSocket that pushes a fresh batch
+              every tick for as long as a client stays connected — no auth,
+              no polling. Disconnecting stops production; there&apos;s nothing
+              running in the background otherwise.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-muted-foreground">events/sec</span>
+                <Input
+                  type="number"
+                  min={0.1}
+                  max={50}
+                  step={0.1}
+                  value={streamEventsPerSecond}
+                  onChange={(e) => setStreamEventsPerSecond(Number(e.target.value))}
+                  className="w-20"
+                />
+              </div>
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-muted-foreground">rows/message</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={streamBatchSize}
+                  onChange={(e) => setStreamBatchSize(Number(e.target.value))}
+                  className="w-20"
+                />
+              </div>
+              <Button
+                onClick={() => addStream.mutate()}
+                disabled={addStream.isPending || !entity?.fields.length}
+              >
+                {addStream.isPending ? "Creating…" : "Create stream"}
+              </Button>
+            </div>
+            {streamsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No streams yet.</p>
+            )}
+            {streamsQuery.data && streamsQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-3">
+                {streamsQuery.data.map((stream) => {
+                  const wsUrl = `${WS_URL}/public/stream/${stream.token}`;
+                  return (
+                    <li key={stream.id} className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                        <code className="truncate font-mono">{wsUrl}</code>
+                        <div className="flex shrink-0 gap-2">
+                          <span className="text-muted-foreground">
+                            {stream.events_per_second}/s × {stream.batch_size}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteStream.mutate(stream.id)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                      <StreamPreview wsUrl={wsUrl} />
                     </li>
                   );
                 })}

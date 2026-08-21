@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.db import session as db_session
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -27,9 +28,15 @@ def client():
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    # Code reached outside FastAPI's DI (the websocket stream loop) looks up
+    # `db_session.SessionLocal` fresh each call instead of importing it by
+    # name, specifically so this swap reaches it too.
+    original_session_local = db_session.SessionLocal
+    db_session.SessionLocal = TestingSessionLocal
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+    db_session.SessionLocal = original_session_local
     Base.metadata.drop_all(bind=engine)
 
 
