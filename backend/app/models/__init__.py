@@ -4,8 +4,10 @@ from app.models.error_injection import ErrorInjection
 from app.models.event_trigger import EventTrigger
 from app.models.field import EntityField
 from app.models.geo_route import GeoRoute
+from app.models.kafka_output import KafkaOutput
 from app.models.lookup_attachment import LookupAttachment
 from app.models.lookup_table import LookupTable
+from app.models.mqtt_output import MQTTOutput
 from app.models.project import Project
 from app.models.relationship import Relationship
 from app.models.rest_output import RestOutput
@@ -34,4 +36,6 @@ __all__ = [
     "EventTrigger",
     "TimelineReplay",
     "GeoRoute",
+    "KafkaOutput",
+    "MQTTOutput",
 ]

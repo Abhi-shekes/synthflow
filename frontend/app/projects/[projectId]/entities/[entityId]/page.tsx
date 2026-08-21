@@ -276,6 +276,78 @@ export default function EntityDetailPage() {
     onError: (error: Error) => toast.error(error.message || "Could not delete stream"),
   });
 
+  const kafkaOutputsQuery = useQuery({
+    queryKey: ["kafka-outputs", projectId, entityId],
+    queryFn: () => api.listKafkaOutputs(accessToken!, projectId, entityId),
+    enabled: !!accessToken,
+  });
+
+  const [kafkaBootstrapServers, setKafkaBootstrapServers] = useState("");
+  const [kafkaTopic, setKafkaTopic] = useState("");
+  const [kafkaEventsPerSecond, setKafkaEventsPerSecond] = useState(2);
+  const [kafkaBatchSize, setKafkaBatchSize] = useState(1);
+
+  const addKafkaOutput = useMutation({
+    mutationFn: () =>
+      api.createKafkaOutput(accessToken!, projectId, entityId, {
+        bootstrap_servers: kafkaBootstrapServers,
+        topic: kafkaTopic,
+        events_per_second: kafkaEventsPerSecond,
+        batch_size: kafkaBatchSize,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["kafka-outputs", projectId, entityId] });
+      setKafkaTopic("");
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not create Kafka output"),
+  });
+
+  const deleteKafkaOutput = useMutation({
+    mutationFn: (outputId: string) =>
+      api.deleteKafkaOutput(accessToken!, projectId, entityId, outputId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["kafka-outputs", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete Kafka output"),
+  });
+
+  const mqttOutputsQuery = useQuery({
+    queryKey: ["mqtt-outputs", projectId, entityId],
+    queryFn: () => api.listMqttOutputs(accessToken!, projectId, entityId),
+    enabled: !!accessToken,
+  });
+
+  const [mqttBrokerHost, setMqttBrokerHost] = useState("");
+  const [mqttBrokerPort, setMqttBrokerPort] = useState(1883);
+  const [mqttTopic, setMqttTopic] = useState("");
+  const [mqttEventsPerSecond, setMqttEventsPerSecond] = useState(2);
+  const [mqttBatchSize, setMqttBatchSize] = useState(1);
+
+  const addMqttOutput = useMutation({
+    mutationFn: () =>
+      api.createMqttOutput(accessToken!, projectId, entityId, {
+        broker_host: mqttBrokerHost,
+        broker_port: mqttBrokerPort,
+        topic: mqttTopic,
+        events_per_second: mqttEventsPerSecond,
+        batch_size: mqttBatchSize,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mqtt-outputs", projectId, entityId] });
+      setMqttTopic("");
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not create MQTT output"),
+  });
+
+  const deleteMqttOutput = useMutation({
+    mutationFn: (outputId: string) =>
+      api.deleteMqttOutput(accessToken!, projectId, entityId, outputId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mqtt-outputs", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete MQTT output"),
+  });
+
   const downloadCsv = useMutation({
     mutationFn: () => api.generateCsv(accessToken!, projectId, entityId, count),
     onSuccess: (blob) => downloadBlob(blob, `${entity?.name ?? "export"}.csv`),
@@ -905,6 +977,193 @@ export default function EntityDetailPage() {
                     </li>
                   );
                 })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Kafka output</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Publishes a fresh row to a Kafka topic every tick, for as long
+              as the backend process runs — a real background producer, not
+              tied to a client connection, so it keeps going after you leave
+              this page. Doesn&apos;t survive a backend restart yet (a known
+              gap, not a silent one); delete and recreate it if that happens.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                placeholder="bootstrap servers, e.g. kafka:9092"
+                value={kafkaBootstrapServers}
+                onChange={(e) => setKafkaBootstrapServers(e.target.value)}
+                className="w-56"
+              />
+              <Input
+                placeholder="topic"
+                value={kafkaTopic}
+                onChange={(e) => setKafkaTopic(e.target.value)}
+                className="w-32"
+              />
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-muted-foreground">events/sec</span>
+                <Input
+                  type="number"
+                  min={0.1}
+                  max={50}
+                  step={0.1}
+                  value={kafkaEventsPerSecond}
+                  onChange={(e) => setKafkaEventsPerSecond(Number(e.target.value))}
+                  className="w-20"
+                />
+              </div>
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-muted-foreground">rows/message</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={kafkaBatchSize}
+                  onChange={(e) => setKafkaBatchSize(Number(e.target.value))}
+                  className="w-20"
+                />
+              </div>
+              <Button
+                onClick={() => addKafkaOutput.mutate()}
+                disabled={
+                  addKafkaOutput.isPending ||
+                  !entity?.fields.length ||
+                  !kafkaBootstrapServers ||
+                  !kafkaTopic
+                }
+              >
+                {addKafkaOutput.isPending ? "Creating…" : "Create output"}
+              </Button>
+            </div>
+            {kafkaOutputsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No Kafka outputs yet.</p>
+            )}
+            {kafkaOutputsQuery.data && kafkaOutputsQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {kafkaOutputsQuery.data.map((output) => (
+                  <li
+                    key={output.id}
+                    className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                  >
+                    <code className="truncate font-mono">
+                      {output.bootstrap_servers} → {output.topic}
+                    </code>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-muted-foreground">
+                        {output.events_per_second}/s × {output.batch_size}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteKafkaOutput.mutate(output.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">MQTT output</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Same idea as the Kafka output above, publishing to an MQTT
+              broker instead — a real background producer that keeps
+              running independent of any client connection.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                placeholder="broker host"
+                value={mqttBrokerHost}
+                onChange={(e) => setMqttBrokerHost(e.target.value)}
+                className="w-40"
+              />
+              <Input
+                type="number"
+                min={1}
+                max={65535}
+                value={mqttBrokerPort}
+                onChange={(e) => setMqttBrokerPort(Number(e.target.value))}
+                className="w-24"
+              />
+              <Input
+                placeholder="topic"
+                value={mqttTopic}
+                onChange={(e) => setMqttTopic(e.target.value)}
+                className="w-32"
+              />
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-muted-foreground">events/sec</span>
+                <Input
+                  type="number"
+                  min={0.1}
+                  max={50}
+                  step={0.1}
+                  value={mqttEventsPerSecond}
+                  onChange={(e) => setMqttEventsPerSecond(Number(e.target.value))}
+                  className="w-20"
+                />
+              </div>
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-muted-foreground">rows/message</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={mqttBatchSize}
+                  onChange={(e) => setMqttBatchSize(Number(e.target.value))}
+                  className="w-20"
+                />
+              </div>
+              <Button
+                onClick={() => addMqttOutput.mutate()}
+                disabled={
+                  addMqttOutput.isPending || !entity?.fields.length || !mqttBrokerHost || !mqttTopic
+                }
+              >
+                {addMqttOutput.isPending ? "Creating…" : "Create output"}
+              </Button>
+            </div>
+            {mqttOutputsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No MQTT outputs yet.</p>
+            )}
+            {mqttOutputsQuery.data && mqttOutputsQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {mqttOutputsQuery.data.map((output) => (
+                  <li
+                    key={output.id}
+                    className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                  >
+                    <code className="truncate font-mono">
+                      {output.broker_host}:{output.broker_port} → {output.topic}
+                    </code>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-muted-foreground">
+                        {output.events_per_second}/s × {output.batch_size}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteMqttOutput.mutate(output.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </li>
+                ))}
               </ul>
             )}
           </CardContent>

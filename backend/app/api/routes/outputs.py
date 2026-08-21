@@ -10,6 +10,8 @@ from app.api.routes.projects import _get_owned_project
 from app.db.session import get_db
 from app.models.database_connection import DatabaseConnection
 from app.models.entity import Entity
+from app.models.kafka_output import KafkaOutput
+from app.models.mqtt_output import MQTTOutput
 from app.models.rest_output import RestOutput
 from app.models.timeline_replay import TimelineReplay
 from app.models.user import User
@@ -19,7 +21,7 @@ router = APIRouter(prefix="/projects/{project_id}/outputs", tags=["outputs"])
 
 
 class OutputSummary(BaseModel):
-    type: Literal["database", "rest", "websocket", "timeline_replay"]
+    type: Literal["database", "rest", "websocket", "timeline_replay", "kafka", "mqtt"]
     id: uuid.UUID
     detail: str
 
@@ -91,6 +93,37 @@ def list_outputs(
                 type="timeline_replay",
                 id=replay.id,
                 detail=f"{replay.lookup_table.name}: /public/replay/{replay.token}",
+            )
+        )
+
+    kafka_outputs = (
+        db.query(KafkaOutput)
+        .join(Entity, KafkaOutput.entity_id == Entity.id)
+        .filter(Entity.project_id == project_id)
+        .all()
+    )
+    for output in kafka_outputs:
+        summaries.append(
+            OutputSummary(
+                type="kafka",
+                id=output.id,
+                detail=f"{output.entity.name}: {output.bootstrap_servers}/{output.topic}",
+            )
+        )
+
+    mqtt_outputs = (
+        db.query(MQTTOutput)
+        .join(Entity, MQTTOutput.entity_id == Entity.id)
+        .filter(Entity.project_id == project_id)
+        .all()
+    )
+    for output in mqtt_outputs:
+        broker = f"{output.broker_host}:{output.broker_port}"
+        summaries.append(
+            OutputSummary(
+                type="mqtt",
+                id=output.id,
+                detail=f"{output.entity.name}: {broker}/{output.topic}",
             )
         )
 

@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,8 +11,10 @@ from app.api.routes import (
     event_triggers,
     geo_routes,
     health,
+    kafka_outputs,
     lookup_attachments,
     lookup_tables,
+    mqtt_outputs,
     outputs,
     projects,
     relationships,
@@ -22,8 +26,19 @@ from app.api.routes import (
     workflows,
 )
 from app.core.config import settings
+from app.services.stream_producers import stop_all_producers
 
-app = FastAPI(title=settings.PROJECT_NAME)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Kafka/MQTT producers are in-process background tasks (see
+    # app.services.stream_producers) — nothing else cancels them, so an
+    # unclean shutdown would otherwise leak a task per active output.
+    await stop_all_producers()
+
+
+app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,6 +65,8 @@ app.include_router(database_connections.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rest_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(websocket_streams.router, prefix=settings.API_V1_PREFIX)
 app.include_router(timeline_replays.router, prefix=settings.API_V1_PREFIX)
+app.include_router(kafka_outputs.router, prefix=settings.API_V1_PREFIX)
+app.include_router(mqtt_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(outputs.router, prefix=settings.API_V1_PREFIX)
 
 # Deliberately outside /api/v1 and unauthenticated — see RestOutput's and

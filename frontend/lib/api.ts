@@ -10,9 +10,13 @@ import type {
   FieldCreateInput,
   GeoRoute,
   GeoRouteCreateInput,
+  KafkaOutput,
+  KafkaOutputCreateInput,
   LookupAttachment,
   LookupAttachmentCreateInput,
   LookupTable,
+  MQTTOutput,
+  MQTTOutputCreateInput,
   OutputSummary,
   Project,
   Relationship,
@@ -556,6 +560,58 @@ export const api = {
   deleteGeoRoute: (token: string, projectId: string, entityId: string, geoRouteId: string) =>
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}/geo-routes/${geoRouteId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listKafkaOutputs: (token: string, projectId: string, entityId: string) =>
+    request<KafkaOutput[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/kafka-outputs`,
+      {},
+      token
+    ),
+
+  createKafkaOutput: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    data: KafkaOutputCreateInput
+  ) =>
+    request<KafkaOutput>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/kafka-outputs`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteKafkaOutput: (token: string, projectId: string, entityId: string, outputId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/kafka-outputs/${outputId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listMqttOutputs: (token: string, projectId: string, entityId: string) =>
+    request<MQTTOutput[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/mqtt-outputs`,
+      {},
+      token
+    ),
+
+  createMqttOutput: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    data: MQTTOutputCreateInput
+  ) =>
+    request<MQTTOutput>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/mqtt-outputs`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteMqttOutput: (token: string, projectId: string, entityId: string, outputId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/mqtt-outputs/${outputId}`,
       { method: "DELETE" },
       token
     ),

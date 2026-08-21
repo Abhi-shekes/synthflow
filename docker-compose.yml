@@ -45,5 +45,35 @@ services:
     depends_on:
       - backend
 
+  # Optional — only for exercising KafkaOutput (see
+  # app.services.stream_producers). Not started by `docker compose up`;
+  # bring it up explicitly with `docker compose --profile kafka up`.
+  redpanda:
+    container_name: synthflow-redpanda
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.18
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --kafka-addr
+      - 0.0.0.0:9092
+      - --advertise-kafka-addr
+      - redpanda:9092
+    ports:
+      - "9092:9092"
+    profiles: ["kafka"]
+
+  # Optional — only for exercising MQTTOutput. Not started by `docker
+  # compose up`; bring it up explicitly with `docker compose --profile mqtt up`.
+  mosquitto:
+    container_name: synthflow-mosquitto
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "1883:1883"
+    profiles: ["mqtt"]
+
 volumes:
   synthflow_postgres_data:

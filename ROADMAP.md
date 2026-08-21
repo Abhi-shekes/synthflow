@@ -128,8 +128,34 @@ Goal: generated data can leave the platform through more than a JSON blob.
       modeled (`DatabaseDialect`) but rejected at push time until those
       drivers are added — same "model it, implement what's tested" approach
       as `many_to_many` in the relationship builder above.
-- [ ] Kafka producer output
-- [ ] MQTT publisher output
+- [x] Kafka producer output / MQTT publisher output — `KafkaOutput` and
+      `MQTTOutput`: entity-scoped outputs that stream a fresh JSON message
+      per generated row into a real broker topic, one message per row
+      (matching TimelineReplay's per-row choice rather than
+      WebSocketStream's per-tick array). This is the "real background-task
+      execution model" WebSocketStream's docstring had flagged as missing:
+      each output is backed by an in-process `asyncio.Task`
+      (`app/services/stream_producers.py`) in a module-level registry,
+      started from an `async def` create route via `asyncio.create_task()`
+      and cancelled from an `async def` delete route — the only async
+      routes in the app, since every other route is sync SQLAlchemy.
+      Bounded retry with backoff (5 consecutive failures max, 5s backoff,
+      5s connect timeout) so a broker outage never hangs a request or spins
+      forever. Same honest tradeoffs as WebSocketStream: no persisted
+      "running" state and no resume-on-restart (a row surviving a backend
+      restart with no live task is a documented gap, not silently papered
+      over), single-process only. FastAPI `lifespan` now cancels every
+      live producer task on shutdown so nothing outlives the process.
+      New optional docker-compose services (`redpanda`, `mosquitto`)
+      gated behind Compose profiles (`--profile kafka`, `--profile mqtt`)
+      so the default `docker compose up` is unaffected. Verified against
+      real brokers, not mocks: produced through the actual UI, then
+      consumed 5 real messages off the Kafka topic with a throwaway
+      `aiokafka` consumer container and 5 real messages off the MQTT topic
+      with `mosquitto_sub` in a throwaway container; separately proved
+      `DELETE` actually stops production (not just removes the DB row) by
+      comparing the Kafka topic's end-offset immediately after delete and
+      again 6 seconds later — unchanged both times.
 - [x] WebSocket streaming output — `WebSocketStream`: `WS /public/stream/{token}`
       pushes a fresh batch every `1/events_per_second` for as long as a
       client stays connected. Deliberately connection-scoped rather than a

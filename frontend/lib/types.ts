@@ -381,8 +381,44 @@ export interface WebSocketStream {
   created_at: string;
 }
 
+export interface KafkaOutput {
+  id: string;
+  entity_id: string;
+  bootstrap_servers: string;
+  topic: string;
+  events_per_second: number;
+  batch_size: number;
+  created_at: string;
+}
+
+export interface KafkaOutputCreateInput {
+  bootstrap_servers: string;
+  topic: string;
+  events_per_second: number;
+  batch_size: number;
+}
+
+export interface MQTTOutput {
+  id: string;
+  entity_id: string;
+  broker_host: string;
+  broker_port: number;
+  topic: string;
+  events_per_second: number;
+  batch_size: number;
+  created_at: string;
+}
+
+export interface MQTTOutputCreateInput {
+  broker_host: string;
+  broker_port: number;
+  topic: string;
+  events_per_second: number;
+  batch_size: number;
+}
+
 export interface OutputSummary {
-  type: "database" | "rest" | "websocket" | "timeline_replay";
+  type: "database" | "rest" | "websocket" | "timeline_replay" | "kafka" | "mqtt";
   id: string;
   detail: string;
 }

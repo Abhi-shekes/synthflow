@@ -99,17 +99,38 @@ not just any customer's, 160 passed / 3 skipped total, lint clean. Verified
 end-to-end in a browser: 10/10 generated orders came back with
 `discount = price × Customer.discount_rate` exactly, zero console errors.
 
+## Kafka/MQTT streaming outputs — done
+
+`KafkaOutput` and `MQTTOutput`: entity-scoped, one JSON message per
+generated row, into a real broker topic. Introduced the background-task
+execution model Phase 3 flagged as missing for this — an in-process
+`asyncio.Task` per output (`app/services/stream_producers.py`, module-level
+registry), started/cancelled from the app's only two `async def` routes
+(create/delete). Bounded retry with backoff (5 failures max, 5s backoff,
+5s connect timeout) so a dead broker never hangs a request. Same honest
+scope limits as WebSocketStream: no persisted "running" state, no
+resume-on-restart, single-process only — documented, not hidden. FastAPI
+`lifespan` cancels every live task on shutdown. New `redpanda`/`mosquitto`
+docker-compose services, both gated behind Compose profiles so default
+`docker compose up` is unaffected. 8 new tests (CRUD only — every test
+deletes what it creates to cancel the background task promptly), 168
+passed / 3 skipped total, lint clean. Verified against real brokers, not
+mocks: produced through the actual UI, consumed 5 real messages off Kafka
+with a throwaway `aiokafka` consumer container and 5 real messages off
+MQTT with `mosquitto_sub`; separately proved `DELETE` actually stops
+production (Kafka topic end-offset unchanged 6 seconds after delete, not
+just the DB row gone).
+
 ## Now
 
-Next up is either Phase 5 (Extensibility — plugin framework, marketplace,
-monitoring dashboard, modular install; none of it scoped yet, needs its
-own design pass) or the one remaining backlog item below — whichever
-"next" picks.
+The backlog is now empty. The only remaining work is Phase 5
+(Extensibility — plugin framework, marketplace, monitoring dashboard,
+modular install); none of it is scoped yet and needs its own design pass
+before starting.
 
 ## Backlog (not started, roughly in order)
 
-- [ ] Kafka/MQTT streaming outputs (Phase 3, needs the background-task
-      execution model noted above)
+(empty — see Phase 5 above)
 
 ## Notes for future me
 
