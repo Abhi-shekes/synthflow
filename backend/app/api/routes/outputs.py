@@ -12,6 +12,7 @@ from app.models.database_connection import DatabaseConnection
 from app.models.entity import Entity
 from app.models.kafka_output import KafkaOutput
 from app.models.mqtt_output import MQTTOutput
+from app.models.plugin_output import PluginOutput
 from app.models.rest_output import RestOutput
 from app.models.timeline_replay import TimelineReplay
 from app.models.user import User
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/projects/{project_id}/outputs", tags=["outputs"])
 
 
 class OutputSummary(BaseModel):
-    type: Literal["database", "rest", "websocket", "timeline_replay", "kafka", "mqtt"]
+    type: Literal["database", "rest", "websocket", "timeline_replay", "kafka", "mqtt", "plugin"]
     id: uuid.UUID
     detail: str
 
@@ -124,6 +125,21 @@ def list_outputs(
                 type="mqtt",
                 id=output.id,
                 detail=f"{output.entity.name}: {broker}/{output.topic}",
+            )
+        )
+
+    plugin_outputs = (
+        db.query(PluginOutput)
+        .join(Entity, PluginOutput.entity_id == Entity.id)
+        .filter(Entity.project_id == project_id)
+        .all()
+    )
+    for output in plugin_outputs:
+        summaries.append(
+            OutputSummary(
+                type="plugin",
+                id=output.id,
+                detail=f"{output.entity.name}: {output.plugin_name}",
             )
         )
 

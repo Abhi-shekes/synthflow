@@ -18,7 +18,10 @@ import type {
   LookupTable,
   MQTTOutput,
   MQTTOutputCreateInput,
+  OutputPluginSummary,
   OutputSummary,
+  PluginOutput,
+  PluginOutputCreateInput,
   Project,
   ProjectTemplate,
   Relationship,
@@ -619,6 +622,35 @@ export const api = {
       { method: "DELETE" },
       token
     ),
+
+  listPluginOutputs: (token: string, projectId: string, entityId: string) =>
+    request<PluginOutput[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/plugin-outputs`,
+      {},
+      token
+    ),
+
+  createPluginOutput: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    data: PluginOutputCreateInput
+  ) =>
+    request<PluginOutput>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/plugin-outputs`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deletePluginOutput: (token: string, projectId: string, entityId: string, outputId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/plugin-outputs/${outputId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listOutputPlugins: (token: string) =>
+    request<OutputPluginSummary[]>("/api/v1/output-plugins", {}, token),
 
   listGeneratorPlugins: (token: string) =>
     request<GeneratorPresetSummary[]>("/api/v1/generator-plugins", {}, token),

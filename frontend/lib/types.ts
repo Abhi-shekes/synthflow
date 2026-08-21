@@ -408,8 +408,32 @@ export interface MQTTOutputCreateInput {
   batch_size: number;
 }
 
+export interface PluginOutput {
+  id: string;
+  entity_id: string;
+  plugin_name: string;
+  config: Record<string, unknown>;
+  events_per_second: number;
+  batch_size: number;
+  created_at: string;
+}
+
+export interface PluginOutputCreateInput {
+  plugin_name: string;
+  config: Record<string, unknown>;
+  events_per_second: number;
+  batch_size: number;
+}
+
+// Every plugin_name currently usable on a PluginOutput — see backend
+// app.services.plugins ("synthflow.outputs" entry-point group).
+export interface OutputPluginSummary {
+  name: string;
+  source: string;
+}
+
 export interface OutputSummary {
-  type: "database" | "rest" | "websocket" | "timeline_replay" | "kafka" | "mqtt";
+  type: "database" | "rest" | "websocket" | "timeline_replay" | "kafka" | "mqtt" | "plugin";
   id: string;
   detail: string;
 }

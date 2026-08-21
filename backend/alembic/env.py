@@ -16,6 +16,7 @@ from app.models import (  # noqa: F401
     LookupAttachment,
     LookupTable,
     MQTTOutput,
+    PluginOutput,
     Project,
     Relationship,
     RestOutput,

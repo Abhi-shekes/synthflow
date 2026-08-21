@@ -395,9 +395,9 @@ Goal: data behaves over time, not just at generation time.
 Goal: the community can extend SynthFlow without forking it.
 
 - [x] Formal plugin framework — generator plugins in this pass, rule-function
-      plugins added in a follow-up pass below; output and AI provider
-      plugins are still just `[ ]` items further down, deliberately not
-      started. Real third-party extensibility via Python's
+      and output plugins added in follow-up passes below; only AI provider
+      plugins are still a genuinely unstarted `[ ]` item further down (see
+      Phase 6). Real third-party extensibility via Python's
       standard entry-point mechanism (`app/services/plugins.py`): any
       package installed into the backend's environment that declares a
       zero-arg callable under the `synthflow.generators` entry-point group
@@ -502,6 +502,52 @@ Goal: the community can extend SynthFlow without forking it.
       installed plugins" with zero console errors. Uninstalling the
       plugin made it disappear from `GET /rule-functions` and a new rule
       referencing it fail with a clean 400.
+- [x] Output plugins — the third and final piece of the plugin framework
+      (AI provider plugins are the only category left, deferred to
+      Phase 6). Unlike Kafka/MQTT (first-party typed models with a fixed
+      config shape), an output plugin's config shape isn't known until
+      it's installed, so there's one generic `PluginOutput` model
+      (`plugin_name` + a free-form JSON `config` column) instead of a new
+      typed table per plugin — any package installed into the backend's
+      environment that declares a callable under the `synthflow.outputs`
+      entry-point group becomes a selectable `plugin_name`, receiving
+      `(config: dict, rows: list[dict])` once per tick. The plugin only
+      owns delivery; a new generic background loop
+      (`app/services/plugin_output_producers.py`, deliberately a sibling
+      to `stream_producers.py` rather than a refactor of it — Kafka/MQTT
+      keep their own working code untouched) owns pacing and batch
+      loading, the same `asyncio.Task`-per-output execution model as
+      Kafka/MQTT (not resumed on restart, single-process only, bounded
+      retry with backoff). A delivery function can be sync or async — a
+      plugin author writing something as simple as "append to a file"
+      shouldn't have to know asyncio; SynthFlow runs a sync one in a
+      thread so it can't block the event loop.
+      `examples/example-plugin/` grew a third entry point,
+      `write_jsonl` — a deliberately network-free example (appends each
+      generated batch to a local file as JSON lines) so live verification
+      didn't need a broker the way Kafka/MQTT's did. `GET /output-plugins`
+      lists installed ones; the entity page's new "Plugin output" card
+      picks from that list and takes the config as raw JSON, since the
+      shape is the plugin's to define, not SynthFlow's.
+      8 new tests, including one that doesn't stop at CRUD: a fake
+      in-memory plugin function records every batch it receives, and the
+      test waits on the *real* background `asyncio.Task` (started by the
+      create route) to actually call it with real generated rows before
+      asserting — stronger than Kafka/MQTT's tests could be, precisely
+      because a plugin output's "broker" is just a Python function, not
+      something requiring a live external service inside the test
+      environment. 235 passed / 3 skipped total, lint clean. Verified
+      against the real installed example plugin: created a `write_jsonl`
+      output against Postgres and watched a real file inside the backend
+      container fill up with real generated rows honoring the field's
+      min/max constraints; separately proved `DELETE` genuinely stops the
+      producer the same way as Kafka/MQTT (line count unchanged 4 seconds
+      after delete, not just the DB row gone). Confirmed in a browser too:
+      the new card's plugin picker, config textarea, and created-output
+      list all rendered correctly with zero console errors, and the
+      background task it started wrote real rows to a file mid-session.
+      Uninstalling the plugin made it disappear from `GET /output-plugins`
+      and a new output referencing it fail with a clean 400.
 - [x] Generator plugin examples: PAN, VIN, IMEI, GST, QR, email generators —
       `IdentifierPreset` (`app/services/identifier_generators.py`), the same
       "canned generator behind a STRING field's `preset` column" mechanism

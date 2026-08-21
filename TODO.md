@@ -280,11 +280,46 @@ syntactically. Confirmed in a browser too, and confirmed uninstalling
 the plugin degrades cleanly (disappears from the list, a new rule
 referencing it gets a 400).
 
+## Output plugins — done
+
+The third and final piece of the plugin framework — AI provider plugins
+are the only category left, and those wait for Phase 6. Unlike Kafka/
+MQTT, an output plugin's config shape isn't known until it's installed,
+so there's one generic `PluginOutput` model (`plugin_name` + free-form
+JSON `config`) instead of a new typed table per plugin. Any package
+declaring a callable under the `synthflow.outputs` entry-point group
+becomes a selectable `plugin_name`, receiving `(config, rows)` once per
+tick; a new generic background loop
+(`app/services/plugin_output_producers.py`, a sibling to
+`stream_producers.py`, not a refactor of it — Kafka/MQTT's working code
+stayed untouched) owns pacing and batch loading, the same
+asyncio.Task-per-output model as Kafka/MQTT. Delivery can be sync or
+async — a sync one just runs in a thread.
+
+`examples/example-plugin/` grew a third entry point, `write_jsonl`,
+deliberately network-free (appends batches to a local file) so live
+verification didn't need a broker. `GET /output-plugins` lists installed
+ones; the entity page's new "Plugin output" card picks from that list
+and takes config as raw JSON.
+
+8 new tests, including one that goes past CRUD: a fake in-memory plugin
+records every batch it receives, and the test waits on the *real*
+background asyncio.Task to actually call it with real generated rows —
+possible here (unlike Kafka/MQTT's tests) because a plugin output's
+"broker" is just a Python function, not an external service. 235 passed
+/ 3 skipped total, lint clean. Verified against the real installed
+plugin: a real file inside the backend container filled up with real
+generated rows against Postgres; separately proved DELETE genuinely
+stops the producer the same way as Kafka/MQTT (line count unchanged 4s
+after delete). Confirmed in a browser too, and confirmed uninstalling
+degrades cleanly (disappears from the list, a new output referencing it
+gets a 400).
+
 ## Now
 
-The rest of Phase 5 (output and AI provider plugins to round out the
-plugin framework, live monitoring dashboard, modular install) is still
-unscoped and needs its own design pass before starting.
+The rest of Phase 5 (live monitoring dashboard, modular install) is
+still unscoped and needs its own design pass before starting. AI
+provider plugins wait for Phase 6.
 
 ## Backlog (not started, roughly in order)
 

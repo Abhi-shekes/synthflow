@@ -20,6 +20,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -27,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { useRequireAuth } from "@/lib/hooks";
@@ -355,6 +363,53 @@ export default function EntityDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["mqtt-outputs", projectId, entityId] });
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete MQTT output"),
+  });
+
+  const outputPluginsQuery = useQuery({
+    queryKey: ["output-plugins"],
+    queryFn: () => api.listOutputPlugins(accessToken!),
+    enabled: !!accessToken,
+  });
+
+  const pluginOutputsQuery = useQuery({
+    queryKey: ["plugin-outputs", projectId, entityId],
+    queryFn: () => api.listPluginOutputs(accessToken!, projectId, entityId),
+    enabled: !!accessToken,
+  });
+
+  const [pluginOutputName, setPluginOutputName] = useState("");
+  const [pluginOutputConfig, setPluginOutputConfig] = useState("{}");
+  const [pluginOutputEventsPerSecond, setPluginOutputEventsPerSecond] = useState(2);
+  const [pluginOutputBatchSize, setPluginOutputBatchSize] = useState(1);
+
+  const addPluginOutput = useMutation({
+    mutationFn: () => {
+      let config: Record<string, unknown>;
+      try {
+        config = JSON.parse(pluginOutputConfig);
+      } catch {
+        throw new Error("Config isn't valid JSON");
+      }
+      return api.createPluginOutput(accessToken!, projectId, entityId, {
+        plugin_name: pluginOutputName,
+        config,
+        events_per_second: pluginOutputEventsPerSecond,
+        batch_size: pluginOutputBatchSize,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plugin-outputs", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not create plugin output"),
+  });
+
+  const deletePluginOutput = useMutation({
+    mutationFn: (outputId: string) =>
+      api.deletePluginOutput(accessToken!, projectId, entityId, outputId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plugin-outputs", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete plugin output"),
   });
 
   const downloadCsv = useMutation({
@@ -1181,6 +1236,110 @@ export default function EntityDetailPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => deleteMqttOutput.mutate(output.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Plugin output</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Same background-producer idea as Kafka/MQTT above, but delivering
+              through a third-party output plugin instead of a built-in
+              broker — install one (see the{" "}
+              <code className="font-mono">examples/example-plugin</code>{" "}
+              package) to pick it here. Config is whatever free-form JSON
+              that plugin expects.
+            </p>
+            <div className="flex flex-wrap items-start gap-2">
+              <Select
+                value={pluginOutputName}
+                onValueChange={(v) => setPluginOutputName(v ?? "")}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="plugin" />
+                </SelectTrigger>
+                <SelectContent>
+                  {outputPluginsQuery.data?.map((p) => (
+                    <SelectItem key={p.name} value={p.name}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Textarea
+                placeholder='config, e.g. {"path": "/tmp/out.jsonl"}'
+                value={pluginOutputConfig}
+                onChange={(e) => setPluginOutputConfig(e.target.value)}
+                className="h-9 min-h-9 w-56"
+              />
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-muted-foreground">events/sec</span>
+                <Input
+                  type="number"
+                  min={0.1}
+                  max={50}
+                  step={0.1}
+                  value={pluginOutputEventsPerSecond}
+                  onChange={(e) => setPluginOutputEventsPerSecond(Number(e.target.value))}
+                  className="w-20"
+                />
+              </div>
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-muted-foreground">rows/message</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={pluginOutputBatchSize}
+                  onChange={(e) => setPluginOutputBatchSize(Number(e.target.value))}
+                  className="w-20"
+                />
+              </div>
+              <Button
+                onClick={() => addPluginOutput.mutate()}
+                disabled={
+                  addPluginOutput.isPending || !entity?.fields.length || !pluginOutputName
+                }
+              >
+                {addPluginOutput.isPending ? "Creating…" : "Create output"}
+              </Button>
+            </div>
+            {outputPluginsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No output plugins installed yet.
+              </p>
+            )}
+            {pluginOutputsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No plugin outputs yet.</p>
+            )}
+            {pluginOutputsQuery.data && pluginOutputsQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {pluginOutputsQuery.data.map((output) => (
+                  <li
+                    key={output.id}
+                    className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                  >
+                    <code className="truncate font-mono">
+                      {output.plugin_name} {JSON.stringify(output.config)}
+                    </code>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-muted-foreground">
+                        {output.events_per_second}/s × {output.batch_size}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deletePluginOutput.mutate(output.id)}
                       >
                         Delete
                       </Button>

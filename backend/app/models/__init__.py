@@ -8,6 +8,7 @@ from app.models.kafka_output import KafkaOutput
 from app.models.lookup_attachment import LookupAttachment
 from app.models.lookup_table import LookupTable
 from app.models.mqtt_output import MQTTOutput
+from app.models.plugin_output import PluginOutput
 from app.models.project import Project
 from app.models.relationship import Relationship
 from app.models.rest_output import RestOutput
@@ -38,4 +39,5 @@ __all__ = [
     "GeoRoute",
     "KafkaOutput",
     "MQTTOutput",
+    "PluginOutput",
 ]

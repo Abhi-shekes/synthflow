@@ -1,6 +1,6 @@
-"""Two of Phase 5's "formal plugin framework" categories — output and AI
-provider plugins are deliberately not started here; see ROADMAP.md for
-why generator and rule-function plugins were the two cuts taken.
+"""Three of Phase 5's "formal plugin framework" categories — AI provider
+plugins are deliberately not started here; see ROADMAP.md for why
+generator, rule-function, and output plugins were the three cuts taken.
 
 A **generator plugin** is any installed Python package that declares one
 or more zero-argument callables under the `synthflow.generators`
@@ -37,16 +37,37 @@ function names live there, not here, to avoid a circular import; a
 plugin function collides with a built-in exactly the same way — built-in
 wins — the check just happens in expressions.py instead of here).
 
-Both kinds are discovered fresh on every call, not cached: a newly
+An **output plugin** is any installed package that declares a callable
+under `synthflow.outputs`:
+
+    [project.entry-points."synthflow.outputs"]
+    write_jsonl = "my_package.outputs:write_jsonl"
+
+Unlike Kafka/MQTT (first-party typed models with a fixed config shape —
+bootstrap_servers/topic, etc.), an output plugin's config shape isn't
+known until it's installed, so there's one generic `PluginOutput` model
+(plugin_name + a free-form JSON `config` column) instead of a new typed
+table per plugin. The plugin function receives `(config: dict,
+rows: list[dict])` — one batch of freshly generated rows — and delivers
+them however it wants; it can be sync or async (see
+app.services.plugin_output_producers, which runs it either way). It owns
+delivery only: SynthFlow's generic background loop still owns pacing
+(`events_per_second`) and batch loading, the same execution model as
+KafkaOutput/MQTTOutput (an `asyncio.Task` per output, not resumed on
+restart, single-process only) — see that module and
+app.services.stream_producers for the shared reasoning, not repeated
+here.
+
+All three kinds are discovered fresh on every call, not cached: a newly
 `pip install`ed plugin needs the *process* to restart before an
 already-running worker sees it (a filesystem-level cost, not something
 caching this module's own lookups would avoid or fix — see the plugin
 framework round's live-verification notes), but nothing here prevents
 picking it up sooner in a batch generation loop, at the cost of
-re-scanning entry points on every value/expression call that uses one.
-Left unoptimized deliberately: only expressions that actually call a
-plugin function pay this cost, and profiling a real slowdown before
-adding a cache beats guessing at one.
+re-scanning entry points on every value/expression/delivery call that
+uses one. Left unoptimized deliberately: only expressions/outputs that
+actually use a plugin pay this cost, and profiling a real slowdown
+before adding a cache beats guessing at one.
 
 Security note: a plugin is arbitrary Python code that runs with the same
 privileges as the backend process — there is no sandboxing. This is the
@@ -74,9 +95,11 @@ logger = logging.getLogger(__name__)
 PLUGIN_API_VERSION = 1
 ENTRY_POINT_GROUP = "synthflow.generators"
 RULE_FUNCTION_ENTRY_POINT_GROUP = "synthflow.rule_functions"
+OUTPUT_PLUGIN_ENTRY_POINT_GROUP = "synthflow.outputs"
 
 GeneratorPlugin = Callable[[], Any]
 RuleFunction = Callable[..., Any]
+OutputPlugin = Callable[[dict, list], Any]
 
 
 def _builtin_generators() -> dict[str, GeneratorPlugin]:
@@ -192,3 +215,40 @@ def generate_preset_value(preset: str) -> Any:
     if preset not in registry:
         raise ValueError(f"Unknown preset '{preset}'")
     return registry[preset]()
+
+
+def _discovered_output_plugins() -> dict[str, tuple[OutputPlugin, str]]:
+    """Third-party output plugins found via entry-point discovery. No
+    built-ins to collide against — Kafka/MQTT/REST/WebSocket/Database
+    outputs are separate first-party typed models, not part of this
+    registry at all."""
+    discovered: dict[str, tuple[OutputPlugin, str]] = {}
+    for entry_point in entry_points(group=OUTPUT_PLUGIN_ENTRY_POINT_GROUP):
+        if entry_point.name in discovered:
+            logger.warning(
+                "Output plugin '%s' from '%s' skipped — name already in use",
+                entry_point.name,
+                entry_point.dist.name if entry_point.dist else "?",
+            )
+            continue
+        fn = _load_entry_point(entry_point, "output plugin")
+        if fn is not None:
+            dist_name = entry_point.dist.name if entry_point.dist else "unknown"
+            discovered[entry_point.name] = (fn, dist_name)
+    return discovered
+
+
+def available_output_plugins() -> dict[str, OutputPlugin]:
+    """Every plugin_name currently usable on a PluginOutput — see
+    app.services.plugin_output_producers."""
+    return {name: fn for name, (fn, _dist) in _discovered_output_plugins().items()}
+
+
+def list_available_output_plugins() -> list[dict[str, str]]:
+    """Shaped for `GET /output-plugins` — see
+    app.api.routes.output_plugins, which the frontend uses to populate
+    the plugin_name picker on a PluginOutput without hardcoding names."""
+    return [
+        {"name": name, "source": f"plugin:{dist_name}"}
+        for name, (_fn, dist_name) in _discovered_output_plugins().items()
+    ]

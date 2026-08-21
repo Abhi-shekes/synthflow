@@ -16,7 +16,9 @@ from app.api.routes import (
     lookup_attachments,
     lookup_tables,
     mqtt_outputs,
+    output_plugins,
     outputs,
+    plugin_outputs,
     projects,
     relationships,
     rest_outputs,
@@ -30,16 +32,19 @@ from app.api.routes import (
     workflows,
 )
 from app.core.config import settings
+from app.services.plugin_output_producers import stop_all_plugin_outputs
 from app.services.stream_producers import stop_all_producers
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
-    # Kafka/MQTT producers are in-process background tasks (see
-    # app.services.stream_producers) — nothing else cancels them, so an
-    # unclean shutdown would otherwise leak a task per active output.
+    # Kafka/MQTT/plugin-output producers are in-process background tasks
+    # (see app.services.stream_producers and
+    # app.services.plugin_output_producers) — nothing else cancels them,
+    # so an unclean shutdown would otherwise leak a task per active output.
     await stop_all_producers()
+    await stop_all_plugin_outputs()
 
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
@@ -73,6 +78,8 @@ app.include_router(websocket_streams.router, prefix=settings.API_V1_PREFIX)
 app.include_router(timeline_replays.router, prefix=settings.API_V1_PREFIX)
 app.include_router(kafka_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(mqtt_outputs.router, prefix=settings.API_V1_PREFIX)
+app.include_router(plugin_outputs.router, prefix=settings.API_V1_PREFIX)
+app.include_router(output_plugins.router, prefix=settings.API_V1_PREFIX)
 app.include_router(outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(templates.router, prefix=settings.API_V1_PREFIX)
 app.include_router(starter_templates.router, prefix=settings.API_V1_PREFIX)
