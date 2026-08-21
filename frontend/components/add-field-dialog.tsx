@@ -258,6 +258,11 @@ export function AddFieldDialog({
               {errors.enum_values && (
                 <p className="text-sm text-destructive">{errors.enum_values.message}</p>
               )}
+              <p className="text-xs text-muted-foreground">
+                A value that looks numeric (e.g. a status code like{" "}
+                <span className="font-mono">200</span>) is generated as a
+                real number, not text.
+              </p>
             </div>
           )}
 

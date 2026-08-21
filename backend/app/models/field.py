@@ -72,6 +72,13 @@ class EntityField(Base):
     # the schema/route layer, not enforced by the database.
     preset: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    # Always configured as strings (e.g. "200", not 200), but a value that
+    # looks numeric comes out of generation as a real int/float, not a
+    # string — see app.services.lookup_tables.coerce_numeric, reused by
+    # app.services.generator's ENUM branch. This is what makes a weighted
+    # HTTP status code enum ("200"/"404"/"500" + enum_weights) produce real
+    # integers for API-behavior-simulation use cases, without a separate
+    # "value type" column.
     enum_values: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # Optional weights parallel to enum_values (same length, same order) for

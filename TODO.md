@@ -43,8 +43,9 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   route that bypassed the test suite's DB session override by importing
   `SessionLocal` directly instead of looking it up on the module each call.
 
-## Phase 4, parts 1–8: probability, trend, correlation, error injection,
-lookup tables, event triggers, log & security-event presets — done
+## Phase 4, parts 1–9: probability, trend, correlation, error injection,
+lookup tables, event triggers, log & security-event presets, API-behavior
+simulation — done
 
 Full detail for each lives in ROADMAP.md Phase 4; condensed here:
 
@@ -72,22 +73,27 @@ Full detail for each lives in ROADMAP.md Phase 4; condensed here:
   brute-force/SQLi/DDoS/port-scan/malware-alert security events). Not a new
   engine — slots into `_generate_value` exactly where `regex` already does,
   mutually exclusive with it.
-- 68 new tests across all eight, 124 passed / 3 skipped total, lint clean.
+- **API-behavior simulation**: turned out to need almost no new
+  machinery — latency is a FLOAT field with min/max, timeouts are
+  `ErrorInjection`'s existing `out_of_range`, a status code mix is a
+  weighted `ENUM` field. The one real gap: numeric-looking `enum_values`
+  (e.g. `"200"`) were generating as strings, not real ints — closed by
+  reusing `coerce_numeric` (renamed from lookup_tables' private `_coerce`
+  into shared infrastructure) in the `ENUM` branch of `_generate_value`.
+- 73 new tests across all nine, 129 passed / 3 skipped total, lint clean.
   Verified end-to-end in a browser for each (weighted enum distribution
   matched configured weights; linear trend gave an exact arithmetic
   sequence; temperature/humidity correlation Pearson r = -0.985; a rate-1
   null injection returned 10/10 nulls; a lookup attachment returned 10/10
   rows drawing the uploaded value; a temperature-range trigger annotated
-  10/10 rows; a failed-login preset returned 10/10 realistic event lines).
+  10/10 rows; a failed-login preset returned 10/10 realistic event lines;
+  a weighted status-code enum returned real ints at an 86.5%/200 split
+  against a configured 90% weight over 200 rows).
 
 ## Now — Phase 4, remainder
 
 Not started: timeline replay, geographic simulation, user-behavior
-simulation, API-behavior simulation. API-behavior simulation (status code
-mixes, latency, timeouts) may turn out mostly already covered by weighted
-enums + min/max numeric fields + error injection, similar to how
-correlation and lookup tables turned out to need little new machinery —
-worth checking before building anything new.
+simulation.
 
 ## Backlog (not started, roughly in order)
 

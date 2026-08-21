@@ -39,6 +39,7 @@ from app.models.trend import Trend
 from app.models.workflow import Workflow
 from app.services.expressions import ExpressionError, evaluate
 from app.services.log_generators import generate_log_line
+from app.services.lookup_tables import coerce_numeric
 from app.services.trends import generate_trend_value
 
 faker = Faker()
@@ -86,8 +87,14 @@ def _generate_value(field: EntityField) -> Any:
         if not field.enum_values:
             raise ValueError(f"Field '{field.name}' is type enum but has no enum_values")
         if field.enum_weights:
-            return random.choices(field.enum_values, weights=field.enum_weights, k=1)[0]
-        return random.choice(field.enum_values)
+            chosen = random.choices(field.enum_values, weights=field.enum_weights, k=1)[0]
+        else:
+            chosen = random.choice(field.enum_values)
+        # enum_values are always configured as strings (see EntityField), but
+        # a numeric-looking one — e.g. a weighted HTTP status code enum
+        # ("200", "404", "500") for API-behavior simulation — should come out
+        # as a real int/float in generated output, not stay a string.
+        return coerce_numeric(chosen)
 
     if field.field_type == FieldType.ARRAY:
         return [faker.word() for _ in range(random.randint(1, 3))]

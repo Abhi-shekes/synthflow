@@ -218,7 +218,24 @@ Goal: data behaves over time, not just at generation time.
       without a PRAGMA this app doesn't set.
 - [ ] Geographic simulation: GPS routes, speed, stops, traffic, delivery vehicles
 - [ ] User behavior simulation: login/logout/search/click/scroll/cart/purchase funnels
-- [ ] API behavior simulation: status code mixes, latency, timeouts for frontend testing
+- [x] API behavior simulation: status code mixes, latency, timeouts for frontend testing
+      — turned out to need almost no new machinery, the same "check
+      existing infra first" result as correlation and lookup tables.
+      Latency is just a FLOAT field with `min_value`/`max_value`; timeouts
+      are `ErrorInjection`'s existing `out_of_range` type pushing latency
+      past `max_value`; a status code *mix* is a weighted `ENUM` field
+      (`enum_values` + `enum_weights`, already built for the probability
+      engine). The one real gap: `enum_values` are always configured as
+      strings (`EntityField.enum_values: list[str]`), so a status-code enum
+      like `["200", "404", "500"]` was coming out of generation as the
+      *string* `"200"`, not the int `200` — wrong for a field meant to look
+      like a real HTTP status code. Closed by reusing
+      `app.services.lookup_tables.coerce_numeric` (already built for
+      CSV/Excel cell parsing, renamed from `_coerce` to make it shared
+      infrastructure) in the `ENUM` branch of `_generate_value`: a chosen
+      enum value that looks numeric comes out as a real int/float, anything
+      else stays a string. No schema change, no new model — one function
+      reused in one more place.
 - [x] Log generators: Kubernetes, Docker, Nginx, Linux, application logs
 - [x] Security event generator: SQLi, brute force, DDoS, port scan, failed login,
       malware events (for defensive tooling / detection testing only) —

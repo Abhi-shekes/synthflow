@@ -16,10 +16,16 @@ class LookupParseError(ValueError):
     pass
 
 
-def _coerce(value: Any) -> Any:
-    """CSV and Excel cells that look numeric come back as text; JSON already
-    carries native types and is left untouched by this (only called from the
-    CSV parser)."""
+def coerce_numeric(value: Any) -> Any:
+    """Text that looks numeric becomes a real int/float; anything else is
+    left untouched. CSV and Excel cells come back as text even when they're
+    numbers, unlike JSON which already carries native types — this is only
+    called where that text-vs-native gap actually exists: here for parsed
+    CSV cells, and reused by app.services.generator for weighted-enum
+    values, which are always configured as strings (app.models.field's
+    `enum_values: list[str]`) but should come out as real numbers in
+    generated output when they look like one, e.g. an HTTP status code
+    enum ("200", "404", "500") generating real ints instead of strings."""
     if value is None or value == "":
         return None
     try:
@@ -36,7 +42,7 @@ def _coerce(value: Any) -> Any:
 def _parse_csv(content: bytes) -> list[dict[str, Any]]:
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
-    return [{k: _coerce(v) for k, v in row.items() if k is not None} for row in reader]
+    return [{k: coerce_numeric(v) for k, v in row.items() if k is not None} for row in reader]
 
 
 def _parse_excel(content: bytes) -> list[dict[str, Any]]:
