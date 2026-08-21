@@ -11,6 +11,7 @@ from app.api.routes import (
     relationships,
     rest_outputs,
     rules,
+    trends,
     websocket_streams,
     workflows,
 )
@@ -33,6 +34,7 @@ app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
 app.include_router(relationships.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rules.router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflows.router, prefix=settings.API_V1_PREFIX)
+app.include_router(trends.router, prefix=settings.API_V1_PREFIX)
 app.include_router(database_connections.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rest_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(websocket_streams.router, prefix=settings.API_V1_PREFIX)

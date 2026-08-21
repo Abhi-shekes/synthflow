@@ -113,7 +113,11 @@ def push(
 
     try:
         rows = generate_rows(
-            entity.fields, payload.count, rules=entity.rules, workflows=entity.workflows
+            entity.fields,
+            payload.count,
+            rules=entity.rules,
+            workflows=entity.workflows,
+            trends=entity.trends,
         )
         rows_written = push_rows(connection, entity.fields, rows, table_name)
     except (ValueError, DatabaseOutputError) as exc:

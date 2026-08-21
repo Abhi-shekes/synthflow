@@ -13,6 +13,7 @@ from app.models import (  # noqa: F401
     Relationship,
     RestOutput,
     Rule,
+    Trend,
     User,
     WebSocketStream,
     Workflow,

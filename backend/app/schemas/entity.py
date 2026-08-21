@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.schemas.field import EntityFieldRead
 from app.schemas.rule import RuleRead
+from app.schemas.trend import TrendRead
 from app.schemas.workflow import WorkflowRead
 
 
@@ -26,6 +27,7 @@ class EntityRead(BaseModel):
     fields: list[EntityFieldRead] = []
     rules: list[RuleRead] = []
     workflows: list[WorkflowRead] = []
+    trends: list[TrendRead] = []
 
 
 class GenerateRequest(BaseModel):

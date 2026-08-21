@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { AddFieldDialog } from "@/components/add-field-dialog";
+import { AddTrendDialog } from "@/components/add-trend-dialog";
 import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
 import { AppShell } from "@/components/app-shell";
 import { StreamPreview } from "@/components/stream-preview";
@@ -26,7 +27,7 @@ import {
 import { api } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { useRequireAuth } from "@/lib/hooks";
-import type { FieldCreateInput, WorkflowCreateInput } from "@/lib/types";
+import type { FieldCreateInput, TrendCreateInput, WorkflowCreateInput } from "@/lib/types";
 
 interface RuleFormValues {
   condition: string;
@@ -104,6 +105,23 @@ export default function EntityDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete workflow"),
+  });
+
+  const addTrend = useMutation({
+    mutationFn: (values: TrendCreateInput) =>
+      api.createTrend(accessToken!, projectId, entityId, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not add trend"),
+  });
+
+  const deleteTrend = useMutation({
+    mutationFn: (trendId: string) => api.deleteTrend(accessToken!, projectId, entityId, trendId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete trend"),
   });
 
   const restOutputsQuery = useQuery({
@@ -354,6 +372,54 @@ export default function EntityDetailPage() {
                       Transitions:{" "}
                       {workflow.transitions.map((t) => `${t.source}→${t.target}`).join(", ")}
                     </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Trends</CardTitle>
+            {entity && (
+              <AddTrendDialog
+                entity={entity}
+                onSubmit={(v) => addTrend.mutate(v)}
+                isPending={addTrend.isPending}
+              />
+            )}
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Makes a numeric field&apos;s value a function of its row&apos;s
+              position within the batch (0, 1, 2, …) instead of an independent
+              random draw — e.g. a linear trend rises steadily across a
+              generated batch. Position resets to 0 on every generate call.
+            </p>
+            {entity?.trends.length === 0 && (
+              <p className="text-sm text-muted-foreground">No trends yet.</p>
+            )}
+            {entity && entity.trends.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {entity.trends.map((trend) => (
+                  <li
+                    key={trend.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">{fieldNameById.get(trend.field_id)}</span>
+                      <span className="ml-2 text-muted-foreground">
+                        {trend.trend_type.replaceAll("_", " ")} (
+                        {Object.entries(trend.params)
+                          .map(([k, v]) => `${k}=${v}`)
+                          .join(", ")}
+                        )
+                      </span>
+                    </span>
+                    <Button variant="ghost" size="sm" onClick={() => deleteTrend.mutate(trend.id)}>
+                      Delete
+                    </Button>
                   </li>
                 ))}
               </ul>

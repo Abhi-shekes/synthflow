@@ -72,6 +72,47 @@ export interface WorkflowCreateInput {
   transitions: WorkflowTransition[];
 }
 
+export type TrendType =
+  | "linear"
+  | "exponential"
+  | "logistic"
+  | "seasonal"
+  | "cyclic"
+  | "random_walk";
+
+export const TREND_TYPES: TrendType[] = [
+  "linear",
+  "exponential",
+  "logistic",
+  "seasonal",
+  "cyclic",
+  "random_walk",
+];
+
+export const TREND_PARAMS: Record<TrendType, string[]> = {
+  linear: ["start", "slope"],
+  exponential: ["start", "rate"],
+  logistic: ["capacity", "rate", "midpoint"],
+  seasonal: ["base", "amplitude", "period"],
+  cyclic: ["base", "amplitude", "period"],
+  random_walk: ["start", "step_size"],
+};
+
+export interface Trend {
+  id: string;
+  entity_id: string;
+  field_id: string;
+  trend_type: TrendType;
+  params: Record<string, number>;
+  created_at: string;
+}
+
+export interface TrendCreateInput {
+  field_id: string;
+  trend_type: TrendType;
+  params: Record<string, number>;
+}
+
 export interface Entity {
   id: string;
   project_id: string;
@@ -80,6 +121,7 @@ export interface Entity {
   fields: EntityField[];
   rules: Rule[];
   workflows: Workflow[];
+  trends: Trend[];
 }
 
 export interface Project {

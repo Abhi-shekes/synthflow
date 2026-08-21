@@ -11,6 +11,8 @@ import type {
   RelationshipCreateInput,
   RestOutput,
   Rule,
+  Trend,
+  TrendCreateInput,
   User,
   WebSocketStream,
   Workflow,
@@ -349,6 +351,23 @@ export const api = {
   deleteWebSocketStream: (token: string, projectId: string, entityId: string, streamId: string) =>
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}/websocket-streams/${streamId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listTrends: (token: string, projectId: string, entityId: string) =>
+    request<Trend[]>(`/api/v1/projects/${projectId}/entities/${entityId}/trends`, {}, token),
+
+  createTrend: (token: string, projectId: string, entityId: string, data: TrendCreateInput) =>
+    request<Trend>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/trends`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteTrend: (token: string, projectId: string, entityId: string, trendId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/trends/${trendId}`,
       { method: "DELETE" },
       token
     ),

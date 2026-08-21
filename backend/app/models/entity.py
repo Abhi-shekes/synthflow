@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.field import EntityField
     from app.models.project import Project
     from app.models.rule import Rule
+    from app.models.trend import Trend
     from app.models.workflow import Workflow
 
 
@@ -31,4 +32,7 @@ class Entity(Base):
     )
     workflows: Mapped[list["Workflow"]] = relationship(
         cascade="all, delete-orphan", order_by="Workflow.created_at"
+    )
+    trends: Mapped[list["Trend"]] = relationship(
+        cascade="all, delete-orphan", order_by="Trend.created_at"
     )

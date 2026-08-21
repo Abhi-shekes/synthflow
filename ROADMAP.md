@@ -115,7 +115,15 @@ Goal: generated data can leave the platform through more than a JSON blob.
 
 Goal: data behaves over time, not just at generation time.
 
-- [ ] Trend engine: linear, seasonal, cyclic, random walk, exponential, logistic
+- [x] Trend engine: linear, seasonal, cyclic, random walk, exponential, logistic
+      — a `Trend` attaches to one numeric field; its value is a function of
+      the row's 0-indexed position within the *current batch* (resolved
+      design question: position resets every `generate` call rather than
+      persisting across a WebSocket stream's ticks — see Trend's docstring
+      for why, and what that means for streaming specifically). `increasing`/
+      `decreasing` from the spec aren't separate types — they're `linear`
+      with the slope's sign, a deliberate consolidation of two labels that
+      were the same math.
 - [ ] Correlation engine: link fields/entities so one signal drives another
 - [x] Probability engine: weighted categorical generation — `EntityField.enum_weights`,
       an optional array parallel to `enum_values` (`None` keeps the prior

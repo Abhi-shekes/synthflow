@@ -39,69 +39,52 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   to leak across a restart. This only works because a client connection
   gives the loop something to hang off of — Kafka/MQTT (not started) won't
   have that and will need a real background-task execution model instead.
-- Every output verified against real infrastructure, not just the app's own
-  tests: pushed rows into a separate throwaway Postgres container and
-  confirmed with `psql`; fetched REST/WebSocket outputs with plain
-  unauthenticated requests from outside the app entirely.
 - Two real bugs found and fixed *while verifying*, not by inspection: Base
   UI's `Select.Value` showing raw ids instead of labels (across every
   affected picker, not just the one being tested), and a websocket route
   that bypassed the test suite's DB session override by importing
   `SessionLocal` directly instead of looking it up on the module each call.
-  Both were only caught because verification exercised the real UI/DB path
-  end-to-end instead of stopping at "the code looks right."
 
-## Phase 4, part 1: probability engine — done
+## Phase 4, parts 1–2: probability + trend engines — done
 
-- `EntityField.enum_weights`: optional array parallel to `enum_values`.
-  `None` keeps the prior uniform `random.choice`; present, generation uses
-  `random.choices(..., weights=...)` instead. Validated server-side
-  (matching length, non-negative, at least one positive) at both
-  field-create and field-update time.
-- No changes needed anywhere else — formulas/rules/relationships/workflows
-  all consume a field's generated value the same way regardless of how it
-  was picked, so weighting is fully contained in one branch of
-  `_generate_value`. 8 new tests, 69 passed / 3 skipped total, lint clean.
-- Verified end-to-end in a browser against the full docker-compose stack:
-  configured chrome/firefox/edge/other at weights 65/10/5/20, generated 300
-  real rows through the UI, and the actual distribution came back
-  64%/11%/5.3%/20% — matches the configured weights closely, not just "some
-  values appeared."
+- `EntityField.enum_weights`: optional array parallel to `enum_values` for
+  weighted-random selection (`random.choices`); `None` keeps prior uniform
+  behavior. Validated server-side at create/update time.
+- `Trend`: attaches to one numeric field; its value is a function of the
+  row's 0-indexed position within the *current batch* — linear, exponential,
+  logistic, seasonal, cyclic, random_walk, each with type-specific `params`
+  plus optional `noise`. Resolved design question: **position resets to 0
+  every `generate` call** rather than persisting across a WebSocket stream's
+  ticks — a stream replays the trend across each push's batch_size rows
+  instead of continuing smoothly tick to tick. That's a real, documented
+  limitation (in `Trend`'s docstring), not a silent gap — genuine cross-tick
+  continuity would need trend state persisted on the stream itself, not
+  built yet. `increasing`/`decreasing` from the spec are `linear` with the
+  slope's sign, not separate types.
+- Neither feature needed changes anywhere else in the pipeline — formulas,
+  rules, relationships, and workflows all just consume whatever value a
+  field ends up with, regardless of how it was produced. 18 new tests
+  across both, 79 passed / 3 skipped total, lint clean.
+- Verified end-to-end in a browser against the full docker-compose stack for
+  both: a weighted enum's real distribution matched its configured weights
+  closely (65/10/5/20 configured → 64/11/5.3/20 observed over 300 rows); a
+  linear trend (start=20, slope=0.5) produced an exact 20, 20.5, 21, ...,
+  24.5 sequence over 10 rows, not just "some variation."
 
-## Now — Phase 4, part 2: trend engine
+## Now — Phase 4, part 3: correlation engine
 
-Not started. Has a real design question to resolve before modeling it —
-resolve this before writing models/routes, the same way stateful entities,
-streaming, and the plugin-manager shape all got a design pass first rather
-than being squeezed in.
-
-**The open question:** a `generate` call produces an unordered batch of N
-rows — does a linear/seasonal/cyclic/random-walk/exponential/logistic trend
-apply *across that batch* (row N's value is a function of its position in
-the batch, e.g. sorted by an implicit timestamp) or *across ticks of a live
-stream* (each WebSocket push is the next point on the trend, which the
-connection-scoped streaming design from Phase 3 makes natural to hang state
-off of)? Those are different features wearing the same name — a batch trend
-needs no persistent state, a stream trend needs the WebSocket handler to
-remember where it left off between ticks. Decide which one (or model both,
-as genuinely separate concepts with separate names) before writing code.
-
-The **correlation engine** (link fields/entities so one signal drives
-another) needs this same question answered first — correlating two fields
-implies some shared ordering or shared per-row position between them, which
-doesn't exist yet in the flat-batch model.
-
-## Backlog (not started, roughly in order)
-
-- [ ] Generated-field and auto-increment field support (Phase 2)
-- [ ] Cross-entity rules (Phase 2, stretch)
-- [ ] Kafka/MQTT streaming outputs (Phase 3, needs the background-task
-      execution model noted in the Phase 3 summary above)
-- [ ] Error injection, timeline replay, lookup tables, geographic/user-
-      behavior/API-behavior simulation, log + security-event generators
-      (Phase 4, remainder — log/security-event generators are mostly "more
-      Faker-shaped generation content," likely simpler than they sound once
-      trend/probability exist to build on)
+Not started. Needs the same "what does a row's position mean" foundation
+that trends just established — correlating two fields/entities (e.g.
+temperature ↑ → humidity ↓) implies they share some ordering or common
+per-row position, which trends now provide (batch position) but nothing
+before did. Reasonable approach: let a correlated field be defined as a
+function of *another field's already-generated value on the same row*
+(e.g. `humidity = 100 - temperature * factor`) rather than inventing new
+cross-field machinery — check whether this is actually already expressible
+with the existing formula engine (`app/services/expressions.py`) before
+building a separate "correlation" concept. If a formula can already say
+`humidity = 100 - temperature * 0.8`, the "correlation engine" may just be
+UI/framing on top of formulas for two numeric fields, not new backend code.
 
 ## Backlog (not started, roughly in order)
 
@@ -109,6 +92,11 @@ doesn't exist yet in the flat-batch model.
 - [ ] Cross-entity rules (Phase 2, stretch)
 - [ ] Kafka/MQTT streaming outputs (Phase 3, needs the background-task
       execution model noted above)
+- [ ] Error injection, timeline replay, lookup tables, geographic/user-
+      behavior/API-behavior simulation, log + security-event generators
+      (Phase 4, remainder — log/security-event generators are mostly "more
+      Faker-shaped generation content," likely simpler than they sound now
+      that trend/probability exist to build on)
 
 ## Notes for future me
 
@@ -119,8 +107,9 @@ doesn't exist yet in the flat-batch model.
 - AI stays fully optional and out of the critical path until Phase 6 — don't let it
   leak into the core data model or generation engine before then.
 - `app/services/expressions.py` is shared infrastructure — reuse it for anything
-  else that needs a user-authored expression (event triggers, cross-entity rules)
-  rather than writing a second evaluator.
+  else that needs a user-authored expression (event triggers, cross-entity rules,
+  possibly correlation — see Phase 4 part 3 above) rather than writing a second
+  evaluator.
 - When verifying Select/dropdown UI by browser automation, screenshot the
   *closed* control after selecting, not just the open dropdown or the
   eventual result — that's the gap that let the UUID-label bug ship.

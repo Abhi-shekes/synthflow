@@ -5,6 +5,7 @@ from app.models.project import Project
 from app.models.relationship import Relationship
 from app.models.rest_output import RestOutput
 from app.models.rule import Rule
+from app.models.trend import Trend
 from app.models.user import User
 from app.models.websocket_stream import WebSocketStream
 from app.models.workflow import Workflow
@@ -20,4 +21,5 @@ __all__ = [
     "DatabaseConnection",
     "RestOutput",
     "WebSocketStream",
+    "Trend",
 ]

@@ -7,6 +7,9 @@ field draws real values from its already-generated parent), formula fields
 randomized), rules (a boolean expression a generated row must satisfy,
 enforced by discard-and-retry), and workflows (a field's value comes from a
 random walk over a state machine instead of being randomized independently).
+Phase 4 adds trends (a numeric field's value as a function of its row's
+position within the current batch — see app.models.trend.Trend) and weighted
+enum fields (app.models.field.EntityField.enum_weights).
 """
 
 import csv
@@ -29,8 +32,10 @@ from app.models.entity import Entity
 from app.models.field import EntityField, FieldType
 from app.models.relationship import Relationship
 from app.models.rule import Rule
+from app.models.trend import Trend
 from app.models.workflow import Workflow
 from app.services.expressions import ExpressionError, evaluate
+from app.services.trends import generate_trend_value
 
 faker = Faker()
 
@@ -147,11 +152,22 @@ def _generate_one_row(
     seen_per_field: dict[str, set],
     unique_fk_queues: dict[str, list[Any]],
     workflows: dict[str, Workflow],
+    trends: dict[str, Trend],
+    trend_state: dict[str, dict],
+    position: int,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {}
     for field in fields:
         if field.formula:
             row[field.name] = _evaluate_formula(field, row)
+            continue
+
+        if field.name in trends:
+            value = generate_trend_value(trends[field.name], position, trend_state[field.name])
+            if field.field_type == FieldType.INTEGER:
+                row[field.name] = round(value)
+            else:
+                row[field.name] = round(value, 2)
             continue
 
         if field.name in workflows:
@@ -188,6 +204,7 @@ def generate_rows(
     fk_pools: dict[str, list[Any]] | None = None,
     rules: list[Rule] | None = None,
     workflows: list[Workflow] | None = None,
+    trends: list[Trend] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate `count` rows for `fields`.
 
@@ -207,10 +224,19 @@ def generate_rows(
     comes from a random walk over the graph (see _generate_state_walk)
     instead of the type-based generator, and the walk itself is exposed
     alongside it as `<field>_history`.
+
+    `trends` make a numeric field's value a function of its row's 0-indexed
+    position within this call's batch (see app.services.trends) instead of
+    an independent random draw — position always starts at 0 here, so a
+    trend replays from its start every `generate_rows` call rather than
+    continuing across calls (see Trend's docstring for what that means for a
+    WebSocket stream's repeated ticks).
     """
     fk_pools = fk_pools or {}
     rules = rules or []
     workflows_by_field = {w.field.name: w for w in (workflows or [])}
+    trends_by_field = {t.field.name: t for t in (trends or [])}
+    trend_state: dict[str, dict] = {name: {} for name in trends_by_field}
     seen_per_field: dict[str, set] = {
         f.name: set() for f in fields if f.unique and f.name not in fk_pools
     }
@@ -222,11 +248,18 @@ def generate_rows(
             unique_fk_queues[field.name] = queue
 
     rows: list[dict[str, Any]] = []
-    for _ in range(count):
+    for position in range(count):
         row = None
         for _attempt in range(MAX_RULE_ATTEMPTS if rules else 1):
             candidate = _generate_one_row(
-                fields, fk_pools, seen_per_field, unique_fk_queues, workflows_by_field
+                fields,
+                fk_pools,
+                seen_per_field,
+                unique_fk_queues,
+                workflows_by_field,
+                trends_by_field,
+                trend_state,
+                position,
             )
             if _row_satisfies_rules(candidate, rules):
                 row = candidate
@@ -312,7 +345,12 @@ def generate_project(
             fk_pools[source_field.name] = pool
 
         generated[entity_id] = generate_rows(
-            entity.fields, counts.get(entity_id, 10), fk_pools, entity.rules, entity.workflows
+            entity.fields,
+            counts.get(entity_id, 10),
+            fk_pools,
+            entity.rules,
+            entity.workflows,
+            entity.trends,
         )
 
     return generated

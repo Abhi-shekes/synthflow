@@ -90,7 +90,11 @@ def fetch_public_rest_output(
 
     try:
         return generate_rows(
-            entity.fields, resolved_count, rules=entity.rules, workflows=entity.workflows
+            entity.fields,
+            resolved_count,
+            rules=entity.rules,
+            workflows=entity.workflows,
+            trends=entity.trends,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

@@ -97,7 +97,11 @@ def _generate_batch_sync(token: str) -> tuple[list[dict], float] | None:
             return None
         entity = stream.entity
         rows = generate_rows(
-            entity.fields, stream.batch_size, rules=entity.rules, workflows=entity.workflows
+            entity.fields,
+            stream.batch_size,
+            rules=entity.rules,
+            workflows=entity.workflows,
+            trends=entity.trends,
         )
         return rows, stream.events_per_second
     finally:
