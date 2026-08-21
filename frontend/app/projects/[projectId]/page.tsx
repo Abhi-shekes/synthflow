@@ -7,11 +7,20 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
+import { AddDatabaseConnectionDialog } from "@/components/add-database-connection-dialog";
 import { AddRelationshipDialog } from "@/components/add-relationship-dialog";
 import { AppShell } from "@/components/app-shell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -23,7 +32,7 @@ import {
 import { api } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { useRequireAuth } from "@/lib/hooks";
-import type { RelationshipCreateInput } from "@/lib/types";
+import type { DatabaseConnectionCreateInput, RelationshipCreateInput } from "@/lib/types";
 
 interface FormValues {
   name: string;
@@ -51,6 +60,12 @@ export default function ProjectDetailPage() {
   const relationshipsQuery = useQuery({
     queryKey: ["relationships", projectId],
     queryFn: () => api.listRelationships(accessToken!, projectId),
+    enabled: !!accessToken,
+  });
+
+  const connectionsQuery = useQuery({
+    queryKey: ["database-connections", projectId],
+    queryFn: () => api.listDatabaseConnections(accessToken!, projectId),
     enabled: !!accessToken,
   });
 
@@ -88,6 +103,52 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["relationships", projectId] });
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete relationship"),
+  });
+
+  const createConnection = useMutation({
+    mutationFn: (values: DatabaseConnectionCreateInput) =>
+      api.createDatabaseConnection(accessToken!, projectId, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["database-connections", projectId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not add connection"),
+  });
+
+  const deleteConnection = useMutation({
+    mutationFn: (connectionId: string) =>
+      api.deleteDatabaseConnection(accessToken!, projectId, connectionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["database-connections", projectId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete connection"),
+  });
+
+  const testConnection = useMutation({
+    mutationFn: (connectionId: string) =>
+      api.testDatabaseConnection(accessToken!, projectId, connectionId),
+    onSuccess: (result) => {
+      if (result.ok) toast.success(result.detail);
+      else toast.error(result.detail);
+    },
+    onError: (error: Error) => toast.error(error.message || "Test failed"),
+  });
+
+  const [pushConnectionId, setPushConnectionId] = useState("");
+  const [pushEntityId, setPushEntityId] = useState("");
+  const [pushCount, setPushCount] = useState(10);
+
+  const pushToDatabase = useMutation({
+    mutationFn: () =>
+      api.pushToDatabaseConnection(
+        accessToken!,
+        projectId,
+        pushConnectionId,
+        pushEntityId,
+        pushCount
+      ),
+    onSuccess: (result) =>
+      toast.success(`Wrote ${result.rows_written} row(s) to '${result.table}'`),
+    onError: (error: Error) => toast.error(error.message || "Push failed"),
   });
 
   const [generateCount, setGenerateCount] = useState(10);
@@ -247,6 +308,112 @@ export default function ProjectDetailPage() {
                   </li>
                 ))}
               </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Database connections</CardTitle>
+            <AddDatabaseConnectionDialog
+              onSubmit={(v) => createConnection.mutate(v)}
+              isPending={createConnection.isPending}
+            />
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Write generated rows straight into an external database instead
+              of just downloading them. PostgreSQL only for now.
+            </p>
+            {connectionsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No connections yet.</p>
+            )}
+            {connectionsQuery.data && connectionsQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {connectionsQuery.data.map((conn) => (
+                  <li
+                    key={conn.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">{conn.name}</span>{" "}
+                      <Badge variant="secondary">{conn.dialect}</Badge>{" "}
+                      <span className="text-muted-foreground">
+                        {conn.host}:{conn.port}/{conn.database}
+                      </span>
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => testConnection.mutate(conn.id)}
+                        disabled={testConnection.isPending}
+                      >
+                        Test
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteConnection.mutate(conn.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {connectionsQuery.data && connectionsQuery.data.length > 0 && entities.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-md border p-3">
+                <p className="text-sm font-medium">Push data to a connection</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select value={pushConnectionId} onValueChange={(v) => setPushConnectionId(v ?? "")}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue>
+                        {(v: string) =>
+                          v ? connectionsQuery.data?.find((c) => c.id === v)?.name : "Connection"
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {connectionsQuery.data.map((conn) => (
+                        <SelectItem key={conn.id} value={conn.id}>
+                          {conn.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={pushEntityId} onValueChange={(v) => setPushEntityId(v ?? "")}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue>
+                        {(v: string) => (v ? entities.find((e) => e.id === v)?.name : "Entity")}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {entities.map((e) => (
+                        <SelectItem key={e.id} value={e.id}>
+                          {e.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={5000}
+                    value={pushCount}
+                    onChange={(e) => setPushCount(Number(e.target.value))}
+                    className="w-24"
+                  />
+                  <Button
+                    onClick={() => pushToDatabase.mutate()}
+                    disabled={pushToDatabase.isPending || !pushConnectionId || !pushEntityId}
+                  >
+                    {pushToDatabase.isPending ? "Pushing…" : "Push"}
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

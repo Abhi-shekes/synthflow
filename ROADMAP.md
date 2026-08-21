@@ -74,7 +74,14 @@ Goal: generated data can leave the platform through more than a JSON blob.
       extra generation-time columns like a workflow field's `<field>_history`
       that CSV drops, since CSV is a strict fixed-column format and Excel
       isn't.
-- [ ] Database connectors: PostgreSQL, MySQL, MongoDB
+- [x] Database connectors: PostgreSQL — a per-project `DatabaseConnection`
+      (host/port/credentials, password write-only and stored unencrypted —
+      documented, not hidden) plus test-connection and push-generated-rows
+      actions; table/column creation goes through SQLAlchemy Core with
+      validated identifiers, never string-formatted SQL. MySQL/MongoDB are
+      modeled (`DatabaseDialect`) but rejected at push time until those
+      drivers are added — same "model it, implement what's tested" approach
+      as `many_to_many` in the relationship builder above.
 - [ ] Kafka producer output
 - [ ] MQTT publisher output
 - [ ] WebSocket streaming output

@@ -1,4 +1,8 @@
 import type {
+  DatabaseConnection,
+  DatabaseConnectionCreateInput,
+  DatabaseConnectionTestResult,
+  DatabasePushResult,
   Entity,
   FieldCreateInput,
   Project,
@@ -240,6 +244,55 @@ export const api = {
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}/workflows/${workflowId}`,
       { method: "DELETE" },
+      token
+    ),
+
+  listDatabaseConnections: (token: string, projectId: string) =>
+    request<DatabaseConnection[]>(
+      `/api/v1/projects/${projectId}/database-connections`,
+      {},
+      token
+    ),
+
+  createDatabaseConnection: (
+    token: string,
+    projectId: string,
+    data: DatabaseConnectionCreateInput
+  ) =>
+    request<DatabaseConnection>(
+      `/api/v1/projects/${projectId}/database-connections`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteDatabaseConnection: (token: string, projectId: string, connectionId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/database-connections/${connectionId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  testDatabaseConnection: (token: string, projectId: string, connectionId: string) =>
+    request<DatabaseConnectionTestResult>(
+      `/api/v1/projects/${projectId}/database-connections/${connectionId}/test`,
+      { method: "POST" },
+      token
+    ),
+
+  pushToDatabaseConnection: (
+    token: string,
+    projectId: string,
+    connectionId: string,
+    entityId: string,
+    count: number,
+    tableName?: string
+  ) =>
+    request<DatabasePushResult>(
+      `/api/v1/projects/${projectId}/database-connections/${connectionId}/push`,
+      {
+        method: "POST",
+        body: JSON.stringify({ entity_id: entityId, count, table_name: tableName || null }),
+      },
       token
     ),
 };

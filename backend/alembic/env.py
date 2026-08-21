@@ -6,6 +6,7 @@ from alembic import context
 from app.core.config import settings
 from app.db.base import Base
 from app.models import (  # noqa: F401
+    DatabaseConnection,
     Entity,
     EntityField,
     Project,

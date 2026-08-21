@@ -1,7 +1,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, entities, health, projects, relationships, rules, workflows
+from app.api.routes import (
+    auth,
+    database_connections,
+    entities,
+    health,
+    projects,
+    relationships,
+    rules,
+    workflows,
+)
 from app.core.config import settings
 
 app = FastAPI(title=settings.PROJECT_NAME)
@@ -21,3 +30,4 @@ app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
 app.include_router(relationships.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rules.router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflows.router, prefix=settings.API_V1_PREFIX)
+app.include_router(database_connections.router, prefix=settings.API_V1_PREFIX)

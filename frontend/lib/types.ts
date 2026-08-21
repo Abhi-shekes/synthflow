@@ -135,3 +135,39 @@ export interface RelationshipCreateInput {
   target_entity_id: string;
   target_field_id: string;
 }
+
+export type DatabaseDialect = "postgresql" | "mysql";
+
+export const DATABASE_DIALECTS: DatabaseDialect[] = ["postgresql", "mysql"];
+
+export interface DatabaseConnection {
+  id: string;
+  project_id: string;
+  name: string;
+  dialect: DatabaseDialect;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  created_at: string;
+}
+
+export interface DatabaseConnectionCreateInput {
+  name: string;
+  dialect: DatabaseDialect;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+}
+
+export interface DatabaseConnectionTestResult {
+  ok: boolean;
+  detail: string;
+}
+
+export interface DatabasePushResult {
+  table: string;
+  rows_written: number;
+}

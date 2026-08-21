@@ -59,26 +59,61 @@ end-to-end in a browser for each. Known simplifications, carried forward:
   fixed-column format, Excel isn't, so this isn't an inconsistency to fix
   later, it's intentional.
 
-## Now — Phase 3, part 2: REST output, plugin manager, DB connectors
+## Phase 3, part 2: database connectors — done
 
-- [ ] Output plugin manager: a per-project config of which output(s) are
-      enabled, modeled so Phase 5's "install only REST" story is possible
-      later without a rewrite (see Notes below). Don't build this as an empty
-      shell of toggles for things that don't work yet — let it grow out of
-      the DB-connector config below, which actually needs persisted
-      per-project settings (host/port/credentials/table mapping).
+- [x] `DatabaseConnection` model (project-scoped): name, dialect, host, port,
+      database, username, password (write-only — never returned by the read
+      API; stored unencrypted, documented plainly in both the model
+      docstring and the UI rather than implying more security than exists)
+- [x] Test-connection action (`POST .../test`) and push action
+      (`POST .../push`: generate N rows for one entity, respecting its rules
+      and workflows, then create-if-not-exists the target table and insert)
+- [x] Safe by construction, not by validation alone: table/column definitions
+      go through SQLAlchemy Core `Table`/`Column` and parameterized
+      `insert()` — never string-formatted SQL — with identifier names
+      additionally checked against a strict `^[A-Za-z_][A-Za-z0-9_]{0,62}$`
+      pattern so a bad name fails fast with a clear message
+- [x] Scoped to PostgreSQL for v1 — matches the driver already vendored for
+      the app's own control-plane DB. MySQL is modeled (`DatabaseDialect`)
+      for forward-compat but `push`/`test` reject it with a clear 400 until
+      that driver is added. MongoDB isn't modeled at all yet — its
+      table/document paradigm doesn't map onto this Core-table approach, so
+      it needs its own path, not a third branch bolted onto this one.
+- [x] Frontend: a Database Connections card on the project page (add/test/
+      delete) plus a push form (connection + entity + count)
+- Verified for real, not just via the app's own tests: spun up a *separate*
+  throwaway Postgres container on the same docker network (simulating a
+  genuinely external database), added the connection through the UI, tested
+  it, pushed 12 rows, and independently queried that external Postgres
+  directly (`psql`) to confirm the table and rows actually landed there —
+  not just that the UI showed a success toast.
+- The backend test suite includes real push/create-table/idempotent-create
+  tests too, but they're skip-guarded behind `TEST_EXTERNAL_PG_URL` so normal
+  `pytest` runs don't depend on a live external Postgres being reachable.
+- Bug found and fixed along the way (affects more than this feature): Base
+  UI's `Select.Value` falls back to stringifying the raw `value` when it has
+  no `items` map to resolve a label from — every `<Select>` in this app whose
+  value is an id (not the same string as its label) was showing raw UUIDs
+  once closed, not just the new database-connection pickers. Fixed by giving
+  `SelectValue` a function-`children` label lookup in
+  `add-relationship-dialog.tsx`, `add-workflow-dialog.tsx`, and the project
+  page's push form. This had been shipping unnoticed because verification
+  up to now only ever checked the *result* of a selection (the created
+  relationship/workflow), never a screenshot of the closed dropdown itself.
+
+## Now — Phase 3, part 3: REST output + plugin manager
+
 - [ ] REST output: likely just documentation/framing rather than new code —
       `POST .../generate` already IS the REST output; decide if this item is
       "expose it as a stable read endpoint distinct from the generate action"
       or if it's already satisfied
-- [ ] Database connectors: write generated rows into a real Postgres/MySQL/
-      Mongo target the user configures (host, port, credentials, database,
-      table-per-entity mapping), instead of just returning them. Needs: a
-      "test connection" action, safe identifier handling (SQLAlchemy
-      quoting, never raw string interpolation into DDL/DML), and a
-      write-only password field (never echoed back in API responses — this
-      repo doesn't have secret encryption-at-rest yet, so say so plainly in
-      the UI rather than implying more security than exists)
+- [ ] Output plugin manager: a per-project config of which output(s) are
+      enabled, modeled so Phase 5's "install only REST" story is possible
+      later without a rewrite. `DatabaseConnection` is the first real
+      instance of "persisted per-project output config" — look at whether a
+      plugin manager should generalize that model (one `Output` table with a
+      polymorphic config blob) or stay as separate typed tables per output
+      kind before building it, don't just default to one shape
 - [ ] Streaming outputs (Kafka, MQTT, WebSocket) — biggest lift, needs the
       async execution model called out below; do this last in the phase
 

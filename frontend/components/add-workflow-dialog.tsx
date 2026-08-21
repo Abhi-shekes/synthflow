@@ -118,7 +118,11 @@ export function AddWorkflowDialog({
             <Label>Field</Label>
             <Select value={fieldId} onValueChange={(v) => setValue("field_id", v ?? "")}>
               <SelectTrigger>
-                <SelectValue placeholder="Select field" />
+                <SelectValue>
+                  {(v: string) =>
+                    v ? fieldsWithoutWorkflow.find((f) => f.id === v)?.name : "Select field"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {fieldsWithoutWorkflow.map((f) => (

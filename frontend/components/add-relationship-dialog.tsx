@@ -118,7 +118,9 @@ export function AddRelationshipDialog({
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select entity" />
+                  <SelectValue>
+                    {(v: string) => (v ? entities.find((e) => e.id === v)?.name : "Select entity")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {entities.map((e) => (
@@ -137,7 +139,11 @@ export function AddRelationshipDialog({
                 disabled={!sourceEntity}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select field" />
+                  <SelectValue>
+                    {(v: string) =>
+                      v ? sourceEntity?.fields.find((f) => f.id === v)?.name : "Select field"
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {sourceEntity?.fields.map((f) => (
@@ -164,7 +170,9 @@ export function AddRelationshipDialog({
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select entity" />
+                  <SelectValue>
+                    {(v: string) => (v ? entities.find((e) => e.id === v)?.name : "Select entity")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {entities
@@ -185,7 +193,11 @@ export function AddRelationshipDialog({
                 disabled={!targetEntity}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select field" />
+                  <SelectValue>
+                    {(v: string) =>
+                      v ? targetEntity?.fields.find((f) => f.id === v)?.name : "Select field"
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {targetEntity?.fields.map((f) => (
