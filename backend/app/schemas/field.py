@@ -2,7 +2,7 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.field import FieldType
+from app.models.field import FieldType, LogPreset
 
 
 class EntityFieldCreate(BaseModel):
@@ -16,6 +16,7 @@ class EntityFieldCreate(BaseModel):
     min_value: float | None = None
     max_value: float | None = None
     regex: str | None = None
+    preset: LogPreset | None = None
     enum_values: list[str] | None = None
     enum_weights: list[float] | None = None
     formula: str | None = None
@@ -32,6 +33,7 @@ class EntityFieldUpdate(BaseModel):
     min_value: float | None = None
     max_value: float | None = None
     regex: str | None = None
+    preset: LogPreset | None = None
     enum_values: list[str] | None = None
     enum_weights: list[float] | None = None
     formula: str | None = None
@@ -52,6 +54,7 @@ class EntityFieldRead(BaseModel):
     min_value: float | None
     max_value: float | None
     regex: str | None
+    preset: LogPreset | None
     enum_values: list[str] | None
     enum_weights: list[float] | None
     formula: str | None

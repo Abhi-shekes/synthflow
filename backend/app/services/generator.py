@@ -38,6 +38,7 @@ from app.models.rule import Rule
 from app.models.trend import Trend
 from app.models.workflow import Workflow
 from app.services.expressions import ExpressionError, evaluate
+from app.services.log_generators import generate_log_line
 from app.services.trends import generate_trend_value
 
 faker = Faker()
@@ -51,6 +52,8 @@ WORKFLOW_STOP_PROBABILITY = 0.35
 
 def _generate_value(field: EntityField) -> Any:
     if field.field_type == FieldType.STRING:
+        if field.preset:
+            return generate_log_line(field.preset)
         if field.regex:
             return exrex.getone(field.regex)
         return faker.word()

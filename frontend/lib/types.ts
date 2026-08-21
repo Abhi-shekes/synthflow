@@ -25,6 +25,33 @@ export const FIELD_TYPES: FieldType[] = [
   "json",
 ];
 
+export type LogPreset =
+  | "nginx_access_log"
+  | "docker_log"
+  | "kubernetes_event"
+  | "linux_syslog"
+  | "application_log"
+  | "failed_login"
+  | "brute_force"
+  | "sqli_attempt"
+  | "ddos_attempt"
+  | "port_scan"
+  | "malware_alert";
+
+export const LOG_PRESETS: LogPreset[] = [
+  "nginx_access_log",
+  "docker_log",
+  "kubernetes_event",
+  "linux_syslog",
+  "application_log",
+  "failed_login",
+  "brute_force",
+  "sqli_attempt",
+  "ddos_attempt",
+  "port_scan",
+  "malware_alert",
+];
+
 export interface EntityField {
   id: string;
   entity_id: string;
@@ -38,6 +65,7 @@ export interface EntityField {
   min_value: number | null;
   max_value: number | null;
   regex: string | null;
+  preset: LogPreset | null;
   enum_values: string[] | null;
   enum_weights: number[] | null;
   formula: string | null;
@@ -224,6 +252,7 @@ export interface FieldCreateInput {
   min_value?: number | null;
   max_value?: number | null;
   regex?: string | null;
+  preset?: LogPreset | null;
   enum_values?: string[] | null;
   enum_weights?: number[] | null;
   formula?: string | null;

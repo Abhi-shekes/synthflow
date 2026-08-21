@@ -219,9 +219,30 @@ Goal: data behaves over time, not just at generation time.
 - [ ] Geographic simulation: GPS routes, speed, stops, traffic, delivery vehicles
 - [ ] User behavior simulation: login/logout/search/click/scroll/cart/purchase funnels
 - [ ] API behavior simulation: status code mixes, latency, timeouts for frontend testing
-- [ ] Log generators: Kubernetes, Docker, Nginx, Linux, application logs
-- [ ] Security event generator: SQLi, brute force, DDoS, port scan, failed login,
-      malware events (for defensive tooling / detection testing only)
+- [x] Log generators: Kubernetes, Docker, Nginx, Linux, application logs
+- [x] Security event generator: SQLi, brute force, DDoS, port scan, failed login,
+      malware events (for defensive tooling / detection testing only) —
+      both bullets share one mechanism rather than being two separate
+      engines: `EntityField.preset` (a plain nullable string, validated
+      against `LogPreset` the same way `regex` already is, not a DB-level
+      enum column) picks one of eleven canned single-line generators in
+      `app/services/log_generators.py` — five log formats (nginx access,
+      docker, kubernetes event, linux syslog, generic application log) and
+      six security-event formats (failed login, brute force, SQLi attempt,
+      DDoS, port scan, malware alert). Resolved design question: this is a
+      STRING-field generation mode, not a new model/table or engine — it
+      slots into `_generate_value` exactly where `regex` already does
+      (`app/services/generator.py`), so `unique`, `nullable`, and CSV/Excel
+      export all keep working with zero extra code, the same "extend the
+      existing per-type generator, don't invent a new concept" call already
+      made for correlation and lookup tables. `preset` and `regex` are
+      mutually exclusive (`preset` fully determines the value) — validated
+      in `entities._validate_preset`, the same shape as the existing
+      `_validate_enum_weights` check. Every value is fabricated by Faker
+      plus randomized timestamps/IPs/ports; nothing here parses real logs
+      or executes real attack traffic — the security presets exist purely
+      to give detection tooling and dashboards synthetic events to test
+      against, the same defensive framing as `error_injection.py`.
 
 ## Phase 5 — Extensibility
 

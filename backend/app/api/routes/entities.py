@@ -50,6 +50,21 @@ def _validate_enum_weights(
         )
 
 
+def _validate_preset(field_type: FieldType, preset: str | None, regex: str | None) -> None:
+    if preset is None:
+        return
+    if field_type != FieldType.STRING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="preset can only be set on string fields",
+        )
+    if regex:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="preset and regex are mutually exclusive — preset fully determines the value",
+        )
+
+
 def _get_owned_entity(
     project_id: uuid.UUID, entity_id: uuid.UUID, user: User, db: Session
 ) -> Entity:
@@ -143,6 +158,7 @@ def add_field(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     _validate_enum_weights(payload.field_type, payload.enum_values, payload.enum_weights)
+    _validate_preset(payload.field_type, payload.preset, payload.regex)
 
     field = EntityField(entity_id=entity_id, **payload.model_dump())
     db.add(field)
@@ -177,6 +193,11 @@ def update_field(
         updates.get("field_type", field.field_type),
         updates.get("enum_values", field.enum_values),
         updates.get("enum_weights", field.enum_weights),
+    )
+    _validate_preset(
+        updates.get("field_type", field.field_type),
+        updates.get("preset", field.preset),
+        updates.get("regex", field.regex),
     )
 
     for attr, value in updates.items():

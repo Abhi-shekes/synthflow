@@ -25,6 +25,27 @@ class FieldType(enum.StrEnum):
     JSON = "json"
 
 
+class LogPreset(enum.StrEnum):
+    """A canned single-line log/event format for a STRING field — see
+    app.services.log_generators for what each one actually produces.
+    Covers both the roadmap's "log generators" (real infra formats) and
+    "security event generator" (detection-testing formats) items with one
+    mechanism, since both are the same shape of problem: realistic-looking
+    templated text, not a new generation engine."""
+
+    NGINX_ACCESS_LOG = "nginx_access_log"
+    DOCKER_LOG = "docker_log"
+    KUBERNETES_EVENT = "kubernetes_event"
+    LINUX_SYSLOG = "linux_syslog"
+    APPLICATION_LOG = "application_log"
+    FAILED_LOGIN = "failed_login"
+    BRUTE_FORCE = "brute_force"
+    SQLI_ATTEMPT = "sqli_attempt"
+    DDOS_ATTEMPT = "ddos_attempt"
+    PORT_SCAN = "port_scan"
+    MALWARE_ALERT = "malware_alert"
+
+
 class EntityField(Base):
     __tablename__ = "entity_fields"
 
@@ -42,6 +63,15 @@ class EntityField(Base):
     min_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     regex: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # When set (STRING fields only, mutually exclusive with regex — see
+    # entities._validate_preset), the field's value comes from one of the
+    # canned log/event line generators in app.services.log_generators
+    # instead of exrex/faker.word(). Stored as a plain string rather than a
+    # DB-level Enum column, same choice already made for regex: validated at
+    # the schema/route layer, not enforced by the database.
+    preset: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     enum_values: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # Optional weights parallel to enum_values (same length, same order) for

@@ -23,7 +23,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { FIELD_TYPES, type FieldCreateInput, type FieldType } from "@/lib/types";
+import {
+  FIELD_TYPES,
+  LOG_PRESETS,
+  type FieldCreateInput,
+  type FieldType,
+  type LogPreset,
+} from "@/lib/types";
 
 interface FormValues {
   name: string;
@@ -34,6 +40,7 @@ interface FormValues {
   min_value: string;
   max_value: string;
   regex: string;
+  preset: LogPreset | "";
   enum_values: string;
   enum_weights: string;
   formula: string;
@@ -63,6 +70,7 @@ export function AddFieldDialog({
       min_value: "",
       max_value: "",
       regex: "",
+      preset: "",
       enum_values: "",
       enum_weights: "",
       formula: "",
@@ -71,6 +79,8 @@ export function AddFieldDialog({
 
   const fieldType = watch("field_type");
   const formula = watch("formula");
+  const regex = watch("regex");
+  const preset = watch("preset");
 
   const submit = (values: FormValues) => {
     onSubmit({
@@ -82,6 +92,7 @@ export function AddFieldDialog({
       min_value: values.min_value === "" ? null : Number(values.min_value),
       max_value: values.max_value === "" ? null : Number(values.max_value),
       regex: values.regex === "" ? null : values.regex,
+      preset: values.preset === "" ? null : values.preset,
       enum_values:
         values.enum_values === ""
           ? null
@@ -196,7 +207,41 @@ export function AddFieldDialog({
           {!formula && fieldType === "string" && (
             <div className="flex flex-col gap-2">
               <Label htmlFor="regex">Regex (optional)</Label>
-              <Input id="regex" placeholder="e.g. [A-Z]{3}-[0-9]{4}" {...register("regex")} />
+              <Input
+                id="regex"
+                placeholder="e.g. [A-Z]{3}-[0-9]{4}"
+                disabled={!!preset}
+                {...register("regex")}
+              />
+            </div>
+          )}
+
+          {!formula && fieldType === "string" && (
+            <div className="flex flex-col gap-2">
+              <Label>Log/event preset (optional)</Label>
+              <Select
+                value={preset}
+                onValueChange={(v) => setValue("preset", (v ?? "") as LogPreset | "")}
+                disabled={!!regex}
+              >
+                <SelectTrigger>
+                  <SelectValue>
+                    {(v: string) => (v ? v.replaceAll("_", " ") : "None")}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {LOG_PRESETS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p.replaceAll("_", " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Generates a realistic single-line log or security event (e.g.
+                an nginx access line or a failed-login alert) instead of a
+                random word. Mutually exclusive with regex.
+              </p>
             </div>
           )}
 

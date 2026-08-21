@@ -335,6 +335,7 @@ export default function EntityDetailPage() {
                           field.min_value != null && `min ${field.min_value}`,
                           field.max_value != null && `max ${field.max_value}`,
                           field.regex && `regex ${field.regex}`,
+                          field.preset && `preset ${field.preset.replaceAll("_", " ")}`,
                           field.enum_values &&
                             (field.enum_weights
                               ? field.enum_values

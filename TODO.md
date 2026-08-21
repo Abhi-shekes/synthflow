@@ -43,53 +43,51 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   route that bypassed the test suite's DB session override by importing
   `SessionLocal` directly instead of looking it up on the module each call.
 
-## Phase 4, parts 1–6: probability, trend, correlation, error injection,
-lookup tables, event triggers — done
+## Phase 4, parts 1–8: probability, trend, correlation, error injection,
+lookup tables, event triggers, log & security-event presets — done
 
 Full detail for each lives in ROADMAP.md Phase 4; condensed here:
 
-- **Probability**: `EntityField.enum_weights` for `random.choices`-based
-  weighted selection.
+- **Probability**: `EntityField.enum_weights` for weighted selection.
 - **Trend**: `Trend` attaches to one numeric field; value is a function of
-  the row's 0-indexed position within the *current batch* (position resets
-  every `generate` call — documented, not a silent gap).
-- **Correlation** (same-entity): ~90% already built via formula fields
-  referencing earlier fields on their own row; closed the real gap
-  (formulas being fully deterministic) with `noise(stddev)`/`uniform(low,
-  high)` in the shared expression evaluator. Cross-entity correlation
-  merged into the cross-entity-rules backlog item below.
+  row position within the *current batch* (resets every `generate` call).
+- **Correlation** (same-entity): ~90% already built via formula fields;
+  closed by adding `noise(stddev)`/`uniform(low, high)` to the shared
+  expression evaluator. Cross-entity correlation merged into the
+  cross-entity-rules backlog item below.
 - **Error injection**: `ErrorInjection` attaches to one field (rate 0–1 +
-  a set of `error_types`), corrupting its value in `_corrupt_value` after
-  it's otherwise fully computed. Documented interaction: a rule on the same
-  field evaluates post-corruption, so it can discard every corrupted row.
-- **Lookup tables**: `LookupTable` (project-scoped, uploaded once as
-  CSV/Excel/JSON) + `LookupAttachment` (per-field, draws from one column).
-  Resolved design question: reuses the exact same `fk_pools` mechanism a
-  `Relationship`'s foreign key already uses, rather than a new "sample from
-  a table" path — and because a lookup doesn't need another entity
-  generated first, it works from single-entity generation too, not just
-  project-wide (a real capability advantage over relationships).
-- **Event triggers**: `EventTrigger` is entity-scoped like `Rule` (same
-  boolean-condition validation), but additive rather than a filter — a
-  matching trigger appends its `label` to the row's `_triggered_events`
-  list instead of discarding/regenerating the row. No external
-  notification fires; "firing" means "visible in the generated data" for
-  now, per the design question flagged before starting.
-- 61 new tests across all six, 117 passed / 3 skipped total, lint clean.
+  `error_types`), corrupting its value in `_corrupt_value` after it's
+  otherwise fully computed. A rule on the same field evaluates
+  post-corruption, so it can discard every corrupted row (documented).
+- **Lookup tables**: `LookupTable` (project-scoped upload) +
+  `LookupAttachment` (per-field). Reuses the exact `fk_pools` mechanism a
+  `Relationship` already uses, so it works from single-entity generation
+  too, not just project-wide.
+- **Event triggers**: `EventTrigger` is entity-scoped like `Rule`, but
+  additive — a match appends its `label` to `_triggered_events` instead of
+  discarding the row. No external notification fires yet.
+- **Log & security-event presets**: `EntityField.preset` picks one of
+  eleven canned single-line generators (`app/services/log_generators.py`:
+  nginx/docker/kubernetes/syslog/application logs, plus failed-login/
+  brute-force/SQLi/DDoS/port-scan/malware-alert security events). Not a new
+  engine — slots into `_generate_value` exactly where `regex` already does,
+  mutually exclusive with it.
+- 68 new tests across all eight, 124 passed / 3 skipped total, lint clean.
   Verified end-to-end in a browser for each (weighted enum distribution
   matched configured weights; linear trend gave an exact arithmetic
-  sequence; temperature/humidity correlation came back with Pearson
-  r = -0.985; a rate-1 null injection returned 10/10 nulls; a lookup
-  attachment returned 10/10 rows drawing the uploaded value; a
-  temperature-range trigger annotated 10/10 rows with its label).
+  sequence; temperature/humidity correlation Pearson r = -0.985; a rate-1
+  null injection returned 10/10 nulls; a lookup attachment returned 10/10
+  rows drawing the uploaded value; a temperature-range trigger annotated
+  10/10 rows; a failed-login preset returned 10/10 realistic event lines).
 
 ## Now — Phase 4, remainder
 
-Not started. Remaining items: timeline replay, geographic simulation,
-user-behavior simulation, API-behavior simulation, and log/security-event
-generators. Log/security-event generators are mostly "more Faker-shaped
-generation content" (closer to Phase 1 field types than a new engine) —
-likely simpler than they sound once there's a reason to build them.
+Not started: timeline replay, geographic simulation, user-behavior
+simulation, API-behavior simulation. API-behavior simulation (status code
+mixes, latency, timeouts) may turn out mostly already covered by weighted
+enums + min/max numeric fields + error injection, similar to how
+correlation and lookup tables turned out to need little new machinery —
+worth checking before building anything new.
 
 ## Backlog (not started, roughly in order)
 
