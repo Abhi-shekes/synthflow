@@ -64,8 +64,19 @@ and formulas instead of pure randomness.
 
 Goal: generated data can leave the platform through more than a JSON blob.
 
-- [ ] Plugin manager: register/enable/disable output plugins per project
-- [ ] REST output (expose generated data as an API)
+- [x] Plugin manager: register/enable/disable output plugins per project —
+      scoped to what's honest for now: outputs are "enabled" by creating a
+      row in their own typed table (`DatabaseConnection`, `RestOutput`) and
+      "disabled" by deleting it, with `GET /projects/{id}/outputs` as a
+      read-only unified view across them. Not a dynamic third-party plugin
+      system yet (see 6. Plugin-Based Architecture in the spec — that's a
+      Phase 5 concept, community-authored plugins loaded at runtime); this
+      is the "one project, several first-party output kinds" version of it.
+- [x] REST output (expose generated data as an API) — `RestOutput`: a public,
+      unauthenticated, unguessable-token URL (`GET /public/rest/{token}`)
+      that generates a fresh batch for one entity per request, respecting
+      its rules/workflows. No auth, no snapshot/caching — the token itself
+      is the access control, the same trust model as a webhook URL.
 - [x] File outputs: CSV, JSON, Excel — CSV/JSON existed per-entity since Phase 1;
       this phase added Excel (single entity, and a multi-sheet workbook — one
       sheet per entity — at the project level) and extended CSV to the

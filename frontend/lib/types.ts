@@ -171,3 +171,17 @@ export interface DatabasePushResult {
   table: string;
   rows_written: number;
 }
+
+export interface RestOutput {
+  id: string;
+  entity_id: string;
+  token: string;
+  default_count: number;
+  created_at: string;
+}
+
+export interface OutputSummary {
+  type: "database" | "rest";
+  id: string;
+  detail: string;
+}

@@ -3,6 +3,7 @@ from app.models.entity import Entity
 from app.models.field import EntityField
 from app.models.project import Project
 from app.models.relationship import Relationship
+from app.models.rest_output import RestOutput
 from app.models.rule import Rule
 from app.models.user import User
 from app.models.workflow import Workflow
@@ -16,4 +17,5 @@ __all__ = [
     "Rule",
     "Workflow",
     "DatabaseConnection",
+    "RestOutput",
 ]

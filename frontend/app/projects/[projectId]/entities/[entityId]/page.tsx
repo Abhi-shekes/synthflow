@@ -31,6 +31,8 @@ interface RuleFormValues {
   condition: string;
 }
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+
 export default function EntityDetailPage() {
   const accessToken = useRequireAuth();
   const { projectId, entityId } = useParams<{ projectId: string; entityId: string }>();
@@ -100,6 +102,30 @@ export default function EntityDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete workflow"),
+  });
+
+  const restOutputsQuery = useQuery({
+    queryKey: ["rest-outputs", projectId, entityId],
+    queryFn: () => api.listRestOutputs(accessToken!, projectId, entityId),
+    enabled: !!accessToken,
+  });
+
+  const [restOutputCount, setRestOutputCount] = useState(10);
+
+  const addRestOutput = useMutation({
+    mutationFn: () => api.createRestOutput(accessToken!, projectId, entityId, restOutputCount),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["rest-outputs", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not create REST output"),
+  });
+
+  const deleteRestOutput = useMutation({
+    mutationFn: (outputId: string) => api.deleteRestOutput(accessToken!, projectId, entityId, outputId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["rest-outputs", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete REST output"),
   });
 
   const downloadCsv = useMutation({
@@ -290,6 +316,74 @@ export default function EntityDetailPage() {
                     </p>
                   </li>
                 ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">REST output</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              A public, unauthenticated URL that returns freshly generated rows
+              for this entity on every request — point a frontend&apos;s{" "}
+              <code className="font-mono">fetch()</code> straight at it during
+              development. Anyone with the link can use it, the same as a
+              webhook URL.
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={5000}
+                value={restOutputCount}
+                onChange={(e) => setRestOutputCount(Number(e.target.value))}
+                className="w-32"
+              />
+              <Button
+                onClick={() => addRestOutput.mutate()}
+                disabled={addRestOutput.isPending || !entity?.fields.length}
+              >
+                {addRestOutput.isPending ? "Creating…" : "Create endpoint"}
+              </Button>
+            </div>
+            {restOutputsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No REST outputs yet.</p>
+            )}
+            {restOutputsQuery.data && restOutputsQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {restOutputsQuery.data.map((output) => {
+                  const url = `${API_URL}/public/rest/${output.token}`;
+                  return (
+                    <li
+                      key={output.id}
+                      className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                    >
+                      <code className="truncate font-mono">{url}</code>
+                      <div className="flex shrink-0 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            navigator.clipboard.writeText(url);
+                            toast.success("Copied");
+                          }}
+                        >
+                          Copy
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteRestOutput.mutate(output.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>

@@ -1,0 +1,70 @@
+import uuid
+from typing import Literal
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_current_user
+from app.api.routes.projects import _get_owned_project
+from app.db.session import get_db
+from app.models.database_connection import DatabaseConnection
+from app.models.entity import Entity
+from app.models.rest_output import RestOutput
+from app.models.user import User
+
+router = APIRouter(prefix="/projects/{project_id}/outputs", tags=["outputs"])
+
+
+class OutputSummary(BaseModel):
+    type: Literal["database", "rest"]
+    id: uuid.UUID
+    detail: str
+
+
+@router.get("", response_model=list[OutputSummary])
+def list_outputs(
+    project_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[OutputSummary]:
+    """A read-only aggregate over every output configured for this project,
+    across the separate typed tables that back each output kind (see
+    TODO.md's Phase 3 notes on why this isn't one polymorphic table: outputs
+    have genuinely different shapes, and separate typed tables match how
+    Relationship/Rule/Workflow already work in this codebase). This IS the
+    plugin manager for now — an output is "enabled" by creating a row in its
+    own table and "disabled" by deleting it; this endpoint is just a unified
+    view over what already exists, not a new persisted concept."""
+    _get_owned_project(project_id, current_user, db)
+
+    summaries: list[OutputSummary] = []
+
+    connections = (
+        db.query(DatabaseConnection).filter(DatabaseConnection.project_id == project_id).all()
+    )
+    for conn in connections:
+        summaries.append(
+            OutputSummary(
+                type="database",
+                id=conn.id,
+                detail=f"{conn.name} ({conn.dialect}) {conn.host}:{conn.port}/{conn.database}",
+            )
+        )
+
+    rest_outputs = (
+        db.query(RestOutput)
+        .join(Entity, RestOutput.entity_id == Entity.id)
+        .filter(Entity.project_id == project_id)
+        .all()
+    )
+    for output in rest_outputs:
+        summaries.append(
+            OutputSummary(
+                type="rest",
+                id=output.id,
+                detail=f"{output.entity.name}: /public/rest/{output.token}",
+            )
+        )
+
+    return summaries

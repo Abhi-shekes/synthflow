@@ -5,9 +5,11 @@ import type {
   DatabasePushResult,
   Entity,
   FieldCreateInput,
+  OutputSummary,
   Project,
   Relationship,
   RelationshipCreateInput,
+  RestOutput,
   Rule,
   User,
   Workflow,
@@ -295,4 +297,28 @@ export const api = {
       },
       token
     ),
+
+  listRestOutputs: (token: string, projectId: string, entityId: string) =>
+    request<RestOutput[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/rest-outputs`,
+      {},
+      token
+    ),
+
+  createRestOutput: (token: string, projectId: string, entityId: string, defaultCount: number) =>
+    request<RestOutput>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/rest-outputs`,
+      { method: "POST", body: JSON.stringify({ default_count: defaultCount }) },
+      token
+    ),
+
+  deleteRestOutput: (token: string, projectId: string, entityId: string, outputId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/rest-outputs/${outputId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listOutputs: (token: string, projectId: string) =>
+    request<OutputSummary[]>(`/api/v1/projects/${projectId}/outputs`, {}, token),
 };

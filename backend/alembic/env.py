@@ -11,6 +11,7 @@ from app.models import (  # noqa: F401
     EntityField,
     Project,
     Relationship,
+    RestOutput,
     Rule,
     User,
     Workflow,
