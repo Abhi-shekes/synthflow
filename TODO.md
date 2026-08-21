@@ -404,22 +404,59 @@ kafka,monitoring` produced an .env that made compose resolve to core +
 redpanda + 4 monitoring services and no mosquitto. An idempotency test
 caught a real bug (the banner comment stacking on every re-run), fixed.
 
+## Phase 7 — Schema Import — done
+
+Four importers (live database, SQL DDL, JSON Schema/OpenAPI, sample data
+file), all sharing one shape: **an importer returns a `ProjectTemplate`
+and creates nothing.** Applying it is a separate `POST /projects/import`
+call. That makes the mandatory review step structural rather than a UI
+convention — there's no code path from "read a database" to "rows in the
+database" — and reuses Phase 5's proven all-or-nothing apply instead of a
+second creation path that could drift. A test asserts an import leaves
+the project count unchanged.
+
+The other half of every result is `warnings`. Every importer is lossy
+(no check constraints, composite keys, or TIME type in SynthFlow), and
+silently dropping those is the worst outcome — the project looks complete
+while meaning something different from its source. So each is named.
+
+Notes worth keeping:
+- SQL parsing uses `sqlglot`, not regexes. Probing it against realistic
+  DDL immediately caught two bugs in my first pass: `NOT NULL` handling
+  was inverted (sqlglot models `NOT NULL` and explicit `NULL` with the
+  same node, distinguished by an `allow_null` arg), and inline
+  `REFERENCES` produced no relationship because only table-level
+  `FOREIGN KEY` was handled. Both are common in real dumps.
+- Verifying against a real Postgres schema — rather than a fixture —
+  surfaced a genuine quality gap: `SERIAL` keys generated random
+  seven-digit integers. SynthFlow already expresses auto-increment as a
+  linear trend (Phase 2), so importers now attach one.
+- Parquet moved to Phase 12, where columnar formats already live and
+  `pyarrow` can be an optional extra rather than core image weight.
+
+42 new tests, 309 passed / 3 skipped, lint clean. Verified against a
+deliberately awkward live schema (quoted column with a space, CHECK
+constraint, composite primary key, TIME/TIMESTAMPTZ/JSONB/UUID/SMALLINT,
+two foreign keys): everything imported, both FKs became relationships,
+all four lossy conversions reported, and generating from the applied
+project produced genuinely referential rows. Browser-verified end to end
+with zero console errors.
+
 ## Now
 
 **Phases 1–5 are complete.** ROADMAP.md now carries a planned Phase 6–16;
 nothing in 7–16 is started.
 
-Recommended order, and why:
+Recommended order, and why (CI and Phase 7 are now done):
 
-1. **CI first** — not a phase, just the four repo-bootstrap items at the
+1. ~~**CI first**~~ — not a phase, just the four repo-bootstrap items at the
    top of this file. There are 267 tests plus lint/format/build checks
    that currently only run because they're run by hand. For a public repo
    taking contributions that's the highest value-per-hour work available,
    and it protects every phase after it.
-2. **Phase 7 (Schema Import)** — biggest reach for the least new
-   machinery. Every importer can produce a `ProjectTemplate` and reuse the
-   proven Phase 5 import path rather than writing rows directly.
-3. **Phase 8 (Scale and Scheduled Jobs)** — closes three limitations
+2. ~~**Phase 7 (Schema Import)**~~ — done; it did exactly this, every
+   importer producing a `ProjectTemplate` for the existing import path.
+3. **Phase 8 (Scale and Scheduled Jobs)** — next. — closes three limitations
    already documented in the code (producers not surviving restart,
    single-process only, the row-count ceiling) and unblocks Phases 9
    and 13, which both imply long-running work.

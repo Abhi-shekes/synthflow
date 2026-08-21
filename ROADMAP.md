@@ -806,25 +806,68 @@ Goal: start from a schema that already exists instead of hand-building every
 entity. Today a 40-table application means defining 40 entities by hand; this
 turns that into one import and an edit pass.
 
-- [ ] Introspect a live database into a project: tables → entities, columns →
-      fields (type, nullability, uniqueness, length/precision), foreign keys →
-      relationships. PostgreSQL first, matching the connector already used for
-      database push
-- [ ] Import from a SQL DDL dump, so no live credentials are needed
-- [ ] Import from JSON Schema and OpenAPI, for teams whose contract is the API
-      rather than the database
-- [ ] Infer a project from a sample data file (CSV/JSON/Parquet) — column types,
-      obvious formats, and enum-looking columns
-- [ ] Mandatory review/diff step before anything is created, and all-or-nothing
-      application on confirm
-- [ ] Report what could not be represented (check constraints, computed columns,
-      exotic types) rather than importing silently and losing it
+- [x] Introspect a live database into a project: tables → entities, columns →
+      fields (type, nullability, uniqueness, width), foreign keys →
+      relationships. PostgreSQL via SQLAlchemy's `inspect()` rather than
+      hand-written `information_schema` queries, so the dialect handles the
+      differences and MySQL later is a connection-string change, not a second
+      implementation. Reuses the existing `DatabaseConnection` record, so
+      importing *from* a database and pushing *to* one share one place a
+      password lives. Read-only by construction — only the inspector is used.
+- [x] Import from a SQL DDL script, so no live credentials are needed.
+      Parsing is delegated to `sqlglot`, not regexes: SQL's grammar is
+      genuinely hard (quoted identifiers, inline vs. trailing constraints,
+      `SERIAL` vs. `AUTO_INCREMENT`) and a regex parser produces
+      plausible-looking wrong answers on real dumps, which is worse than
+      failing.
+- [x] Import from JSON Schema and OpenAPI — one implementation, because an
+      OpenAPI document's `components.schemas` *are* JSON Schema. Local `$ref`
+      is resolved; remote `$ref` is reported rather than fetched, since
+      reaching out over the network mid-import is a surprise nobody asked
+      for. `oneOf`/`anyOf`/`allOf` take the first branch and report the rest,
+      because guessing at a union produces data matching none of them.
+- [x] Infer a project from a sample data file — CSV, Excel and JSON, reusing
+      `lookup_tables.parse_upload` rather than adding a second parser.
+      Deliberately shallow: per-column type, observed ranges, and enums for
+      low-cardinality columns. It is *not* distribution fitting, and says so
+      in its own warnings — a column of ages becomes "integer between 23 and
+      55", not "normally distributed around 41". Fitting real distributions
+      is Phase 9, and conflating them would make this look more faithful than
+      it is. (Parquet moved to Phase 12, where columnar formats already live
+      and `pyarrow` can be an optional extra rather than core weight.)
+- [x] Mandatory review step before anything is created — made **structural
+      rather than a UI convention**. An importer returns a `ProjectTemplate`
+      and creates nothing; applying it is a separate `POST /projects/import`.
+      There is no code path from "read a database" to "rows in the database",
+      so a client cannot skip the review even by accident, and the apply half
+      is Phase 5's already-proven all-or-nothing validation rather than a
+      second creation path that could drift from it. A test asserts an import
+      call leaves the project count unchanged.
+- [x] Report what could not be represented. Every importer is lossy —
+      SynthFlow has no check constraints, composite keys, or `TIME` type —
+      and silently dropping those is the worst outcome, because the project
+      looks complete while quietly meaning something different from its
+      source. So each is named: renamed identifiers, check constraints,
+      composite primary and foreign keys, multi-column unique constraints,
+      unmapped SQL types, skipped non-table statements, unresolvable refs.
 
-      Every importer should produce a `ProjectTemplate` and hand it to the
-      existing `POST /projects/import` path rather than writing rows directly —
-      that format, its name-based references and its all-or-nothing validation
-      already exist from Phase 5, so this phase is mostly new front-ends onto a
-      pipeline that is already proven.
+      One improvement fell out of verifying against a real database rather
+      than a fixture: a `SERIAL` primary key was generating random
+      seven-digit integers. SynthFlow already expresses auto-increment as a
+      linear trend (Phase 2), so importers now attach one to
+      SERIAL/IDENTITY/AUTO_INCREMENT integer columns — imported keys read
+      1, 2, 3… and are safe to insert back into the source schema.
+
+      42 new tests, 309 passed / 3 skipped total, lint clean. Verified against
+      a real PostgreSQL schema built to be awkward on purpose — a quoted
+      column containing a space, a CHECK constraint, a composite primary key,
+      `TIME`/`TIMESTAMPTZ`/`JSONB`/`UUID`/`SMALLINT` columns and two foreign
+      keys. All three tables imported, both foreign keys became relationships,
+      all four lossy conversions were reported by name, the import itself
+      created nothing, and generating from the applied project produced rows
+      whose foreign keys genuinely referenced generated parents. Also verified
+      in a browser end to end, including the review screen showing the
+      warnings, with zero console errors.
 
 ## Phase 8 — Scale and Scheduled Jobs
 

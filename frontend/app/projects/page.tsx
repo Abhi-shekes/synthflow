@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app-shell";
+import { SchemaImportDialog } from "@/components/schema-import-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -115,6 +116,9 @@ export default function ProjectsPage() {
             >
               {importMutation.isPending ? "Importing…" : "Import project"}
             </Button>
+            <SchemaImportDialog
+              onImported={() => queryClient.invalidateQueries({ queryKey: ["projects"] })}
+            />
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger render={<Button>New project</Button>} />
               <DialogContent>

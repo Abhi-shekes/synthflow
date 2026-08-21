@@ -30,6 +30,7 @@ import type {
   RestOutput,
   Rule,
   RuleFunctionSummary,
+  SchemaImportResponse,
   StarterTemplateSummary,
   TimelineReplay,
   TimelineReplayCreateInput,
@@ -671,6 +672,52 @@ export const api = {
       { method: "POST", body: JSON.stringify(template) },
       token
     ),
+
+  importSchemaFromSql: (token: string, sql: string, dialect?: string, projectName?: string) =>
+    request<SchemaImportResponse>(
+      "/api/v1/schema-import/sql",
+      {
+        method: "POST",
+        body: JSON.stringify({ sql, dialect: dialect || null, project_name: projectName || null }),
+      },
+      token
+    ),
+
+  importSchemaFromJsonSchema: (token: string, document: unknown, projectName?: string) =>
+    request<SchemaImportResponse>(
+      "/api/v1/schema-import/json-schema",
+      {
+        method: "POST",
+        body: JSON.stringify({ document, project_name: projectName || null }),
+      },
+      token
+    ),
+
+  importSchemaFromDatabase: (
+    token: string,
+    connectionId: string,
+    schemaName?: string,
+    projectName?: string
+  ) =>
+    request<SchemaImportResponse>(
+      "/api/v1/schema-import/database",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          connection_id: connectionId,
+          schema_name: schemaName || null,
+          project_name: projectName || null,
+        }),
+      },
+      token
+    ),
+
+  importSchemaFromSample: (token: string, file: File, projectName?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (projectName) form.append("project_name", projectName);
+    return requestUpload<SchemaImportResponse>("/api/v1/schema-import/sample", form, token);
+  },
 
   listStarterTemplates: (token: string) =>
     request<StarterTemplateSummary[]>("/api/v1/starter-templates", {}, token),

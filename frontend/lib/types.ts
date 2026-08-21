@@ -548,6 +548,15 @@ export interface StarterTemplateSummary {
   description: string;
 }
 
+// Phase 7 schema import. An importer returns a template plus what it
+// could not carry across — it never creates a project, so applying the
+// result is a separate call to importProject(). See the backend's
+// app/services/schema_import/common.py for why that split is structural.
+export interface SchemaImportResponse {
+  template: ProjectTemplate;
+  warnings: string[];
+}
+
 export interface ProjectTemplate {
   template_version: number;
   name: string;
