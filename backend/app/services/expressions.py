@@ -2,13 +2,24 @@
 
 Deliberately not `eval()`: this walks a restricted subset of the Python AST —
 arithmetic, comparisons, boolean logic, a ternary, and a short whitelist of
-pure functions — so a user-authored expression can only read the variables
-handed to it and can never reach attribute access, subscripting, imports, or
+functions — so a user-authored expression can only read the variables handed
+to it and can never reach attribute access, subscripting, imports, or
 arbitrary calls.
+
+`noise` and `uniform` are the two non-pure functions in the whitelist — they
+exist specifically so a formula field can express a *correlation* with
+realistic scatter instead of a perfectly deterministic line, e.g.
+`humidity = 100 - temperature * 0.8 + noise(3)`. This is same-row,
+same-entity correlation only: a formula can already reference any
+earlier-ordered field on its own row (that's the whole formula-field
+mechanism, not something new here), but it still can't see another entity's
+data — cross-entity correlation needs the same extension cross-entity rules
+would (see TODO.md), not built yet.
 """
 
 import ast
 import operator
+import random
 from typing import Any
 
 _BINOPS: dict[type, Any] = {
@@ -39,6 +50,8 @@ _FUNCTIONS: dict[str, Any] = {
     "max": max,
     "round": round,
     "len": len,
+    "noise": lambda stddev: random.gauss(0, stddev),
+    "uniform": random.uniform,
 }
 
 

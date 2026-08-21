@@ -34,69 +34,71 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   of the same idea. The plugin manager is a read-only aggregate
   (`GET /projects/{id}/outputs`) over these typed tables, not a new
   polymorphic model.
-- WebSocket streaming is connection-scoped by design: the production loop
-  *is* the WebSocket handler's loop, so there's no persisted "running" state
-  to leak across a restart. This only works because a client connection
-  gives the loop something to hang off of — Kafka/MQTT (not started) won't
-  have that and will need a real background-task execution model instead.
+- WebSocket streaming is connection-scoped: the production loop *is* the
+  WebSocket handler's loop, no persisted "running" state. Kafka/MQTT (not
+  started) won't have a client connection to hang that off of and will need
+  a real background-task execution model instead.
 - Two real bugs found and fixed *while verifying*, not by inspection: Base
-  UI's `Select.Value` showing raw ids instead of labels (across every
-  affected picker, not just the one being tested), and a websocket route
-  that bypassed the test suite's DB session override by importing
+  UI's `Select.Value` showing raw ids instead of labels, and a websocket
+  route that bypassed the test suite's DB session override by importing
   `SessionLocal` directly instead of looking it up on the module each call.
 
-## Phase 4, parts 1–2: probability + trend engines — done
+## Phase 4, parts 1–3: probability, trend, correlation engines — done
 
-- `EntityField.enum_weights`: optional array parallel to `enum_values` for
-  weighted-random selection (`random.choices`); `None` keeps prior uniform
-  behavior. Validated server-side at create/update time.
-- `Trend`: attaches to one numeric field; its value is a function of the
-  row's 0-indexed position within the *current batch* — linear, exponential,
-  logistic, seasonal, cyclic, random_walk, each with type-specific `params`
-  plus optional `noise`. Resolved design question: **position resets to 0
-  every `generate` call** rather than persisting across a WebSocket stream's
-  ticks — a stream replays the trend across each push's batch_size rows
-  instead of continuing smoothly tick to tick. That's a real, documented
-  limitation (in `Trend`'s docstring), not a silent gap — genuine cross-tick
-  continuity would need trend state persisted on the stream itself, not
-  built yet. `increasing`/`decreasing` from the spec are `linear` with the
-  slope's sign, not separate types.
-- Neither feature needed changes anywhere else in the pipeline — formulas,
-  rules, relationships, and workflows all just consume whatever value a
-  field ends up with, regardless of how it was produced. 18 new tests
-  across both, 79 passed / 3 skipped total, lint clean.
-- Verified end-to-end in a browser against the full docker-compose stack for
-  both: a weighted enum's real distribution matched its configured weights
-  closely (65/10/5/20 configured → 64/11/5.3/20 observed over 300 rows); a
-  linear trend (start=20, slope=0.5) produced an exact 20, 20.5, 21, ...,
-  24.5 sequence over 10 rows, not just "some variation."
+- **Probability**: `EntityField.enum_weights`, optional array parallel to
+  `enum_values`, for `random.choices`-based weighted selection.
+- **Trend**: `Trend` attaches to one numeric field; its value is a function
+  of the row's 0-indexed position within the *current batch* — linear,
+  exponential, logistic, seasonal, cyclic, random_walk. Resolved design
+  question: position resets to 0 every `generate` call rather than
+  persisting across a WebSocket stream's ticks (documented limitation, not
+  a silent gap — see `Trend`'s docstring).
+- **Correlation** (same-entity): turned out to be ~90% already built —
+  formula fields can already reference any earlier field on their own row.
+  The real gap was formulas being fully deterministic; closed by adding
+  `noise(stddev)` and `uniform(low, high)` to the shared expression
+  evaluator, so `humidity = 100 - temperature * 1.5 + noise(3)` gives a
+  real, scattered correlation instead of new backend machinery.
+  Cross-entity correlation ("Stock A ↑ → Stock B ↑" across two entities)
+  merged into the cross-entity-rules backlog item below — same underlying
+  need (seeing another entity's data, not just this row).
+- None of the three needed changes to relationships/rules/workflows — they
+  all just consume whatever value a field ends up with. 28 new tests across
+  all three, 84 passed / 3 skipped total, lint clean.
+- Verified end-to-end in a browser for all three: a weighted enum's real
+  distribution matched its configured weights (65/10/5/20 → 64/11/5.3/20
+  over 300 rows); a linear trend produced an exact arithmetic sequence over
+  10 rows; a temperature/humidity correlation came back with a real Pearson
+  r of -0.985 across 100 rows with 100 distinct humidity values (genuine
+  scatter, not a dead-flat line).
 
-## Now — Phase 4, part 3: correlation engine
+## Now — Phase 4, remainder
 
-Not started. Needs the same "what does a row's position mean" foundation
-that trends just established — correlating two fields/entities (e.g.
-temperature ↑ → humidity ↓) implies they share some ordering or common
-per-row position, which trends now provide (batch position) but nothing
-before did. Reasonable approach: let a correlated field be defined as a
-function of *another field's already-generated value on the same row*
-(e.g. `humidity = 100 - temperature * factor`) rather than inventing new
-cross-field machinery — check whether this is actually already expressible
-with the existing formula engine (`app/services/expressions.py`) before
-building a separate "correlation" concept. If a formula can already say
-`humidity = 100 - temperature * 0.8`, the "correlation engine" may just be
-UI/framing on top of formulas for two numeric fields, not new backend code.
+Not started. Remaining items, roughly in a reasonable build order:
+
+- **Error injection** (missing values, duplicate IDs, corrupted payloads,
+  invalid formats, delayed/out-of-order events, timeouts, random failures)
+  is the next natural pick — fits the same "attach a config to an
+  entity/field" shape as rules/workflows/trends, no new field types or file
+  handling needed, and is directly the "QA automation / edge-case testing"
+  use case from the spec's problem statement.
+- **Lookup tables** (upload CSV/Excel/JSON as reference data, generate by
+  sampling from it) is the next-most self-contained after that, but needs
+  file upload handling and storage — bigger than error injection.
+- Timeline replay, geographic simulation, user-behavior simulation,
+  API-behavior simulation, and log/security-event generators remain
+  unscoped. Log/security-event generators are mostly "more Faker-shaped
+  generation content" (closer to Phase 1 field types than a new engine) —
+  likely simpler than they sound once there's a reason to build them.
 
 ## Backlog (not started, roughly in order)
 
 - [ ] Generated-field and auto-increment field support (Phase 2)
-- [ ] Cross-entity rules (Phase 2, stretch)
+- [ ] Cross-entity rules + correlation (Phase 2/4, stretch — a formula or
+      rule seeing another entity's already-generated data, not just its own
+      row; both features hit this same wall independently, see above)
 - [ ] Kafka/MQTT streaming outputs (Phase 3, needs the background-task
       execution model noted above)
-- [ ] Error injection, timeline replay, lookup tables, geographic/user-
-      behavior/API-behavior simulation, log + security-event generators
-      (Phase 4, remainder — log/security-event generators are mostly "more
-      Faker-shaped generation content," likely simpler than they sound now
-      that trend/probability exist to build on)
 
 ## Notes for future me
 
@@ -107,9 +109,11 @@ UI/framing on top of formulas for two numeric fields, not new backend code.
 - AI stays fully optional and out of the critical path until Phase 6 — don't let it
   leak into the core data model or generation engine before then.
 - `app/services/expressions.py` is shared infrastructure — reuse it for anything
-  else that needs a user-authored expression (event triggers, cross-entity rules,
-  possibly correlation — see Phase 4 part 3 above) rather than writing a second
-  evaluator.
+  else that needs a user-authored expression (event triggers, cross-entity
+  rules/correlation) rather than writing a second evaluator. Before building a new
+  "engine" as its own model/table, check whether it's actually just a formula or
+  rule with a missing capability (like `noise()`/`uniform()` turned out to be for
+  correlation) — cheaper to extend the evaluator than to add a new concept.
 - When verifying Select/dropdown UI by browser automation, screenshot the
   *closed* control after selecting, not just the open dropdown or the
   eventual result — that's the gap that let the UUID-label bug ship.

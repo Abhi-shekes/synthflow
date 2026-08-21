@@ -124,7 +124,19 @@ Goal: data behaves over time, not just at generation time.
       `decreasing` from the spec aren't separate types — they're `linear`
       with the slope's sign, a deliberate consolidation of two labels that
       were the same math.
-- [ ] Correlation engine: link fields/entities so one signal drives another
+- [x] Correlation engine (same-entity): link fields so one signal drives
+      another — turned out to already be 90% built. A formula field can
+      already reference any earlier-ordered field on its own row; the only
+      real gap was that formulas were fully deterministic, so a "correlated"
+      field came out as a dead-flat line. Closed by adding two functions to
+      the shared expression evaluator (`app/services/expressions.py`):
+      `noise(stddev)` (gaussian) and `uniform(low, high)`, so
+      `humidity = 100 - temperature * 1.5 + noise(3)` gives a real, scattered
+      correlation, not new backend machinery. Cross-entity correlation
+      ("Stock A ↑ → Stock B ↑" where A and B are different entities) is not
+      covered — merged into the cross-entity-rules backlog item, since both
+      need the same underlying extension (a formula/rule seeing another
+      entity's already-generated data, not just its own row).
 - [x] Probability engine: weighted categorical generation — `EntityField.enum_weights`,
       an optional array parallel to `enum_values` (`None` keeps the prior
       uniform `random.choice`; present, it's `random.choices(..., weights=...)`).

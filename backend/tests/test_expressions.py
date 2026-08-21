@@ -47,3 +47,31 @@ def test_disallows_subscript():
 def test_invalid_syntax_raises():
     with pytest.raises(ExpressionError):
         evaluate("price >", {"price": 1})
+
+
+def test_noise_with_zero_stddev_is_deterministic():
+    assert evaluate("noise(0)", {}) == 0
+    assert evaluate("temperature + noise(0)", {"temperature": 20}) == 20
+
+
+def test_noise_varies_across_calls():
+    values = {evaluate("noise(5)", {}) for _ in range(20)}
+    assert len(values) > 1  # would collapse to 1 if noise() weren't actually random
+
+
+def test_uniform_stays_within_bounds():
+    for _ in range(50):
+        value = evaluate("uniform(10, 20)", {})
+        assert 10 <= value <= 20
+
+
+def test_correlation_formula_with_noise():
+    # The "correlation engine" use case: a value derived from another field's
+    # value on the same row, with realistic scatter rather than a dead-flat line.
+    values = [
+        evaluate("100 - temperature * 0.8 + noise(0.001)", {"temperature": t})
+        for t in range(10, 40, 5)
+    ]
+    expected = [100 - t * 0.8 for t in range(10, 40, 5)]
+    for actual, exp in zip(values, expected, strict=True):
+        assert abs(actual - exp) < 0.1  # noise(0.001) keeps this tight but non-zero

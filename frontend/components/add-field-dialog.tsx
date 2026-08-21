@@ -165,13 +165,18 @@ export function AddFieldDialog({
             <Label htmlFor="formula">Formula (optional)</Label>
             <Input
               id="formula"
-              placeholder="e.g. price * quantity"
+              placeholder="e.g. 100 - temperature * 1.5 + noise(3)"
               {...register("formula")}
             />
             <p className="text-xs text-muted-foreground">
               Computes this field from other fields on the same row instead of
-              generating it randomly. Can only reference fields added above
-              this one.
+              generating it randomly — this is also how to correlate two
+              fields (e.g. humidity falling as temperature rises). Can only
+              reference fields added above this one. Functions:{" "}
+              <code className="font-mono">abs min max round len</code>, plus{" "}
+              <code className="font-mono">noise(stddev)</code> and{" "}
+              <code className="font-mono">uniform(low, high)</code> for
+              realistic scatter instead of a dead-flat line.
             </p>
           </div>
 
