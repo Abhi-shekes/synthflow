@@ -1,0 +1,342 @@
+"""Export/import a project's design as a `ProjectTemplate` (see
+app.schemas.template for the format itself and the reasoning behind it).
+
+Export walks a project's entities and their attachments and rewrites
+every database id into a name-based reference. Import does the reverse:
+it creates fresh rows with fresh ids and resolves each name-based
+reference back to the row that was just created in *this* import, not
+whatever the id pointed to in the original project. Nothing is committed
+until every row has been built successfully — an import that fails
+partway through (an unknown reference, an invalid enum value) leaves no
+partial project behind, since the session is never committed and its
+`get_db` dependency closes (rolling back) on the way out.
+"""
+
+import uuid
+
+from sqlalchemy.orm import Session
+
+from app.models.entity import Entity
+from app.models.error_injection import ErrorInjection
+from app.models.event_trigger import EventTrigger
+from app.models.field import EntityField, FieldType
+from app.models.geo_route import GeoRoute
+from app.models.lookup_attachment import LookupAttachment
+from app.models.lookup_table import LookupTable
+from app.models.project import Project
+from app.models.relationship import Relationship, RelationshipType
+from app.models.rule import Rule
+from app.models.trend import Trend, TrendType
+from app.models.workflow import Workflow
+from app.schemas.template import (
+    TEMPLATE_VERSION,
+    ProjectTemplate,
+    TemplateEntity,
+    TemplateErrorInjection,
+    TemplateEventTrigger,
+    TemplateField,
+    TemplateGeoRoute,
+    TemplateLookupAttachment,
+    TemplateLookupTable,
+    TemplateRelationship,
+    TemplateRule,
+    TemplateTrend,
+    TemplateWorkflow,
+)
+
+
+def export_project(project: Project, db: Session) -> ProjectTemplate:
+    entities = (
+        db.query(Entity).filter(Entity.project_id == project.id).order_by(Entity.created_at).all()
+    )
+    relationships = db.query(Relationship).filter(Relationship.project_id == project.id).all()
+    lookup_tables = (
+        db.query(LookupTable)
+        .filter(LookupTable.project_id == project.id)
+        .order_by(LookupTable.created_at)
+        .all()
+    )
+
+    entity_name_by_id = {e.id: e.name for e in entities}
+    field_ref_by_id = {f.id: (e.name, f.name) for e in entities for f in e.fields}
+    lookup_table_name_by_id = {t.id: t.name for t in lookup_tables}
+
+    return ProjectTemplate(
+        template_version=TEMPLATE_VERSION,
+        name=project.name,
+        entities=[
+            TemplateEntity(
+                name=e.name,
+                fields=[
+                    TemplateField(
+                        name=f.name,
+                        field_type=f.field_type.value,
+                        order=f.order,
+                        required=f.required,
+                        nullable=f.nullable,
+                        unique=f.unique,
+                        default_value=f.default_value,
+                        min_value=f.min_value,
+                        max_value=f.max_value,
+                        regex=f.regex,
+                        preset=f.preset,
+                        enum_values=f.enum_values,
+                        enum_weights=f.enum_weights,
+                        formula=f.formula,
+                    )
+                    for f in e.fields
+                ],
+            )
+            for e in entities
+        ],
+        relationships=[
+            TemplateRelationship(
+                relationship_type=r.relationship_type.value,
+                source_entity=entity_name_by_id[r.source_entity_id],
+                source_field=field_ref_by_id[r.source_field_id][1],
+                target_entity=entity_name_by_id[r.target_entity_id],
+                target_field=field_ref_by_id[r.target_field_id][1],
+            )
+            for r in relationships
+        ],
+        rules=[
+            TemplateRule(entity=e.name, condition=rule.condition)
+            for e in entities
+            for rule in e.rules
+        ],
+        event_triggers=[
+            TemplateEventTrigger(entity=e.name, label=t.label, condition=t.condition)
+            for e in entities
+            for t in e.event_triggers
+        ],
+        workflows=[
+            TemplateWorkflow(
+                entity=e.name,
+                field=field_ref_by_id[w.field_id][1],
+                states=w.states,
+                initial_states=w.initial_states,
+                transitions=w.transitions,
+                stop_probabilities=w.stop_probabilities,
+            )
+            for e in entities
+            for w in e.workflows
+        ],
+        trends=[
+            TemplateTrend(
+                entity=e.name,
+                field=field_ref_by_id[t.field_id][1],
+                trend_type=t.trend_type.value,
+                params=t.params,
+            )
+            for e in entities
+            for t in e.trends
+        ],
+        error_injections=[
+            TemplateErrorInjection(
+                entity=e.name,
+                field=field_ref_by_id[ei.field_id][1],
+                rate=ei.rate,
+                error_types=ei.error_types,
+            )
+            for e in entities
+            for ei in e.error_injections
+        ],
+        lookup_tables=[
+            TemplateLookupTable(name=t.name, columns=t.columns, data=t.data) for t in lookup_tables
+        ],
+        lookup_attachments=[
+            TemplateLookupAttachment(
+                entity=e.name,
+                field=field_ref_by_id[a.field_id][1],
+                lookup_table=lookup_table_name_by_id[a.lookup_table_id],
+                column=a.column,
+            )
+            for e in entities
+            for a in e.lookup_attachments
+        ],
+        geo_routes=[
+            TemplateGeoRoute(
+                entity=e.name,
+                field=field_ref_by_id[g.field_id][1],
+                lookup_table=lookup_table_name_by_id[g.lookup_table_id],
+                lat_column=g.lat_column,
+                lon_column=g.lon_column,
+            )
+            for e in entities
+            for g in e.geo_routes
+        ],
+    )
+
+
+def _resolve_entity(name: str, entities_by_name: dict[str, Entity]) -> Entity:
+    entity = entities_by_name.get(name)
+    if entity is None:
+        raise ValueError(f"Unknown entity '{name}' referenced in template")
+    return entity
+
+
+def _resolve_field(
+    entity_name: str, field_name: str, fields_by_ref: dict[tuple[str, str], EntityField]
+) -> EntityField:
+    field = fields_by_ref.get((entity_name, field_name))
+    if field is None:
+        raise ValueError(f"Unknown field '{entity_name}.{field_name}' referenced in template")
+    return field
+
+
+def _resolve_lookup_table(name: str, lookup_tables_by_name: dict[str, LookupTable]) -> LookupTable:
+    table = lookup_tables_by_name.get(name)
+    if table is None:
+        raise ValueError(f"Unknown lookup table '{name}' referenced in template")
+    return table
+
+
+def import_project(template: ProjectTemplate, owner_id: uuid.UUID, db: Session) -> Project:
+    project = Project(name=template.name, owner_id=owner_id)
+    db.add(project)
+    db.flush()
+
+    entities_by_name: dict[str, Entity] = {}
+    fields_by_ref: dict[tuple[str, str], EntityField] = {}
+    for template_entity in template.entities:
+        entity = Entity(project_id=project.id, name=template_entity.name)
+        db.add(entity)
+        db.flush()
+        entities_by_name[template_entity.name] = entity
+        for template_field in template_entity.fields:
+            field = EntityField(
+                entity_id=entity.id,
+                name=template_field.name,
+                field_type=FieldType(template_field.field_type),
+                order=template_field.order,
+                required=template_field.required,
+                nullable=template_field.nullable,
+                unique=template_field.unique,
+                default_value=template_field.default_value,
+                min_value=template_field.min_value,
+                max_value=template_field.max_value,
+                regex=template_field.regex,
+                preset=template_field.preset,
+                enum_values=template_field.enum_values,
+                enum_weights=template_field.enum_weights,
+                formula=template_field.formula,
+            )
+            db.add(field)
+            db.flush()
+            fields_by_ref[(template_entity.name, template_field.name)] = field
+
+    for template_relationship in template.relationships:
+        source_entity = _resolve_entity(template_relationship.source_entity, entities_by_name)
+        target_entity = _resolve_entity(template_relationship.target_entity, entities_by_name)
+        source_field = _resolve_field(
+            template_relationship.source_entity, template_relationship.source_field, fields_by_ref
+        )
+        target_field = _resolve_field(
+            template_relationship.target_entity, template_relationship.target_field, fields_by_ref
+        )
+        db.add(
+            Relationship(
+                project_id=project.id,
+                relationship_type=RelationshipType(template_relationship.relationship_type),
+                source_entity_id=source_entity.id,
+                source_field_id=source_field.id,
+                target_entity_id=target_entity.id,
+                target_field_id=target_field.id,
+            )
+        )
+
+    for template_rule in template.rules:
+        entity = _resolve_entity(template_rule.entity, entities_by_name)
+        db.add(Rule(entity_id=entity.id, condition=template_rule.condition))
+
+    for template_trigger in template.event_triggers:
+        entity = _resolve_entity(template_trigger.entity, entities_by_name)
+        db.add(
+            EventTrigger(
+                entity_id=entity.id,
+                label=template_trigger.label,
+                condition=template_trigger.condition,
+            )
+        )
+
+    for template_workflow in template.workflows:
+        entity = _resolve_entity(template_workflow.entity, entities_by_name)
+        field = _resolve_field(template_workflow.entity, template_workflow.field, fields_by_ref)
+        db.add(
+            Workflow(
+                entity_id=entity.id,
+                field_id=field.id,
+                states=template_workflow.states,
+                initial_states=template_workflow.initial_states,
+                transitions=template_workflow.transitions,
+                stop_probabilities=template_workflow.stop_probabilities,
+            )
+        )
+
+    for template_trend in template.trends:
+        entity = _resolve_entity(template_trend.entity, entities_by_name)
+        field = _resolve_field(template_trend.entity, template_trend.field, fields_by_ref)
+        db.add(
+            Trend(
+                entity_id=entity.id,
+                field_id=field.id,
+                trend_type=TrendType(template_trend.trend_type),
+                params=template_trend.params,
+            )
+        )
+
+    for template_ei in template.error_injections:
+        entity = _resolve_entity(template_ei.entity, entities_by_name)
+        field = _resolve_field(template_ei.entity, template_ei.field, fields_by_ref)
+        db.add(
+            ErrorInjection(
+                entity_id=entity.id,
+                field_id=field.id,
+                rate=template_ei.rate,
+                error_types=template_ei.error_types,
+            )
+        )
+
+    lookup_tables_by_name: dict[str, LookupTable] = {}
+    for template_table in template.lookup_tables:
+        table = LookupTable(
+            project_id=project.id,
+            name=template_table.name,
+            columns=template_table.columns,
+            data=template_table.data,
+            row_count=len(template_table.data),
+        )
+        db.add(table)
+        db.flush()
+        lookup_tables_by_name[template_table.name] = table
+
+    for template_attachment in template.lookup_attachments:
+        entity = _resolve_entity(template_attachment.entity, entities_by_name)
+        field = _resolve_field(template_attachment.entity, template_attachment.field, fields_by_ref)
+        table = _resolve_lookup_table(template_attachment.lookup_table, lookup_tables_by_name)
+        db.add(
+            LookupAttachment(
+                entity_id=entity.id,
+                field_id=field.id,
+                lookup_table_id=table.id,
+                column=template_attachment.column,
+            )
+        )
+
+    for template_route in template.geo_routes:
+        entity = _resolve_entity(template_route.entity, entities_by_name)
+        field = _resolve_field(template_route.entity, template_route.field, fields_by_ref)
+        table = _resolve_lookup_table(template_route.lookup_table, lookup_tables_by_name)
+        db.add(
+            GeoRoute(
+                entity_id=entity.id,
+                field_id=field.id,
+                lookup_table_id=table.id,
+                lat_column=template_route.lat_column,
+                lon_column=template_route.lon_column,
+            )
+        )
+
+    db.commit()
+    db.refresh(project)
+    return project

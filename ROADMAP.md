@@ -472,7 +472,45 @@ Goal: the community can extend SynthFlow without forking it.
       total, lint clean. Verified end-to-end in a browser: a VIN-preset
       field generated 10 rows of real 17-character, I/O/Q-free values with
       zero console errors.
-- [ ] Template marketplace format (import/export a project as a shareable template)
+- [x] Template marketplace format (import/export a project as a shareable
+      template) — `ProjectTemplate` (`app/schemas/template.py` +
+      `app/services/templates.py`): a project's *design* — entities,
+      fields, relationships, rules, event triggers, workflows, trends,
+      error injections, lookup tables (including their uploaded data,
+      inline) and lookup attachments, geo routes — as one JSON document.
+      Every reference inside it is by *name*, not database id: entity/
+      field ids only mean something inside the project they came from, so
+      export rewrites every id to a name-based reference and import
+      resolves each one back to whatever row was just created *in this
+      import*, not the original. That's also what makes a template
+      hand-editable — the future "starter templates" item below is just
+      curated JSON files matching this shape, not a database dump.
+      Deliberately excludes outputs (`DatabaseConnection`, `RestOutput`,
+      `WebSocketStream`, `KafkaOutput`, `MQTTOutput`) and generated data:
+      outputs hold deployment-specific secrets/addresses that mean nothing
+      to whoever's importing the template, so the recipient wires up their
+      own the same way they would for a hand-built project. Import is
+      all-or-nothing: nothing is committed until every row resolves
+      successfully, so an unknown reference or an invalid enum value (e.g.
+      a bad `field_type`) leaves no partial project behind — caught as a
+      clean 400, not a 500 or an orphaned row. `GET /projects/{id}/export`
+      and `POST /projects/import`; frontend adds an "Export" button on the
+      project page (downloads a `<name>.synthflow.json` file) and an
+      "Import project" button on the projects list (a file picker feeding
+      the same JSON back in) — no new dialog components needed, reusing
+      the existing blob-download helper. 8 new tests including a full
+      round trip through every attachment type and a project-wide
+      `/generate` call on the *imported* project proving the round-tripped
+      rules/relationships/workflow/lookup/geo-route config actually still
+      works, not just that the JSON shapes match. 195 passed / 3 skipped
+      total, lint clean. Verified end-to-end in a browser against the real
+      Docker/Postgres stack: created a project through the UI, clicked
+      Export, got a real downloaded JSON file, fed it back in through
+      Import, saw the project appear a second time with zero console
+      errors; separately verified the richer case (relationship + rule)
+      against the live API — export, import as a new project, generate 10
+      real rows from the *imported* project, all respecting the
+      original's constraints.
 - [ ] Starter templates: banking, stock market, smart city, weather, hospital,
       manufacturing, CCTV, logistics, GPS fleet, retail, IoT
 - [ ] Live monitoring dashboard: events/sec, active streams, CPU/memory, connected

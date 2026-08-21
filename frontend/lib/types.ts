@@ -405,3 +405,110 @@ export interface OutputSummary {
   id: string;
   detail: string;
 }
+
+// The "template marketplace format" — a project's design (entities,
+// fields, relationships, and every simulation attachment) as one
+// importable JSON document. Deliberately excludes outputs (they hold
+// deployment-specific secrets) and generated data. See the backend's
+// app/schemas/template.py for the full reasoning; this type just mirrors
+// that shape for the export/import UI (project detail page's "Export"
+// button, projects list page's "Import project" button).
+export interface ProjectTemplateField {
+  name: string;
+  field_type: string;
+  order: number;
+  required: boolean;
+  nullable: boolean;
+  unique: boolean;
+  default_value: string | null;
+  min_value: number | null;
+  max_value: number | null;
+  regex: string | null;
+  preset: string | null;
+  enum_values: string[] | null;
+  enum_weights: number[] | null;
+  formula: string | null;
+}
+
+export interface ProjectTemplateEntity {
+  name: string;
+  fields: ProjectTemplateField[];
+}
+
+export interface ProjectTemplateRelationship {
+  relationship_type: string;
+  source_entity: string;
+  source_field: string;
+  target_entity: string;
+  target_field: string;
+}
+
+export interface ProjectTemplateRule {
+  entity: string;
+  condition: string;
+}
+
+export interface ProjectTemplateEventTrigger {
+  entity: string;
+  label: string;
+  condition: string;
+}
+
+export interface ProjectTemplateWorkflow {
+  entity: string;
+  field: string;
+  states: string[];
+  initial_states: string[];
+  transitions: Record<string, unknown>[];
+  stop_probabilities: Record<string, number> | null;
+}
+
+export interface ProjectTemplateTrend {
+  entity: string;
+  field: string;
+  trend_type: string;
+  params: Record<string, unknown>;
+}
+
+export interface ProjectTemplateErrorInjection {
+  entity: string;
+  field: string;
+  rate: number;
+  error_types: string[];
+}
+
+export interface ProjectTemplateLookupTable {
+  name: string;
+  columns: string[];
+  data: Record<string, unknown>[];
+}
+
+export interface ProjectTemplateLookupAttachment {
+  entity: string;
+  field: string;
+  lookup_table: string;
+  column: string;
+}
+
+export interface ProjectTemplateGeoRoute {
+  entity: string;
+  field: string;
+  lookup_table: string;
+  lat_column: string;
+  lon_column: string;
+}
+
+export interface ProjectTemplate {
+  template_version: number;
+  name: string;
+  entities: ProjectTemplateEntity[];
+  relationships: ProjectTemplateRelationship[];
+  rules: ProjectTemplateRule[];
+  event_triggers: ProjectTemplateEventTrigger[];
+  workflows: ProjectTemplateWorkflow[];
+  trends: ProjectTemplateTrend[];
+  error_injections: ProjectTemplateErrorInjection[];
+  lookup_tables: ProjectTemplateLookupTable[];
+  lookup_attachments: ProjectTemplateLookupAttachment[];
+  geo_routes: ProjectTemplateGeoRoute[];
+}

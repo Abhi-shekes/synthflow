@@ -173,12 +173,38 @@ generated real rows through the actual UI with zero console errors, and
 uninstalling it made both the registry and generation for an
 already-created field fail cleanly (400, not 500) rather than silently.
 
+## Template marketplace format — done
+
+`ProjectTemplate`: a project's design — entities, fields, relationships,
+rules, event triggers, workflows, trends, error injections, lookup
+tables (with their data) and attachments, geo routes — exported as one
+JSON document with every reference rewritten from a database id to a
+name, and imported back by resolving those names against whatever was
+just created in *that* import. Outputs and generated data are
+deliberately excluded — outputs hold deployment-specific secrets that
+mean nothing to an importer. Import is all-or-nothing: nothing commits
+until every reference resolves, so a bad template leaves no partial
+project behind. `GET /projects/{id}/export` + `POST /projects/import`;
+"Export" button on the project page, "Import project" file picker on the
+projects list. This is what makes the "starter templates" item below
+buildable next — a starter template is just a curated JSON file in this
+shape, no new format work needed.
+
+8 new tests (including a full round trip through every attachment type,
+verified by actually generating rows from the *imported* project — not
+just comparing JSON shapes), 195 passed / 3 skipped total, lint clean.
+Verified end-to-end in a browser against live Docker/Postgres: exported a
+real project to a downloaded file, re-imported it through the UI file
+picker, zero console errors; separately verified the relational case
+(relationship + rule) via the live API, generating 10 real rows from an
+imported project that still respected the original's constraints.
+
 ## Now
 
 The rest of Phase 5 (output/rule/AI provider plugins to round out the
-plugin framework, template marketplace + starter templates, live
-monitoring dashboard, modular install) is still unscoped and needs its
-own design pass before starting.
+plugin framework, starter templates — now unblocked by the format above
+— live monitoring dashboard, modular install) is still unscoped and
+needs its own design pass before starting.
 
 ## Backlog (not started, roughly in order)
 

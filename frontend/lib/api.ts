@@ -20,6 +20,7 @@ import type {
   MQTTOutputCreateInput,
   OutputSummary,
   Project,
+  ProjectTemplate,
   Relationship,
   RelationshipCreateInput,
   RestOutput,
@@ -619,4 +620,14 @@ export const api = {
 
   listGeneratorPlugins: (token: string) =>
     request<GeneratorPresetSummary[]>("/api/v1/generator-plugins", {}, token),
+
+  exportProject: (token: string, projectId: string) =>
+    request<ProjectTemplate>(`/api/v1/projects/${projectId}/export`, {}, token),
+
+  importProject: (token: string, template: ProjectTemplate) =>
+    request<Project>(
+      "/api/v1/projects/import",
+      { method: "POST", body: JSON.stringify(template) },
+      token
+    ),
 };

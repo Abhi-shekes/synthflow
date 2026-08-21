@@ -103,6 +103,17 @@ export default function ProjectDetailPage() {
     onError: (error: Error) => toast.error(error.message || "Could not delete project"),
   });
 
+  const exportProject = useMutation({
+    mutationFn: () => api.exportProject(accessToken!, projectId),
+    onSuccess: (template) => {
+      const blob = new Blob([JSON.stringify(template, null, 2)], {
+        type: "application/json",
+      });
+      downloadBlob(blob, `${template.name || "project"}.synthflow.json`);
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not export project"),
+  });
+
   const createRelationship = useMutation({
     mutationFn: (values: RelationshipCreateInput) =>
       api.createRelationship(accessToken!, projectId, values),
@@ -266,18 +277,28 @@ export default function ProjectDetailPage() {
               </p>
             )}
           </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            disabled={deleteProject.isPending}
-            onClick={() => {
-              if (confirm("Delete this project and all its entities?")) {
-                deleteProject.mutate();
-              }
-            }}
-          >
-            Delete project
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={exportProject.isPending}
+              onClick={() => exportProject.mutate()}
+            >
+              {exportProject.isPending ? "Exporting…" : "Export"}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={deleteProject.isPending}
+              onClick={() => {
+                if (confirm("Delete this project and all its entities?")) {
+                  deleteProject.mutate();
+                }
+              }}
+            >
+              Delete project
+            </Button>
+          </div>
         </div>
 
         <Card>
