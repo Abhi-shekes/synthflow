@@ -10,7 +10,9 @@ import { toast } from "sonner";
 import { AddDatabaseConnectionDialog } from "@/components/add-database-connection-dialog";
 import { AddLookupTableDialog } from "@/components/add-lookup-table-dialog";
 import { AddRelationshipDialog } from "@/components/add-relationship-dialog";
+import { AddTimelineReplayDialog } from "@/components/add-timeline-replay-dialog";
 import { AppShell } from "@/components/app-shell";
+import { StreamPreview } from "@/components/stream-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,11 +35,18 @@ import {
 import { api } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { useRequireAuth } from "@/lib/hooks";
-import type { DatabaseConnectionCreateInput, RelationshipCreateInput } from "@/lib/types";
+import type {
+  DatabaseConnectionCreateInput,
+  RelationshipCreateInput,
+  TimelineReplayCreateInput,
+} from "@/lib/types";
 
 interface FormValues {
   name: string;
 }
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+const WS_URL = API_URL.replace(/^http/, "ws");
 
 export default function ProjectDetailPage() {
   const accessToken = useRequireAuth();
@@ -161,6 +170,30 @@ export default function ProjectDetailPage() {
     onError: (error: Error) => toast.error(error.message || "Could not delete lookup table"),
   });
 
+  const timelineReplaysQuery = useQuery({
+    queryKey: ["timeline-replays", projectId],
+    queryFn: () => api.listTimelineReplays(accessToken!, projectId),
+    enabled: !!accessToken,
+  });
+
+  const createTimelineReplay = useMutation({
+    mutationFn: (values: TimelineReplayCreateInput) =>
+      api.createTimelineReplay(accessToken!, projectId, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["timeline-replays", projectId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not add timeline replay"),
+  });
+
+  const deleteTimelineReplay = useMutation({
+    mutationFn: (replayId: string) =>
+      api.deleteTimelineReplay(accessToken!, projectId, replayId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["timeline-replays", projectId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete timeline replay"),
+  });
+
   const [pushConnectionId, setPushConnectionId] = useState("");
   const [pushEntityId, setPushEntityId] = useState("");
   const [pushCount, setPushCount] = useState(10);
@@ -206,6 +239,8 @@ export default function ProjectDetailPage() {
 
   const entities = entitiesQuery.data ?? [];
   const entityById = new Map(entities.map((e) => [e.id, e]));
+  const lookupTables = lookupTablesQuery.data ?? [];
+  const lookupTableById = new Map(lookupTables.map((t) => [t.id, t]));
   const fieldLabel = (entityId: string, fieldId: string) => {
     const field = entityById.get(entityId)?.fields.find((f) => f.id === fieldId);
     return field?.name ?? "?";
@@ -487,6 +522,70 @@ export default function ProjectDetailPage() {
                     </Button>
                   </li>
                 ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Timeline replays</CardTitle>
+            <AddTimelineReplayDialog
+              lookupTables={lookupTables}
+              onSubmit={(v) => createTimelineReplay.mutate(v)}
+              isPending={createTimelineReplay.isPending}
+            />
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Replays an uploaded lookup table&apos;s rows over a public
+              WebSocket in their original timestamp order, at N&times; real
+              time, looping once it reaches the end — a historical dataset
+              turned into a live feed for testing stream consumers against
+              realistic timing, not just realistic content.
+            </p>
+            {timelineReplaysQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No timeline replays yet.</p>
+            )}
+            {timelineReplaysQuery.data && timelineReplaysQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-3">
+                {timelineReplaysQuery.data.map((replay) => {
+                  const wsUrl = `${WS_URL}/public/replay/${replay.token}`;
+                  return (
+                    <li key={replay.id} className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                        <span className="truncate">
+                          <span className="font-medium">
+                            {lookupTableById.get(replay.lookup_table_id)?.name ?? "?"}
+                          </span>
+                          <span className="ml-2 text-muted-foreground">
+                            {replay.timestamp_column} · {replay.speed_multiplier}&times;
+                          </span>
+                        </span>
+                        <div className="flex shrink-0 gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              navigator.clipboard.writeText(wsUrl);
+                              toast.success("Copied");
+                            }}
+                          >
+                            Copy URL
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteTimelineReplay.mutate(replay.id)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                      <StreamPreview wsUrl={wsUrl} />
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>

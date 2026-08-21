@@ -9,6 +9,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.lookup_attachment import LookupAttachment
+    from app.models.timeline_replay import TimelineReplay
 
 PREVIEW_ROWS = 5
 
@@ -25,7 +26,8 @@ class LookupTable(Base):
     complexity of a dynamic-schema SQL table for no real benefit. `data`
     values keep whatever type they came in with — native JSON types for a
     `.json` upload, best-effort int/float coercion for CSV/Excel since those
-    formats are text-only on disk (see app.services.lookup_tables._coerce).
+    formats are text-only on disk (see
+    app.services.lookup_tables.coerce_numeric).
     """
 
     __tablename__ = "lookup_tables"
@@ -47,6 +49,11 @@ class LookupTable(Base):
         back_populates="lookup_table",
         cascade="all, delete-orphan",
         order_by="LookupAttachment.created_at",
+    )
+    replays: Mapped[list["TimelineReplay"]] = relationship(
+        back_populates="lookup_table",
+        cascade="all, delete-orphan",
+        order_by="TimelineReplay.created_at",
     )
 
     @property

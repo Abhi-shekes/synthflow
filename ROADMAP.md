@@ -187,7 +187,30 @@ Goal: data behaves over time, not just at generation time.
       Random failures (whole-request/whole-batch failure, as opposed to a
       bad value within an otherwise-successful row) are also out of scope
       here for the same reason.
-- [ ] Timeline replay: replay a historical dataset as a live stream at N× speed
+- [x] Timeline replay: replay a historical dataset as a live stream at N×
+      speed — `TimelineReplay` is project-scoped (like `DatabaseConnection`/
+      `LookupTable`) and reuses `LookupTable`'s existing upload/parsing
+      instead of inventing a separate "historical dataset" concept: a
+      timeline replay's source data and a lookup table's reference data are
+      the same shape of thing (project-level uploaded CSV/Excel/JSON), just
+      consumed differently — one is sampled from at generation time, the
+      other is walked in order against a clock. `WS /public/replay/{token}`
+      sends one row per tick (not a batch — replay is inherently row-by-row,
+      unlike `WebSocketStream`'s independent random batches), sorted
+      ascending by a configured `timestamp_column` (ISO-8601, validated
+      against every row at creation time, not spot-checked) regardless of
+      upload order, timed by the gap between consecutive rows' timestamps
+      divided by `speed_multiplier`, clamped to `[0, 30]` seconds so a huge
+      gap doesn't stall the stream and a tiny/negative one doesn't spin.
+      After the last row, playback loops back to the first — the negative
+      delta this produces is clamped to 0 by the same clamp, an instant
+      restart with no special-casing needed. Connection-scoped like
+      `WebSocketStream` (no persisted "running" state), but the schedule is
+      loaded once per connection rather than re-queried every tick — unlike
+      a fresh random batch, replayed historical data doesn't change once
+      uploaded, so there's no "did the config change" reason to hit the
+      database again on every row. Appears in the `/outputs` aggregate
+      alongside the other three output kinds.
 - [x] Lookup tables: import CSV/Excel/JSON as reference data — `LookupTable`
       is project-scoped (uploaded once, reusable across every entity in the
       project, matching how `DatabaseConnection` is project-scoped rather

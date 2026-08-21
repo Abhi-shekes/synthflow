@@ -15,6 +15,7 @@ from app.api.routes import (
     relationships,
     rest_outputs,
     rules,
+    timeline_replays,
     trends,
     websocket_streams,
     workflows,
@@ -46,9 +47,11 @@ app.include_router(lookup_attachments.router, prefix=settings.API_V1_PREFIX)
 app.include_router(database_connections.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rest_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(websocket_streams.router, prefix=settings.API_V1_PREFIX)
+app.include_router(timeline_replays.router, prefix=settings.API_V1_PREFIX)
 app.include_router(outputs.router, prefix=settings.API_V1_PREFIX)
 
 # Deliberately outside /api/v1 and unauthenticated — see RestOutput's and
 # WebSocketStream's docstrings.
 app.include_router(rest_outputs.public_router)
 app.include_router(websocket_streams.public_router)
+app.include_router(timeline_replays.public_router)

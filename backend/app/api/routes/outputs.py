@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.models.database_connection import DatabaseConnection
 from app.models.entity import Entity
 from app.models.rest_output import RestOutput
+from app.models.timeline_replay import TimelineReplay
 from app.models.user import User
 from app.models.websocket_stream import WebSocketStream
 
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/projects/{project_id}/outputs", tags=["outputs"])
 
 
 class OutputSummary(BaseModel):
-    type: Literal["database", "rest", "websocket"]
+    type: Literal["database", "rest", "websocket", "timeline_replay"]
     id: uuid.UUID
     detail: str
 
@@ -80,6 +81,16 @@ def list_outputs(
                 type="websocket",
                 id=stream.id,
                 detail=f"{stream.entity.name}: /public/stream/{stream.token}",
+            )
+        )
+
+    replays = db.query(TimelineReplay).filter(TimelineReplay.project_id == project_id).all()
+    for replay in replays:
+        summaries.append(
+            OutputSummary(
+                type="timeline_replay",
+                id=replay.id,
+                detail=f"{replay.lookup_table.name}: /public/replay/{replay.token}",
             )
         )
 

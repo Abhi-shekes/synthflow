@@ -43,57 +43,28 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   route that bypassed the test suite's DB session override by importing
   `SessionLocal` directly instead of looking it up on the module each call.
 
-## Phase 4, parts 1–9: probability, trend, correlation, error injection,
-lookup tables, event triggers, log & security-event presets, API-behavior
-simulation — done
+## Phase 4, parts 1–10 — done
 
-Full detail for each lives in ROADMAP.md Phase 4; condensed here:
+probability, trend, correlation, error injection, lookup tables, event
+triggers, log & security-event presets, API-behavior simulation, timeline
+replay. Full detail lives in ROADMAP.md Phase 4; the shape worth
+remembering: three of the ten (correlation, API-behavior, and part of
+lookup tables) turned out to already be ~90% covered by existing engines
+and only needed a small real gap closed, not a new concept — always check
+existing infra before adding a model/table. The two built as new
+project-scoped output kinds (lookup tables, timeline replay) both reuse
+the *same* upload/parsing (`app/services/lookup_tables.py`) for different
+consumption modes (sample vs. walk-in-order-against-a-clock).
 
-- **Probability**: `EntityField.enum_weights` for weighted selection.
-- **Trend**: `Trend` attaches to one numeric field; value is a function of
-  row position within the *current batch* (resets every `generate` call).
-- **Correlation** (same-entity): ~90% already built via formula fields;
-  closed by adding `noise(stddev)`/`uniform(low, high)` to the shared
-  expression evaluator. Cross-entity correlation merged into the
-  cross-entity-rules backlog item below.
-- **Error injection**: `ErrorInjection` attaches to one field (rate 0–1 +
-  `error_types`), corrupting its value in `_corrupt_value` after it's
-  otherwise fully computed. A rule on the same field evaluates
-  post-corruption, so it can discard every corrupted row (documented).
-- **Lookup tables**: `LookupTable` (project-scoped upload) +
-  `LookupAttachment` (per-field). Reuses the exact `fk_pools` mechanism a
-  `Relationship` already uses, so it works from single-entity generation
-  too, not just project-wide.
-- **Event triggers**: `EventTrigger` is entity-scoped like `Rule`, but
-  additive — a match appends its `label` to `_triggered_events` instead of
-  discarding the row. No external notification fires yet.
-- **Log & security-event presets**: `EntityField.preset` picks one of
-  eleven canned single-line generators (`app/services/log_generators.py`:
-  nginx/docker/kubernetes/syslog/application logs, plus failed-login/
-  brute-force/SQLi/DDoS/port-scan/malware-alert security events). Not a new
-  engine — slots into `_generate_value` exactly where `regex` already does,
-  mutually exclusive with it.
-- **API-behavior simulation**: turned out to need almost no new
-  machinery — latency is a FLOAT field with min/max, timeouts are
-  `ErrorInjection`'s existing `out_of_range`, a status code mix is a
-  weighted `ENUM` field. The one real gap: numeric-looking `enum_values`
-  (e.g. `"200"`) were generating as strings, not real ints — closed by
-  reusing `coerce_numeric` (renamed from lookup_tables' private `_coerce`
-  into shared infrastructure) in the `ENUM` branch of `_generate_value`.
-- 73 new tests across all nine, 129 passed / 3 skipped total, lint clean.
-  Verified end-to-end in a browser for each (weighted enum distribution
-  matched configured weights; linear trend gave an exact arithmetic
-  sequence; temperature/humidity correlation Pearson r = -0.985; a rate-1
-  null injection returned 10/10 nulls; a lookup attachment returned 10/10
-  rows drawing the uploaded value; a temperature-range trigger annotated
-  10/10 rows; a failed-login preset returned 10/10 realistic event lines;
-  a weighted status-code enum returned real ints at an 86.5%/200 split
-  against a configured 90% weight over 200 rows).
+82 new tests across all ten parts, 138 passed / 3 skipped total, lint
+clean. Every part verified end-to-end in a browser, not just by test
+suite — most recently: rows uploaded out of timestamp order replayed in
+correct ascending order over `/public/replay/{token}` and looped back to
+the start, zero console errors.
 
 ## Now — Phase 4, remainder
 
-Not started: timeline replay, geographic simulation, user-behavior
-simulation.
+Not started: geographic simulation, user-behavior simulation.
 
 ## Backlog (not started, roughly in order)
 

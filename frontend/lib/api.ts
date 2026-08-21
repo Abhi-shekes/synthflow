@@ -17,6 +17,8 @@ import type {
   RelationshipCreateInput,
   RestOutput,
   Rule,
+  TimelineReplay,
+  TimelineReplayCreateInput,
   Trend,
   TrendCreateInput,
   User,
@@ -505,6 +507,27 @@ export const api = {
   ) =>
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}/lookup-attachments/${attachmentId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listTimelineReplays: (token: string, projectId: string) =>
+    request<TimelineReplay[]>(`/api/v1/projects/${projectId}/timeline-replays`, {}, token),
+
+  createTimelineReplay: (
+    token: string,
+    projectId: string,
+    data: TimelineReplayCreateInput
+  ) =>
+    request<TimelineReplay>(
+      `/api/v1/projects/${projectId}/timeline-replays`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteTimelineReplay: (token: string, projectId: string, replayId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/timeline-replays/${replayId}`,
       { method: "DELETE" },
       token
     ),

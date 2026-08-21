@@ -9,6 +9,7 @@ from app.models.project import Project
 from app.models.relationship import Relationship
 from app.models.rest_output import RestOutput
 from app.models.rule import Rule
+from app.models.timeline_replay import TimelineReplay
 from app.models.trend import Trend
 from app.models.user import User
 from app.models.websocket_stream import WebSocketStream
@@ -30,4 +31,5 @@ __all__ = [
     "LookupTable",
     "LookupAttachment",
     "EventTrigger",
+    "TimelineReplay",
 ]

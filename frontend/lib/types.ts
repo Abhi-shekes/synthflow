@@ -215,6 +215,22 @@ export interface LookupAttachmentCreateInput {
   column: string;
 }
 
+export interface TimelineReplay {
+  id: string;
+  project_id: string;
+  lookup_table_id: string;
+  timestamp_column: string;
+  speed_multiplier: number;
+  token: string;
+  created_at: string;
+}
+
+export interface TimelineReplayCreateInput {
+  lookup_table_id: string;
+  timestamp_column: string;
+  speed_multiplier: number;
+}
+
 export interface Entity {
   id: string;
   project_id: string;
@@ -340,7 +356,7 @@ export interface WebSocketStream {
 }
 
 export interface OutputSummary {
-  type: "database" | "rest" | "websocket";
+  type: "database" | "rest" | "websocket" | "timeline_replay";
   id: string;
   detail: string;
 }
