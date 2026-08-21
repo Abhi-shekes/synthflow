@@ -875,24 +875,68 @@ Goal: generate far more than fits in memory, unattended, and survive a restart.
 This is the phase that turns SynthFlow from a good interactive tool into
 something that can sit inside a real data pipeline.
 
-- [ ] Streaming/chunked generation — write rows out as they are produced instead
-      of building the whole batch in memory first, removing
-      `MAX_GENERATE_ROWS` as a hard ceiling rather than just raising it
-- [ ] A persistent job model: queued/running/succeeded/failed, progress, cancel,
-      retry, and a run history with row counts and timings
-- [ ] Scheduled runs (cron-style), e.g. refresh a staging database nightly
-- [ ] Resume background producers after a restart — closes the gap documented in
-      `KafkaOutput`/`MQTTOutput`/`PluginOutput`, where a surviving row currently
-      has no running task behind it
-- [ ] Distributed locking so a producer runs on exactly one worker — closes the
-      "single-process only, multiple workers would duplicate producers"
-      limitation documented in `app/services/stream_producers.py`
-- [ ] Per-output backpressure and rate limiting, so a slow consumer slows the
-      producer instead of building an unbounded queue
+- [x] Streaming/chunked generation — `generator.iter_rows` yields rows one at a
+      time and `generate_rows` is now a thin `list(...)` wrapper over it, so no
+      existing caller changed behaviour. The accumulated list turned out to be
+      used for exactly one thing (the previous row), which is what made the
+      refactor small. Measured: 50,000 rows peak at **25 KiB streaming vs 11 MiB
+      as a list**, and flat as the count grows.
+- [x] A persistent job model: queued/running/succeeded/failed/cancelled,
+      live `rows_written` progress, cooperative cancel, and a run history with
+      timings and artifacts. Rows stream to a CSV or JSONL file; both are
+      streaming formats on purpose, since a JSON array or an Excel workbook
+      would need the whole result before the first byte and defeat the point.
+- [x] Scheduled runs (cron-style), evaluated by the same worker. A due schedule
+      inserts an ordinary queued job rather than running work itself, so a
+      scheduled run gets identical history, progress, cancellation and
+      artifacts — one execution path to keep correct instead of two. The cron
+      parser (`app/services/cron.py`) is ~80 lines rather than a dependency,
+      and rejects an unsatisfiable expression (`0 0 31 2 *`) at creation time:
+      a schedule that silently never fires is a worse failure than one that
+      refuses to be created.
+- [x] Resume background producers after a restart — the gap
+      `KafkaOutput`/`MQTTOutput`/`PluginOutput` have documented since they were
+      written. Proven by restarting the container for real and watching the
+      Kafka topic keep advancing (+44 messages after restart). Producers whose
+      plugin is no longer installed are skipped with a logged reason rather
+      than crashing the boot.
+- [x] Distributed locking so a job runs on exactly one worker — via Postgres
+      `SELECT ... FOR UPDATE SKIP LOCKED`. Verified with 8 concurrent threads
+      against real Postgres: 40 jobs, 40 claims, **zero double-claims**.
+- [ ] Per-output backpressure and rate limiting. Producers already pace
+      themselves with `events_per_second`, so this is about reacting to a slow
+      consumer rather than setting a fixed rate — deferred rather than faked,
+      and it wants the Phase 11 quality signals to know what "too slow" means.
 
-      Several later phases assume this exists: Phase 9's profiling and Phase 13's
-      historical backfill are both long-running work that wants a job model
-      rather than a request/response cycle.
+      **Architecture note.** The tech-stack table originally said Celery +
+      Redis. This uses the database instead, and that's a deliberate change:
+      the job table *is* the queue. Three things then fall out rather than
+      needing infrastructure — jobs survive a restart by construction (they're
+      rows, so an interrupted one is simply still `running` with a stale lock
+      and gets reclaimed), exactly one worker runs a given job, and there is no
+      Redis or separate worker container to deploy. Celery would have added two
+      containers and a second deployment shape for what Postgres already does
+      well at this scale. Documented limit: `SKIP LOCKED` is Postgres-only, so
+      on SQLite (dev and tests) claiming degrades to a conditional UPDATE —
+      single-worker safe, which is fine because multi-worker is a Postgres
+      concern anyway.
+
+      Two bugs surfaced only by running against real Postgres rather than the
+      SQLite suite: boolean columns declared as `Integer` (SQLite is permissive,
+      Postgres rejects `IS TRUE` on an integer), and `resume_producers` calling
+      `asyncio.create_task` from inside `asyncio.to_thread`, where there is no
+      running event loop. A third — a schedule showing "Invalid Date" — was
+      caught by actually looking at the rendered screenshot.
+
+      37 new tests, 346 passed / 3 skipped total, lint and format clean.
+      Verified live end to end: a **250,000-row job (50x the interactive cap)
+      finished in 9.6s** with progress observable throughout, produced a 4 MiB
+      artifact of exactly 250,001 lines whose weighted enum held at 80/15/5
+      across the whole file, while backend RSS stayed at 123 MiB. Cancellation
+      stopped a 3,000,000-row job at 24,000 rows on a chunk boundary. A
+      once-a-minute schedule fired on its own and advanced its next run. The
+      browser UI showed live progress, a downloadable artifact and a
+      human-readable schedule, with zero console errors.
 
 ## Phase 9 — Learn From Real Data
 

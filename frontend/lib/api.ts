@@ -8,10 +8,13 @@ import type {
   ErrorInjectionCreateInput,
   EventTrigger,
   FieldCreateInput,
+  GenerationJob,
   GeneratorPresetSummary,
   GeoRoute,
   GeoRouteCreateInput,
   InstallFeature,
+  JobFormat,
+  JobSchedule,
   KafkaOutput,
   KafkaOutputCreateInput,
   LookupAttachment,
@@ -718,6 +721,64 @@ export const api = {
     if (projectName) form.append("project_name", projectName);
     return requestUpload<SchemaImportResponse>("/api/v1/schema-import/sample", form, token);
   },
+
+  listJobs: (token: string, projectId: string) =>
+    request<GenerationJob[]>(`/api/v1/projects/${projectId}/jobs`, {}, token),
+
+  createJob: (
+    token: string,
+    projectId: string,
+    data: { entity_id?: string | null; rows: number; format: JobFormat }
+  ) =>
+    request<GenerationJob>(
+      `/api/v1/projects/${projectId}/jobs`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  cancelJob: (token: string, projectId: string, jobId: string) =>
+    request<GenerationJob>(
+      `/api/v1/projects/${projectId}/jobs/${jobId}/cancel`,
+      { method: "POST" },
+      token
+    ),
+
+  jobArtifactUrl: (projectId: string, jobId: string, name: string) =>
+    `/api/v1/projects/${projectId}/jobs/${jobId}/artifacts/${encodeURIComponent(name)}`,
+
+  downloadJobArtifact: (token: string, projectId: string, jobId: string, name: string) =>
+    requestBlob(
+      `/api/v1/projects/${projectId}/jobs/${jobId}/artifacts/${encodeURIComponent(name)}`,
+      { method: "GET" },
+      token
+    ),
+
+  listSchedules: (token: string, projectId: string) =>
+    request<JobSchedule[]>(`/api/v1/projects/${projectId}/schedules`, {}, token),
+
+  createSchedule: (
+    token: string,
+    projectId: string,
+    data: {
+      name: string;
+      cron: string;
+      rows: number;
+      format: JobFormat;
+      entity_id?: string | null;
+    }
+  ) =>
+    request<JobSchedule>(
+      `/api/v1/projects/${projectId}/schedules`,
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  deleteSchedule: (token: string, projectId: string, scheduleId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/schedules/${scheduleId}`,
+      { method: "DELETE" },
+      token
+    ),
 
   listStarterTemplates: (token: string) =>
     request<StarterTemplateSummary[]>("/api/v1/starter-templates", {}, token),

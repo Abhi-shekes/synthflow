@@ -19,7 +19,7 @@ import random
 import re
 import uuid
 import zipfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -357,7 +357,7 @@ def _generate_one_row(
     return row, cross_entity_context
 
 
-def generate_rows(
+def iter_rows(
     fields: list[EntityField],
     count: int,
     fk_pools: dict[str, list[Any]] | None = None,
@@ -369,8 +369,19 @@ def generate_rows(
     geo_routes: list[GeoRoute] | None = None,
     relationship_lookup: dict[str, dict[Any, dict[str, Any]]] | None = None,
     relationship_entity_name: dict[str, str] | None = None,
-) -> list[dict[str, Any]]:
-    """Generate `count` rows for `fields`.
+) -> Iterator[dict[str, Any]]:
+    """Yield `count` rows for `fields`, one at a time.
+
+    Streaming rather than list-building is what lets a job write far more
+    rows than fit in memory (see app.services.jobs): only the previous row
+    is retained, because that's all the generation loop ever looked at.
+    `generate_rows` below wraps this for every caller that genuinely wants
+    the whole batch at once, so nothing about existing behaviour changes.
+
+    Note this still takes `count` up front — trends and geo routes are
+    functions of a row's position *within the batch*, so the total has to
+    be known before the first row. Streaming saves the output, not the
+    parameter.
 
     `fk_pools` maps a field name to a pool of real values to draw from instead
     of randomizing that field independently — this is how both relationships
@@ -453,9 +464,8 @@ def generate_rows(
             random.shuffle(queue)
             unique_fk_queues[field.name] = queue
 
-    rows: list[dict[str, Any]] = []
+    previous_row: dict[str, Any] | None = None
     for position in range(count):
-        previous_row = rows[-1] if rows else None
         row = None
         cross_entity_context: dict[str, dict[str, Any]] = {}
         for _attempt in range(MAX_RULE_ATTEMPTS if rules else 1):
@@ -488,9 +498,43 @@ def generate_rows(
             row["_triggered_events"] = _evaluate_event_triggers(
                 row, event_triggers, cross_entity_context
             )
-        rows.append(row)
+        previous_row = row
+        yield row
 
-    return rows
+
+def generate_rows(
+    fields: list[EntityField],
+    count: int,
+    fk_pools: dict[str, list[Any]] | None = None,
+    rules: list[Rule] | None = None,
+    workflows: list[Workflow] | None = None,
+    trends: list[Trend] | None = None,
+    error_injections: list[ErrorInjection] | None = None,
+    event_triggers: list[EventTrigger] | None = None,
+    geo_routes: list[GeoRoute] | None = None,
+    relationship_lookup: dict[str, dict[Any, dict[str, Any]]] | None = None,
+    relationship_entity_name: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """The whole batch at once — see `iter_rows` for the streaming form.
+
+    Kept as the default because almost every caller (an API response, a
+    CSV download, one WebSocket tick) genuinely wants a list, and because
+    it means the streaming refactor changed no existing behaviour."""
+    return list(
+        iter_rows(
+            fields,
+            count,
+            fk_pools=fk_pools,
+            rules=rules,
+            workflows=workflows,
+            trends=trends,
+            error_injections=error_injections,
+            event_triggers=event_triggers,
+            geo_routes=geo_routes,
+            relationship_lookup=relationship_lookup,
+            relationship_entity_name=relationship_entity_name,
+        )
+    )
 
 
 def _topological_order(graph: dict[uuid.UUID, Iterable[uuid.UUID]]) -> list[uuid.UUID]:

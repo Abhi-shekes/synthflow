@@ -18,6 +18,17 @@ class Settings(BaseSettings):
 
     MAX_GENERATE_ROWS: int = 5000
     MAX_LOOKUP_ROWS: int = 5000
+    # Jobs stream to disk rather than building a response in memory, so
+    # their ceiling is about disk and patience, not RAM — hence far higher
+    # than MAX_GENERATE_ROWS, which caps a single interactive response.
+    MAX_JOB_ROWS: int = 50_000_000
+    JOB_ARTIFACT_DIR: str = "/tmp/synthflow-jobs"
+    # How long the in-process worker waits when there was nothing to do.
+    WORKER_POLL_SECONDS: float = 2.0
+    # The API process also runs the job worker by default. Turned off in
+    # the test suite (conftest) so a background loop can't race
+    # assertions, and available for anyone wanting API-only replicas.
+    RUN_WORKER: bool = True
 
 
 settings = Settings()

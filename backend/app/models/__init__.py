@@ -4,6 +4,7 @@ from app.models.error_injection import ErrorInjection
 from app.models.event_trigger import EventTrigger
 from app.models.field import EntityField
 from app.models.geo_route import GeoRoute
+from app.models.job import GenerationJob, Schedule
 from app.models.kafka_output import KafkaOutput
 from app.models.lookup_attachment import LookupAttachment
 from app.models.lookup_table import LookupTable
@@ -40,4 +41,6 @@ __all__ = [
     "KafkaOutput",
     "MQTTOutput",
     "PluginOutput",
+    "GenerationJob",
+    "Schedule",
 ]

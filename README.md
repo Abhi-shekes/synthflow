@@ -78,18 +78,32 @@ deployment doesn't pull in Kafka, MongoDB, or MQTT dependencies. See
 | Database | PostgreSQL, SQLite |
 | Synthetic data | Faker, Mimesis, Polyfactory |
 | Streaming | Kafka, MQTT, RabbitMQ, WebSockets |
-| Background jobs | Celery, Redis |
+| Background jobs | Postgres-backed queue (`SELECT … FOR UPDATE SKIP LOCKED`) |
 | Monitoring | Prometheus, Grafana, Loki |
 | Auth | JWT |
 | Containers | Docker, Docker Compose |
 
 ## Project status
 
-Phase 1 (core platform) is live: auth, projects, entities/fields with
-constraints, and batch generation (JSON + CSV), backend and frontend both
-working end-to-end. Phase 2 (relationships, rules, stateful entities) is next.
-See [ROADMAP.md](ROADMAP.md) for the phased plan and [TODO.md](TODO.md) for
-the active task list.
+**Phases 1–8 are live**, backend and frontend, each verified end to end
+rather than only by test suite:
+
+- **1–2** core platform, relationships, rules, formulas, stateful workflows
+- **3** outputs: CSV/JSON/Excel, PostgreSQL push, REST, WebSocket, Kafka, MQTT
+- **4** advanced simulation: trends, probability, error injection, lookup
+  tables, event triggers, timeline replay, geo routes, log/security presets
+- **5** extensibility: generator/rule-function/output plugins, project
+  export–import, 11 starter templates, a monitoring dashboard, modular install
+- **7** schema import — build a project from a live database, SQL dump,
+  JSON Schema/OpenAPI, or a sample file
+- **8** scale: streaming generation with no memory ceiling, a Postgres-backed
+  job queue with progress and cancellation, cron schedules, and background
+  producers that survive a restart
+
+Phase 6 (the optional AI layer) is deliberately unstarted — nothing depends
+on it. Phases 9–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
+plan, including the tradeoffs and known limits recorded per item, and
+[TODO.md](TODO.md) for the active task list.
 
 ## Getting started
 
@@ -137,9 +151,7 @@ generation latency, and errors. The backend exposes raw metrics at
 `/metrics` and container logs land in Loki.
 
 See `backend/README.md` and `frontend/README.md` for running each service
-without Docker. The `synthflow init` wizard described below — pick outputs,
-generate a Docker Compose file, start only what you selected — is the Phase 5
-target; today, `docker compose up` is the whole setup story.
+without Docker.
 
 ## Contributing
 

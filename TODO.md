@@ -442,37 +442,63 @@ all four lossy conversions reported, and generating from the applied
 project produced genuinely referential rows. Browser-verified end to end
 with zero console errors.
 
+## Phase 8 — Scale and Scheduled Jobs — done
+
+Streaming generation, a persistent job queue, cron schedules, and the end
+of "background work doesn't survive a restart".
+
+**The architecture call:** the job table *is* the queue, claimed with
+Postgres `SELECT ... FOR UPDATE SKIP LOCKED`. The tech-stack table said
+Celery + Redis; this uses the database instead, deliberately. Three
+things then fall out rather than needing infrastructure — jobs survive a
+restart by construction (they're rows), exactly one worker runs a given
+job, and there's no Redis or worker container to deploy. Celery would
+have added two containers and a second deployment shape for what
+Postgres already does well at this scale. README's table now says so.
+
+Notes worth keeping:
+- `generate_rows` became a thin wrapper over a new `iter_rows` generator.
+  The accumulated list was used for exactly one thing (the previous row),
+  which is why the refactor was small. 50k rows: 25 KiB streaming vs
+  11 MiB as a list.
+- A scheduled run is *just a job* — the worker inserts an ordinary queued
+  row. One execution path, and scheduled runs get the same history,
+  progress and artifacts.
+- The cron parser is ~80 lines rather than a dependency, and refuses
+  `0 0 31 2 *` at creation: a schedule that silently never fires is worse
+  than one that won't be created.
+- Two bugs surfaced only against real Postgres, not the SQLite suite:
+  boolean columns declared `Integer` (Postgres rejects `IS TRUE` on an
+  int), and `resume_producers` calling `asyncio.create_task` inside
+  `asyncio.to_thread` where there's no running loop. A third — a
+  schedule rendering "Invalid Date" — was caught by looking at the
+  screenshot rather than the assertions.
+- Backpressure/rate limiting is the one item left open, not faked:
+  producers already pace by `events_per_second`, so the real work is
+  reacting to a slow consumer, and that wants Phase 11's quality signals
+  to define "too slow".
+
+37 new tests, 346 passed / 3 skipped, lint and format clean. Verified
+live: a 250,000-row job (50x the interactive cap) in 9.6s with progress
+observable throughout, 4 MiB artifact of exactly 250,001 lines whose
+weighted enum held at 80/15/5, backend RSS steady at 123 MiB;
+cancellation stopped a 3M-row job at 24,000 rows; a once-a-minute
+schedule fired on its own; SKIP LOCKED gave 40 unique claims across 8
+concurrent threads with zero doubles; and a real container restart left
+the Kafka producer resuming on its own (+44 messages).
+
 ## Now
 
-**Phases 1–5 are complete.** ROADMAP.md now carries a planned Phase 6–16;
-nothing in 7–16 is started.
+**Phases 1–5, 7 and 8 are done.** Phase 6 (AI) stays deliberately
+unstarted. Next by the plan is **Phase 9 (Learn From Real Data)** —
+profile a real sample and generate statistically similar rows, using
+statistics rather than an LLM so it stays independent of Phase 6. Phase 8
+laid useful groundwork for it: profiling a large file is exactly the kind
+of long-running work the job model now handles.
 
-Recommended order, and why (CI and Phase 7 are now done):
-
-1. ~~**CI first**~~ — not a phase, just the four repo-bootstrap items at the
-   top of this file. There are 267 tests plus lint/format/build checks
-   that currently only run because they're run by hand. For a public repo
-   taking contributions that's the highest value-per-hour work available,
-   and it protects every phase after it.
-2. ~~**Phase 7 (Schema Import)**~~ — done; it did exactly this, every
-   importer producing a `ProjectTemplate` for the existing import path.
-3. **Phase 8 (Scale and Scheduled Jobs)** — next. — closes three limitations
-   already documented in the code (producers not surviving restart,
-   single-process only, the row-count ceiling) and unblocks Phases 9
-   and 13, which both imply long-running work.
-4. **Phase 9 (Learn From Real Data)** — opens the second major mode of
-   synthetic data, deliberately using statistics rather than an LLM so it
-   stays independent of Phase 6.
-
-Two quick wins that can slot in anywhere: **API keys** (Phase 14) because
-there is currently no machine authentication at all, which blocks CI use
-entirely; and **MySQL/MongoDB push** (Phase 12) because both dialects are
-already modelled and merely rejected at runtime.
-
-One caution: **Phase 13 is the deep one.** It revisits the generation
-engine's assumption that every call is independent — the assumption nearly
-every Phase 4 feature was built on. It's much cheaper after Phase 8, and
-attractive enough to be tempting before it.
+Two quick wins still available anywhere: **API keys** (Phase 14 — there's
+still no machine authentication, which blocks CI use) and **MySQL/MongoDB
+push** (Phase 12 — both already modelled and merely rejected at runtime).
 
 ## Backlog (not started, roughly in order)
 

@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -13,6 +16,7 @@ from app.api.routes import (
     geo_routes,
     health,
     install_config,
+    jobs,
     kafka_outputs,
     lookup_attachments,
     lookup_tables,
@@ -35,9 +39,38 @@ from app.api.routes import (
     workflows,
 )
 from app.core.config import settings
+from app.services.jobs import resume_producers, startup_recovery, worker_pass
 from app.services.metrics import init_gauges
 from app.services.plugin_output_producers import stop_all_plugin_outputs
 from app.services.stream_producers import stop_all_producers
+
+logger = logging.getLogger(__name__)
+
+
+async def _worker_loop() -> None:
+    """The in-process job worker.
+
+    Runs alongside the API rather than as a separate process: the queue
+    lives in the database (see app.services.jobs), so an extra container
+    would buy distribution we don't need at this scale while costing a
+    whole second deployment shape. Multiple API replicas can each run
+    this safely — Postgres' SKIP LOCKED hands each of them different
+    jobs.
+
+    Blocking work goes through asyncio.to_thread so a large job can't
+    stall the event loop serving requests.
+    """
+    while True:
+        try:
+            did_work = await asyncio.to_thread(worker_pass)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - the loop must outlive any one failure
+            logger.warning("Worker loop error", exc_info=True)
+            did_work = False
+        # Poll again immediately while there's a backlog; idle otherwise.
+        if not did_work:
+            await asyncio.sleep(settings.WORKER_POLL_SECONDS)
 
 
 @asynccontextmanager
@@ -46,7 +79,31 @@ async def lifespan(app: FastAPI):
     # (see app.services.metrics) — done at startup rather than import
     # time so the callbacks aren't wired up during test collection.
     init_gauges()
+
+    worker: asyncio.Task | None = None
+    if settings.RUN_WORKER:
+        # Put interrupted work back on the queue and restart the
+        # background producers a previous process owned. This is what
+        # finally makes "survives a restart" true for Kafka/MQTT/plugin
+        # outputs, which have documented that gap since they were built.
+        try:
+            recovered = await asyncio.to_thread(startup_recovery)
+            if any(recovered.values()):
+                logger.info("Startup recovery: %s", recovered)
+            # Not to_thread: this creates asyncio tasks, which must
+            # happen on the event loop.
+            await resume_producers()
+        except Exception:  # noqa: BLE001 - never block boot on recovery
+            logger.warning("Startup recovery failed", exc_info=True)
+
+        worker = asyncio.create_task(_worker_loop())
+
     yield
+
+    if worker is not None:
+        worker.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker
     # Kafka/MQTT/plugin-output producers are in-process background tasks
     # (see app.services.stream_producers and
     # app.services.plugin_output_producers) — nothing else cancels them,
@@ -73,6 +130,7 @@ app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
 app.include_router(generator_plugins.router, prefix=settings.API_V1_PREFIX)
 app.include_router(install_config.router, prefix=settings.API_V1_PREFIX)
+app.include_router(jobs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rule_functions.router, prefix=settings.API_V1_PREFIX)
 app.include_router(relationships.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rules.router, prefix=settings.API_V1_PREFIX)

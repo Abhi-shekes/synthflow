@@ -324,16 +324,19 @@ def test_openapi_without_component_schemas_is_rejected_clearly():
 
 def test_json_schema_import_round_trips_into_a_working_project(client, auth_headers):
     document = {
+        # Both required: a JSON Schema property that *isn't* required
+        # imports as nullable, and a nullable field may legitimately
+        # generate None — so asserting on its value would be flaky.
+        "required": ["id", "status"],
         "title": "Person",
         "type": "object",
-        "required": ["id"],
         "properties": {
             "id": {"type": "integer", "minimum": 1, "maximum": 100},
             "status": {"type": "string", "enum": ["active", "banned"]},
         },
     }
     result = import_from_json_schema(document)
-    body = _import_and_generate(client, auth_headers, result.template.model_dump())
+    body = _import_and_generate(client, auth_headers, result.template.model_dump(), count=25)
 
     for row in body["Person"]:
         assert 1 <= row["id"] <= 100

@@ -444,6 +444,43 @@ export interface InstallFeature {
   available: boolean;
 }
 
+// Phase 8: generation that happens outside the request cycle. A job
+// streams rows to a file via a worker, so it isn't bounded by the
+// interactive row cap — see the backend's app/services/jobs.py.
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type JobFormat = "csv" | "jsonl";
+
+export interface GenerationJob {
+  id: string;
+  project_id: string;
+  entity_id: string | null;
+  status: JobStatus;
+  format: JobFormat;
+  requested_rows: number;
+  rows_written: number;
+  artifacts: Record<string, { file: string; rows: number }> | null;
+  error: string | null;
+  schedule_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface JobSchedule {
+  id: string;
+  project_id: string;
+  entity_id: string | null;
+  name: string;
+  cron: string;
+  format: JobFormat;
+  requested_rows: number;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+  description: string;
+}
+
 export interface OutputSummary {
   type: "database" | "rest" | "websocket" | "timeline_replay" | "kafka" | "mqtt" | "plugin";
   id: string;

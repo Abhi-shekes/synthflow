@@ -12,6 +12,7 @@ import { AddLookupTableDialog } from "@/components/add-lookup-table-dialog";
 import { AddRelationshipDialog } from "@/components/add-relationship-dialog";
 import { AddTimelineReplayDialog } from "@/components/add-timeline-replay-dialog";
 import { AppShell } from "@/components/app-shell";
+import { JobsCard } from "@/components/jobs-card";
 import { StreamPreview } from "@/components/stream-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -501,6 +502,8 @@ export default function ProjectDetailPage() {
             )}
           </CardContent>
         </Card>
+
+        <JobsCard projectId={projectId} entities={entities} />
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">

@@ -4,10 +4,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import settings
 from app.db import session as db_session
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+
+# The API process normally also runs the job worker (see app.main's
+# lifespan, which reads this when TestClient enters its context below).
+# Off here: tests drive the worker explicitly through jobs.tick(), and a
+# loop running concurrently would race assertions about job status.
+settings.RUN_WORKER = False
 
 
 @pytest.fixture()
