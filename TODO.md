@@ -394,11 +394,36 @@ caught a real bug (the banner comment stacking on every re-run), fixed.
 
 ## Now
 
-**Phase 5 is complete** — every item done. Phase 6 (the optional AI
-layer: BYO-LLM provider integration, prompt → schema/rules/workflow/
-full-project generation with a mandatory human review step) is the only
-phase left, and none of it is scoped yet. AI provider plugins, deferred
-from the plugin framework, belong there.
+**Phases 1–5 are complete.** ROADMAP.md now carries a planned Phase 6–16;
+nothing in 7–16 is started.
+
+Recommended order, and why:
+
+1. **CI first** — not a phase, just the four repo-bootstrap items at the
+   top of this file. There are 267 tests plus lint/format/build checks
+   that currently only run because they're run by hand. For a public repo
+   taking contributions that's the highest value-per-hour work available,
+   and it protects every phase after it.
+2. **Phase 7 (Schema Import)** — biggest reach for the least new
+   machinery. Every importer can produce a `ProjectTemplate` and reuse the
+   proven Phase 5 import path rather than writing rows directly.
+3. **Phase 8 (Scale and Scheduled Jobs)** — closes three limitations
+   already documented in the code (producers not surviving restart,
+   single-process only, the row-count ceiling) and unblocks Phases 9
+   and 13, which both imply long-running work.
+4. **Phase 9 (Learn From Real Data)** — opens the second major mode of
+   synthetic data, deliberately using statistics rather than an LLM so it
+   stays independent of Phase 6.
+
+Two quick wins that can slot in anywhere: **API keys** (Phase 14) because
+there is currently no machine authentication at all, which blocks CI use
+entirely; and **MySQL/MongoDB push** (Phase 12) because both dialects are
+already modelled and merely rejected at runtime.
+
+One caution: **Phase 13 is the deep one.** It revisits the generation
+engine's assumption that every call is independent — the assumption nearly
+every Phase 4 feature was built on. It's much cheaper after Phase 8, and
+attractive enough to be tempting before it.
 
 ## Backlog (not started, roughly in order)
 

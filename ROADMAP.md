@@ -1,8 +1,14 @@
 # Roadmap
 
-SynthFlow is built in six phases. Each phase is expected to ship as a usable
+SynthFlow is built in phases. Each phase is expected to ship as a usable
 increment — later phases build on a working core rather than waiting for a
 "big bang" release. Scope inside a phase may shift; the phase order should not.
+
+**Phases 1–5 are complete.** Phase 6 (AI) is deliberately optional: nothing
+after it depends on it, and the platform stays fully functional for anyone who
+never enables it. Phases 7–16 are planned, not started — they are ordered by
+dependency and value rather than by ambition, and being further out, their
+scope is more likely to move than the earlier phases' was.
 
 Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
@@ -794,15 +800,208 @@ remains fully functional without this phase for anyone who doesn't.
       simulation settings + output config), with a mandatory human review/diff step
       before anything is applied
 
+## Phase 7 — Schema Import
+
+Goal: start from a schema that already exists instead of hand-building every
+entity. Today a 40-table application means defining 40 entities by hand; this
+turns that into one import and an edit pass.
+
+- [ ] Introspect a live database into a project: tables → entities, columns →
+      fields (type, nullability, uniqueness, length/precision), foreign keys →
+      relationships. PostgreSQL first, matching the connector already used for
+      database push
+- [ ] Import from a SQL DDL dump, so no live credentials are needed
+- [ ] Import from JSON Schema and OpenAPI, for teams whose contract is the API
+      rather than the database
+- [ ] Infer a project from a sample data file (CSV/JSON/Parquet) — column types,
+      obvious formats, and enum-looking columns
+- [ ] Mandatory review/diff step before anything is created, and all-or-nothing
+      application on confirm
+- [ ] Report what could not be represented (check constraints, computed columns,
+      exotic types) rather than importing silently and losing it
+
+      Every importer should produce a `ProjectTemplate` and hand it to the
+      existing `POST /projects/import` path rather than writing rows directly —
+      that format, its name-based references and its all-or-nothing validation
+      already exist from Phase 5, so this phase is mostly new front-ends onto a
+      pipeline that is already proven.
+
+## Phase 8 — Scale and Scheduled Jobs
+
+Goal: generate far more than fits in memory, unattended, and survive a restart.
+This is the phase that turns SynthFlow from a good interactive tool into
+something that can sit inside a real data pipeline.
+
+- [ ] Streaming/chunked generation — write rows out as they are produced instead
+      of building the whole batch in memory first, removing
+      `MAX_GENERATE_ROWS` as a hard ceiling rather than just raising it
+- [ ] A persistent job model: queued/running/succeeded/failed, progress, cancel,
+      retry, and a run history with row counts and timings
+- [ ] Scheduled runs (cron-style), e.g. refresh a staging database nightly
+- [ ] Resume background producers after a restart — closes the gap documented in
+      `KafkaOutput`/`MQTTOutput`/`PluginOutput`, where a surviving row currently
+      has no running task behind it
+- [ ] Distributed locking so a producer runs on exactly one worker — closes the
+      "single-process only, multiple workers would duplicate producers"
+      limitation documented in `app/services/stream_producers.py`
+- [ ] Per-output backpressure and rate limiting, so a slow consumer slows the
+      producer instead of building an unbounded queue
+
+      Several later phases assume this exists: Phase 9's profiling and Phase 13's
+      historical backfill are both long-running work that wants a job model
+      rather than a request/response cycle.
+
+## Phase 9 — Learn From Real Data
+
+Goal: given a real sample, produce statistically similar synthetic data —
+the second major mode of synthetic data generation, and the one SynthFlow
+currently cannot do at all.
+
+- [ ] Profile an uploaded dataset: per-column type, distribution shape, null
+      rate, cardinality, min/max, and recurring string patterns
+- [ ] Fit and sample from distributions (normal, lognormal, exponential,
+      categorical with observed frequencies) instead of uniform randomness
+- [ ] Preserve relationships *between* columns — a copula or equivalent — so
+      generated rows keep the correlations the real data had, not just correct
+      per-column histograms
+- [ ] Infer referential structure across multiple related files, producing
+      relationships rather than isolated entities
+- [ ] Turn the profile into an ordinary, editable project rather than an opaque
+      model, so the inferred distributions can be inspected, corrected and
+      version-controlled like anything else
+
+      Deliberately statistics, not language models. Keeping this out of Phase 6
+      means it still works in an air-gapped install with no LLM provider
+      configured, and means the two can be developed independently.
+
+## Phase 10 — Privacy and Compliance
+
+Goal: make production-shaped data safe to hand to people who should not see
+production. This is usually the reason an organisation adopts synthetic data
+in the first place.
+
+- [ ] PII detection with per-field classification: names, emails, phone numbers,
+      national identifiers, payment cards, addresses
+- [ ] Masking, tokenisation and format-preserving pseudonymisation, with a
+      mapping that stays consistent across a run so joins still work
+- [ ] k-anonymity and l-diversity measurement on generated output, with
+      configurable thresholds that can fail a run
+- [ ] Optional differential privacy applied to Phase 9's fitting step, with the
+      chosen epsilon stated in the output rather than buried
+- [ ] A re-identification risk report suitable for a compliance reviewer
+- [ ] Encrypt connection secrets at rest — closes the documented gap where
+      `DatabaseConnection` stores its password unencrypted
+
+## Phase 11 — Data Quality and Validation
+
+Goal: prove the generated data is good, instead of eyeballing the first ten rows.
+
+- [ ] Post-run profile of generated output: distributions, null rates,
+      uniqueness, correlation matrix
+- [ ] Side-by-side real-vs-generated comparison when the project came from a
+      Phase 9 profile, with a similarity score
+- [ ] Surface what the engine already knows but currently discards: rows
+      rejected by rules, unique-pool exhaustion, how much error injection
+      actually survived rule filtering (a documented interaction today)
+- [ ] User-defined assertions that fail a run — "email must be unique",
+      "at least 60% of orders must reach `paid`"
+- [ ] An exportable quality report, and the same checks available as a CI gate
+
+## Phase 12 — Connector Expansion
+
+Goal: read from and write to the systems people actually run.
+
+- [ ] Finish MySQL and MongoDB push — both are already modelled in
+      `DatabaseDialect` and rejected at runtime, so these are the cheapest
+      items on this list
+- [ ] Object storage: S3, GCS, Azure Blob
+- [ ] Columnar formats: Parquet, Avro, ORC
+- [ ] Warehouses: ClickHouse, Snowflake, BigQuery
+- [ ] RabbitMQ, and a generic signed-webhook output
+- [ ] Matching *input* connectors for Phases 7 and 9, so profiling and schema
+      import can read from the same places generation writes to
+
+      Mostly mechanical: the `synthflow.outputs` plugin contract from Phase 5
+      already defines how a delivery target plugs in, and the modular-install
+      work means each connector's dependencies can ship as its own extra rather
+      than bloating the core image.
+
+## Phase 13 — Temporal Continuity and Change Simulation
+
+Goal: records that persist across runs and change over time, instead of every
+generation call producing a fresh unrelated universe.
+
+- [ ] Persistent record identity — a customer generated yesterday still exists
+      today and can receive new orders
+- [ ] Workflow and trend state that carries across calls, closing two documented
+      resets: a workflow's walk restarting every call, and a trend's position
+      returning to 0 on every batch
+- [ ] Simulated inserts, updates and deletes over time (change-data-capture
+      shaped), so ETL pipelines and CDC consumers have something realistic to
+      chew on
+- [ ] Slowly-changing-dimension patterns (type 1 and 2)
+- [ ] Backfill a historical window, then continue generating live from its end
+- [ ] True `many_to_many` with a real join table — closes the documented
+      simplification where it currently generates like `one_to_many`
+
+      The deepest change on this list: it revisits the generation engine's
+      assumption that each call is independent, which nearly every Phase 4
+      feature was built on top of. Worth attempting only after Phase 8's job
+      model exists to run the long backfills it implies.
+
+## Phase 14 — Teams and Governance
+
+Goal: more than one person, and more than one machine, using it safely.
+
+- [ ] API keys / service tokens — today the only authentication is a
+      user-password login producing a short-lived JWT, so there is no supported
+      way to call SynthFlow from CI at all. Smallest item here, and the most
+      immediately blocking
+- [ ] Organisations and shared projects, with roles and per-project permissions
+- [ ] An audit log of who changed a schema, ran a generation, or pushed to a
+      database
+- [ ] SSO via OIDC/SAML
+- [ ] Project version history with diff and rollback, building on the
+      `ProjectTemplate` format that already serialises a whole project design
+
+## Phase 15 — Developer Experience
+
+Goal: use SynthFlow without opening the UI.
+
+- [ ] Python and TypeScript client libraries generated from the OpenAPI schema
+- [ ] A full CLI beyond `init` — generate, export, import, run and watch a job,
+      tail a stream
+- [ ] pytest fixtures and factory-style helpers so a test suite can seed itself
+      from a SynthFlow project
+- [ ] A GitHub Action, plus recipes for other CI systems
+- [ ] A Terraform provider, so a project definition can live in infrastructure
+      code alongside the environment it seeds
+
+## Phase 16 — Deployment and Operations
+
+Goal: run it somewhere real, not just docker compose on a laptop.
+
+- [ ] Helm chart and Kubernetes manifests, consistent with Phase 8's worker model
+- [ ] A production compose profile: TLS, real secret handling, non-root
+      containers, healthchecks, resource limits — today's compose file is
+      explicitly a development setup
+- [ ] Backup and restore for the control-plane database
+- [ ] Documented upgrade path and a version support policy, now that migrations
+      and a template format both need compatibility guarantees
+- [ ] Optional hosted/multi-tenant mode, with per-tenant isolation and quotas
+
 ---
 
 ## Future / not yet scheduled
 
-Ideas worth tracking but not committed to a phase yet:
+Ideas worth tracking but not committed to a phase yet. Several former entries
+here graduated into Phases 7–16 above; what's left is genuinely unscheduled.
 
-- Multi-user collaboration on a single project
-- Version control for projects (diff/rollback project definitions)
-- Project import/export and sharing
-- Cloud deployment wizard, Kubernetes deployment
-- Public plugin/template marketplace (hosted, not just import/export)
-- Reverse-engineer an existing database or API into a SynthFlow project
+- Public plugin/template marketplace — hosted and browsable, rather than the
+  file-based import/export that shipped in Phase 5
+- A visual React Flow canvas for the relationship and workflow builders; both
+  are functional forms today, deliberately
+- Synthetic *unstructured* data — documents, images, audio — which is a
+  different engine, not an extension of the row generator
+- Load/soak profiles: drive a target system at a defined shape of traffic and
+  report where it breaks, rather than just emitting rows
