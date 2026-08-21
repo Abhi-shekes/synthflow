@@ -1,0 +1,12 @@
+# Dev-only Prometheus config for the optional `monitoring` docker-compose
+# profile. Scrapes the backend's unauthenticated /metrics endpoint (see
+# app/api/routes/metrics.py for why it's unauthenticated and why that's
+# safe given the bounded label sets).
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: synthflow-backend
+    static_configs:
+      - targets: ["backend:8000"]

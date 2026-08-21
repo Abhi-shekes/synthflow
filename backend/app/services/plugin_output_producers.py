@@ -25,6 +25,7 @@ from uuid import UUID
 
 from app.db import session as db_session
 from app.models.plugin_output import PluginOutput
+from app.services import metrics
 from app.services.generator import build_lookup_pools, generate_rows
 from app.services.plugins import available_output_plugins
 
@@ -50,17 +51,19 @@ def _load_output_sync(
         if output is None:
             return None
         entity = output.entity
-        rows = generate_rows(
-            entity.fields,
-            output.batch_size,
-            fk_pools=build_lookup_pools(entity.lookup_attachments),
-            rules=entity.rules,
-            workflows=entity.workflows,
-            trends=entity.trends,
-            error_injections=entity.error_injections,
-            event_triggers=entity.event_triggers,
-            geo_routes=entity.geo_routes,
-        )
+        with metrics.generation("plugin") as recorder:
+            rows = generate_rows(
+                entity.fields,
+                output.batch_size,
+                fk_pools=build_lookup_pools(entity.lookup_attachments),
+                rules=entity.rules,
+                workflows=entity.workflows,
+                trends=entity.trends,
+                error_injections=entity.error_injections,
+                event_triggers=entity.event_triggers,
+                geo_routes=entity.geo_routes,
+            )
+            recorder.count(len(rows))
         return rows, output.events_per_second, output.plugin_name, output.config
     finally:
         db.close()
@@ -92,12 +95,14 @@ async def _plugin_loop(output_id: UUID) -> None:
                 return
 
             await _deliver(deliver, config, rows)
+            metrics.record_delivery("plugin")
             failures = 0
             await asyncio.sleep(1 / events_per_second)
         except asyncio.CancelledError:
             raise
         except Exception:
             failures += 1
+            metrics.record_delivery_error("plugin")
             logger.warning(
                 "Plugin output producer %s failed (attempt %s/%s)",
                 output_id,

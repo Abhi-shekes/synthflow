@@ -75,5 +75,65 @@ services:
       - "1883:1883"
     profiles: ["mqtt"]
 
+  # Optional monitoring stack — Prometheus scrapes the backend's /metrics,
+  # Grafana renders the bundled dashboard, Loki + promtail collect
+  # container logs. Not started by `docker compose up`; bring the whole
+  # set up with `docker compose --profile monitoring up`.
+  prometheus:
+    container_name: synthflow-prometheus
+    image: prom/prometheus:v3.1.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+    profiles: ["monitoring"]
+
+  grafana:
+    container_name: synthflow-grafana
+    image: grafana/grafana:11.5.1
+    environment:
+      # Dev-only: anonymous admin access so the dashboard is one click
+      # from `docker compose --profile monitoring up`, no login step.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    profiles: ["monitoring"]
+
+  loki:
+    container_name: synthflow-loki
+    image: grafana/loki:3.3.2
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
+    ports:
+      - "3100:3100"
+    profiles: ["monitoring"]
+
+  promtail:
+    container_name: synthflow-promtail
+    image: grafana/promtail:3.3.2
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      # Needed for Docker service discovery — see promtail-config.yml for
+      # why this is opt-in only.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    profiles: ["monitoring"]
+
 volumes:
   synthflow_postgres_data:

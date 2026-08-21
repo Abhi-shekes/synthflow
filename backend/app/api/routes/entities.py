@@ -16,6 +16,7 @@ from app.models.relationship import Relationship
 from app.models.user import User
 from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateRequest
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
+from app.services import metrics
 from app.services.expressions import ExpressionError, evaluate
 from app.services.field_validation import validate_enum_weights, validate_preset
 from app.services.generator import build_lookup_pools, generate_rows, rows_to_csv, rows_to_excel
@@ -257,17 +258,19 @@ def generate(
             detail=f"count must be between 1 and {settings.MAX_GENERATE_ROWS}",
         )
     try:
-        rows = generate_rows(
-            entity.fields,
-            payload.count,
-            fk_pools=build_lookup_pools(entity.lookup_attachments),
-            rules=entity.rules,
-            workflows=entity.workflows,
-            trends=entity.trends,
-            error_injections=entity.error_injections,
-            event_triggers=entity.event_triggers,
-            geo_routes=entity.geo_routes,
-        )
+        with metrics.generation("api") as recorder:
+            rows = generate_rows(
+                entity.fields,
+                payload.count,
+                fk_pools=build_lookup_pools(entity.lookup_attachments),
+                rules=entity.rules,
+                workflows=entity.workflows,
+                trends=entity.trends,
+                error_injections=entity.error_injections,
+                event_triggers=entity.event_triggers,
+                geo_routes=entity.geo_routes,
+            )
+            recorder.count(len(rows))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

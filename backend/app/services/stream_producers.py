@@ -30,18 +30,32 @@ from aiomqtt import Client as MQTTClient
 from app.db import session as db_session
 from app.models.kafka_output import KafkaOutput
 from app.models.mqtt_output import MQTTOutput
+from app.services import metrics
 from app.services.generator import build_lookup_pools, generate_rows
 
 logger = logging.getLogger(__name__)
 
 _tasks: dict[UUID, asyncio.Task] = {}
 
+# Parallel to _tasks, kept in sync by start/stop: which broker kind each
+# running task is. Only the monitoring gauges need this (see
+# app.services.metrics) — the loops themselves never look at it, which is
+# why it's a separate dict rather than complicating _tasks' value type.
+_task_kinds: dict[UUID, str] = {}
+
+
+def task_kinds() -> list[str]:
+    return list(_task_kinds.values())
+
+
 CONNECT_TIMEOUT_SECONDS = 5
 RETRY_BACKOFF_SECONDS = 5
 MAX_CONSECUTIVE_FAILURES = 5
 
 
-def _load_batch_sync(model: type, output_id: UUID) -> tuple[list[dict[str, Any]], float] | None:
+def _load_batch_sync(
+    model: type, output_id: UUID, source: str
+) -> tuple[list[dict[str, Any]], float] | None:
     """One short-lived session, plain data out — same reasoning as
     websocket_streams._generate_batch_sync, including looking up
     `db_session.SessionLocal` fresh each call so tests can override it.
@@ -53,17 +67,19 @@ def _load_batch_sync(model: type, output_id: UUID) -> tuple[list[dict[str, Any]]
         if output is None:
             return None
         entity = output.entity
-        rows = generate_rows(
-            entity.fields,
-            output.batch_size,
-            fk_pools=build_lookup_pools(entity.lookup_attachments),
-            rules=entity.rules,
-            workflows=entity.workflows,
-            trends=entity.trends,
-            error_injections=entity.error_injections,
-            event_triggers=entity.event_triggers,
-            geo_routes=entity.geo_routes,
-        )
+        with metrics.generation(source) as recorder:
+            rows = generate_rows(
+                entity.fields,
+                output.batch_size,
+                fk_pools=build_lookup_pools(entity.lookup_attachments),
+                rules=entity.rules,
+                workflows=entity.workflows,
+                trends=entity.trends,
+                error_injections=entity.error_injections,
+                event_triggers=entity.event_triggers,
+                geo_routes=entity.geo_routes,
+            )
+            recorder.count(len(rows))
         return rows, output.events_per_second
     finally:
         db.close()
@@ -82,12 +98,13 @@ async def _kafka_loop(output_id: UUID, bootstrap_servers: str, topic: str) -> No
                 if not started:
                     await producer.start()
                     started = True
-                result = await asyncio.to_thread(_load_batch_sync, KafkaOutput, output_id)
+                result = await asyncio.to_thread(_load_batch_sync, KafkaOutput, output_id, "kafka")
                 if result is None:
                     return
                 rows, events_per_second = result
                 for row in rows:
                     await producer.send_and_wait(topic, json.dumps(row).encode())
+                metrics.record_delivery("kafka")
                 failures = 0
                 await asyncio.sleep(1 / events_per_second)
             except asyncio.CancelledError:
@@ -95,6 +112,7 @@ async def _kafka_loop(output_id: UUID, bootstrap_servers: str, topic: str) -> No
             except Exception:
                 failures += 1
                 started = False
+                metrics.record_delivery_error("kafka")
                 logger.warning(
                     "Kafka producer %s failed (attempt %s/%s)",
                     output_id,
@@ -120,17 +138,21 @@ async def _mqtt_loop(output_id: UUID, host: str, port: int, topic: str) -> None:
             async with client_ctx as client:
                 failures = 0
                 while True:
-                    result = await asyncio.to_thread(_load_batch_sync, MQTTOutput, output_id)
+                    result = await asyncio.to_thread(
+                        _load_batch_sync, MQTTOutput, output_id, "mqtt"
+                    )
                     if result is None:
                         return
                     rows, events_per_second = result
                     for row in rows:
                         await client.publish(topic, payload=json.dumps(row).encode())
+                    metrics.record_delivery("mqtt")
                     await asyncio.sleep(1 / events_per_second)
         except asyncio.CancelledError:
             raise
         except Exception:
             failures += 1
+            metrics.record_delivery_error("mqtt")
             logger.warning(
                 "MQTT producer %s failed (attempt %s/%s)",
                 output_id,
@@ -148,15 +170,18 @@ def start_kafka_producer(output: KafkaOutput) -> None:
     _tasks[output.id] = asyncio.create_task(
         _kafka_loop(output.id, output.bootstrap_servers, output.topic)
     )
+    _task_kinds[output.id] = "kafka"
 
 
 def start_mqtt_producer(output: MQTTOutput) -> None:
     _tasks[output.id] = asyncio.create_task(
         _mqtt_loop(output.id, output.broker_host, output.broker_port, output.topic)
     )
+    _task_kinds[output.id] = "mqtt"
 
 
 def stop_producer(output_id: UUID) -> None:
+    _task_kinds.pop(output_id, None)
     task = _tasks.pop(output_id, None)
     if task is not None:
         task.cancel()
@@ -166,6 +191,7 @@ async def stop_all_producers() -> None:
     """Called on app shutdown so no task outlives the process."""
     tasks = list(_tasks.values())
     _tasks.clear()
+    _task_kinds.clear()
     for task in tasks:
         task.cancel()
     for task in tasks:

@@ -18,6 +18,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.websocket_stream import WebSocketStream
 from app.schemas.websocket_stream import WebSocketStreamCreate, WebSocketStreamRead
+from app.services import metrics
 from app.services.generator import build_lookup_pools, generate_rows
 
 router = APIRouter(
@@ -96,17 +97,19 @@ def _generate_batch_sync(token: str) -> tuple[list[dict], float] | None:
         if stream is None:
             return None
         entity = stream.entity
-        rows = generate_rows(
-            entity.fields,
-            stream.batch_size,
-            fk_pools=build_lookup_pools(entity.lookup_attachments),
-            rules=entity.rules,
-            workflows=entity.workflows,
-            trends=entity.trends,
-            error_injections=entity.error_injections,
-            event_triggers=entity.event_triggers,
-            geo_routes=entity.geo_routes,
-        )
+        with metrics.generation("websocket") as recorder:
+            rows = generate_rows(
+                entity.fields,
+                stream.batch_size,
+                fk_pools=build_lookup_pools(entity.lookup_attachments),
+                rules=entity.rules,
+                workflows=entity.workflows,
+                trends=entity.trends,
+                error_injections=entity.error_injections,
+                event_triggers=entity.event_triggers,
+                geo_routes=entity.geo_routes,
+            )
+            recorder.count(len(rows))
         return rows, stream.events_per_second
     finally:
         db.close()
@@ -115,6 +118,10 @@ def _generate_batch_sync(token: str) -> tuple[list[dict], float] | None:
 @public_router.websocket("/public/stream/{token}")
 async def stream_public(websocket: WebSocket, token: str) -> None:
     await websocket.accept()
+    # Unlike the background producers — whose module-level task registry
+    # already *is* the live count — a connected client's only state is
+    # this coroutine, so this gauge is a real inc/dec pair.
+    metrics.active_websocket_clients.inc()
 
     try:
         while True:
@@ -135,3 +142,9 @@ async def stream_public(websocket: WebSocket, token: str) -> None:
             await asyncio.sleep(1 / events_per_second)
     except WebSocketDisconnect:
         pass
+    finally:
+        # `finally`, not just the disconnect branch: the loop also exits
+        # via two early `return`s above and via task cancellation, and a
+        # gauge that only decrements on the happy path drifts upward
+        # forever.
+        metrics.active_websocket_clients.dec()

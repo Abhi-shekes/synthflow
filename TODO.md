@@ -315,11 +315,52 @@ after delete). Confirmed in a browser too, and confirmed uninstalling
 degrades cleanly (disappears from the list, a new output referencing it
 gets a 400).
 
+## Live monitoring dashboard — done
+
+All six things the roadmap listed (events/sec, active streams,
+CPU/memory, connected clients, errors, output status), as a *provisioned*
+Grafana dashboard rather than just an exposed `/metrics`:
+`docker compose --profile monitoring up` and it's there at :3001, both
+datasources wired, no setup step. Four new profile-gated compose services
+(prometheus/grafana/loki/promtail, configs in `monitoring/`), so the
+default `docker compose up` is unchanged.
+
+The design-pass win: the "active" gauges **read existing state instead of
+counting it**. Both producer modules already keep a module-level `_tasks`
+registry of live tasks — that registry already *is* the count — so those
+gauges are `set_function` callbacks over `len()`, with zero
+instrumentation added to the producers and no second source of truth to
+drift. Connected WebSocket clients is the only real inc/dec gauge (no
+registry exists there), with `dec()` in a `finally` because that loop also
+exits via two early returns and cancellation.
+
+Second decision worth remembering: every label value comes from a fixed
+hardcoded set, never a project/entity/field name. That's what makes
+serving `/metrics` unauthenticated defensible (Prometheus can't refresh a
+JWT), and there's a test asserting distinctive user-supplied names never
+appear in the scrape body — so a future entity-labelled metric fails
+loudly rather than quietly leaking schema names. Row counting/timing does
+need call-site instrumentation, but it went at the 8 boundaries that know
+their own identity (via a `metrics.generation(source)` context manager)
+rather than as a new argument threaded through `generate_rows` — so
+`generator.py` has no metrics code in it at all.
+
+13 new tests, 248 passed / 3 skipped, lint clean. Verified live against
+the full 7-container stack: counter moved by exactly the number of rows
+generated, Prometheus scraped it and `rate()` was non-zero, Grafana
+proxy-queried Prometheus with all 12 panels provisioned, Loki had real
+backend logs. Then the live gauges were driven for real — a real
+WebSocket client took the client gauge 0→1→0, and a Kafka output aimed at
+an unreachable broker took `active_producers{kafka}` 0→1, logged 3
+delivery errors through the backoff path, and returned to 0 on delete.
+Dashboard screenshotted under load and inspected: every panel populated,
+no "No data", no console errors.
+
 ## Now
 
-The rest of Phase 5 (live monitoring dashboard, modular install) is
-still unscoped and needs its own design pass before starting. AI
-provider plugins wait for Phase 6.
+Modular install (`synthflow init` wizard + Web UI service picker) is the
+last unstarted Phase 5 item and is still unscoped — it needs its own
+design pass. AI provider plugins wait for Phase 6.
 
 ## Backlog (not started, roughly in order)
 

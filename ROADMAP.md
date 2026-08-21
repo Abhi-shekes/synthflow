@@ -654,8 +654,75 @@ Goal: the community can extend SynthFlow without forking it.
       and generating from its `LocationPing` entity produced real
       interpolated lat/lon points walking the bundled route — the geo-route
       attachment survived the import intact — zero console errors.
-- [ ] Live monitoring dashboard: events/sec, active streams, CPU/memory, connected
-      clients, errors, output status (Prometheus + Grafana + Loki)
+- [x] Live monitoring dashboard: events/sec, active streams, CPU/memory, connected
+      clients, errors, output status (Prometheus + Grafana + Loki) — all six,
+      as a provisioned Grafana dashboard rather than just an exposed
+      `/metrics` endpoint: `docker compose --profile monitoring up` and the
+      **SynthFlow overview** dashboard is already there at :3001 with both
+      datasources wired, no login and no "add a datasource" step.
+      Instrumentation is `app/services/metrics.py` (every metric defined in
+      one place) plus `prometheus-client`; the stack itself is four
+      profile-gated compose services (`prometheus`, `grafana`, `loki`,
+      `promtail`) with configs under `monitoring/`, so the default
+      `docker compose up` is still the same three containers.
+
+      Two design decisions did most of the work. First, the "active"
+      gauges *read existing state rather than counting it*: both
+      `stream_producers` and `plugin_output_producers` already keep a
+      module-level `_tasks` registry of live background tasks, and that
+      registry already **is** the active-producer count — so those gauges
+      are `set_function` callbacks over `len()` of it, with zero
+      instrumentation added to the producers and no second source of truth
+      to drift out of sync. (`stream_producers` gained one small parallel
+      `_task_kinds` dict purely so the gauge can split kafka from mqtt; the
+      loops never read it.) Connected WebSocket clients is the one real
+      inc/dec gauge, because there's no registry there — the handler's own
+      stack frame is the state — and its `dec()` sits in a `finally`
+      specifically because that loop also exits through two early
+      `return`s and through cancellation, any of which would otherwise
+      leak the gauge upward forever.
+
+      Second, **every label value is drawn from a fixed hardcoded set**
+      (`source` ∈ api/rest/websocket/kafka/mqtt/plugin/database_push,
+      `kind` ∈ kafka/mqtt/plugin) — never a project, entity, or field
+      name. That's not just Prometheus cardinality hygiene: it's what makes
+      serving `/metrics` unauthenticated defensible, since Prometheus
+      scrapes on a timer with no way to refresh a JWT. The endpoint exposes
+      throughput, latency and error counts and nothing about anyone's
+      schema, and there's a test asserting exactly that (generate against
+      deliberately distinctive project/entity names, then assert they don't
+      appear in the scrape body) so a future entity-labelled metric fails
+      loudly instead of quietly leaking. Those label sets are also
+      pre-seeded at zero on startup, so an unused output kind reads `0`
+      instead of Grafana's "No data".
+
+      Row counting/timing needed real call-site instrumentation, since
+      `generate_rows` can't know who's calling it — but rather than thread
+      a `source` argument through the generation engine, the *boundary*
+      that already knows its own identity wraps the call in a
+      `metrics.generation(source)` context manager (timing, row count, and
+      error counting in one). `app/services/generator.py` therefore
+      contains no metrics code at all; all 8 generation call sites carry it
+      instead.
+
+      13 new tests, 248 passed / 3 skipped total, lint clean. Verified
+      live against the full 7-container stack, not just unit tests: 100
+      rows generated through the real API moved the counter by exactly
+      100; Prometheus scraped it (target `up`) and `rate()` computed a real
+      non-zero events/sec; Grafana came up with both datasources and all
+      12 panels provisioned and could proxy-query Prometheus successfully;
+      Loki had real backend log lines. Then the live-state gauges were
+      driven for real: a genuine WebSocket client made the connected-client
+      gauge go 0→1→0 (proving the `finally`) while counting 10 rows under
+      `source="websocket"`, and a Kafka output pointed at a deliberately
+      unreachable broker made `active_producers{kind="kafka"}` go 0→1,
+      logged 3 delivery errors through the retry/backoff path, then
+      returned to 0 on delete. Finally the rendered dashboard was
+      screenshotted under sustained mixed load and inspected: 29 rows/sec
+      headline, per-source throughput, that producer's 0→1→0 lifecycle
+      spike, its errors in red, p95 latency split by source, backend
+      CPU/RSS, and live logs — every panel populated, no "No data", no
+      console errors.
 - [ ] Modular installation: `synthflow init` wizard and Web UI service picker that
       only pull/build the plugins actually selected (e.g. Kafka-only install skips
       MQTT/RabbitMQ/GraphQL/MongoDB entirely)

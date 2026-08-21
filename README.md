@@ -103,6 +103,24 @@ docker compose exec backend alembic upgrade head
 - Frontend: [http://localhost:3000](http://localhost:3000)
 - Backend API: [http://localhost:8001](http://localhost:8001) (interactive docs at `/docs`)
 
+### Optional services
+
+Extras are behind Compose profiles, so the default `docker compose up`
+stays a three-container stack:
+
+```bash
+docker compose --profile monitoring up -d   # Prometheus + Grafana + Loki
+docker compose --profile kafka up -d        # Redpanda, for Kafka outputs
+docker compose --profile mqtt up -d         # Mosquitto, for MQTT outputs
+```
+
+With the `monitoring` profile up, Grafana is at
+[http://localhost:3001](http://localhost:3001) — no login, already
+provisioned with a **SynthFlow overview** dashboard showing rows/sec by
+source, active producers and connected clients, backend CPU/memory,
+generation latency, and errors. The backend exposes raw metrics at
+`/metrics` and container logs land in Loki.
+
 See `backend/README.md` and `frontend/README.md` for running each service
 without Docker. The `synthflow init` wizard described below — pick outputs,
 generate a Docker Compose file, start only what you selected — is the Phase 5

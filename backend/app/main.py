@@ -15,6 +15,7 @@ from app.api.routes import (
     kafka_outputs,
     lookup_attachments,
     lookup_tables,
+    metrics,
     mqtt_outputs,
     output_plugins,
     outputs,
@@ -32,12 +33,17 @@ from app.api.routes import (
     workflows,
 )
 from app.core.config import settings
+from app.services.metrics import init_gauges
 from app.services.plugin_output_producers import stop_all_plugin_outputs
 from app.services.stream_producers import stop_all_producers
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Point the "active producers" gauges at the live task registries
+    # (see app.services.metrics) — done at startup rather than import
+    # time so the callbacks aren't wired up during test collection.
+    init_gauges()
     yield
     # Kafka/MQTT/plugin-output producers are in-process background tasks
     # (see app.services.stream_producers and
@@ -58,6 +64,8 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+# Outside /api/v1 and unauthenticated, like /healthz — see its docstring.
+app.include_router(metrics.router)
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(entities.router, prefix=settings.API_V1_PREFIX)

@@ -18,6 +18,7 @@ from app.schemas.relationship import (
     RelationshipCreate,
     RelationshipRead,
 )
+from app.services import metrics
 from app.services.generator import generate_project, project_rows_to_csv_zip, project_rows_to_excel
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["relationships"])
@@ -143,7 +144,9 @@ def generate_all(
         counts[entity.id] = count
 
     try:
-        generated = generate_project(entities, relationships, counts)
+        with metrics.generation("api") as recorder:
+            generated = generate_project(entities, relationships, counts)
+            recorder.count(sum(len(rows) for rows in generated.values()))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

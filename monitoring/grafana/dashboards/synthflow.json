@@ -1,0 +1,301 @@
+{
+  "uid": "synthflow-overview",
+  "title": "SynthFlow overview",
+  "tags": ["synthflow"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Rows/sec (all sources)",
+      "id": 1,
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "rps", "decimals": 1, "color": { "mode": "thresholds" } },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "sum(rate(synthflow_rows_generated_total[1m]))",
+          "legendFormat": "rows/sec"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Connected WebSocket clients",
+      "id": 2,
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": { "defaults": { "decimals": 0 }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "synthflow_active_websocket_clients",
+          "legendFormat": "clients"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active background producers",
+      "id": 3,
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": { "defaults": { "decimals": 0 }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "synthflow_active_producers",
+          "legendFormat": "{{kind}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Errors/sec",
+      "id": 4,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rps",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.001 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "sum(rate(synthflow_generation_errors_total[1m])) + sum(rate(synthflow_output_delivery_errors_total[1m]))",
+          "legendFormat": "errors/sec"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rows/sec by source",
+      "id": 5,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rps",
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "sum by (source) (rate(synthflow_rows_generated_total[1m]))",
+          "legendFormat": "{{source}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Active producers by kind",
+      "id": 6,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "showPoints": "never", "stepAfter": true }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "synthflow_active_producers",
+          "legendFormat": "{{kind}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "synthflow_active_websocket_clients",
+          "legendFormat": "websocket clients"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Backend CPU",
+      "id": 7,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "rate(process_cpu_seconds_total{job=\"synthflow-backend\"}[1m])",
+          "legendFormat": "cpu cores"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Backend memory (RSS)",
+      "id": 8,
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "process_resident_memory_bytes{job=\"synthflow-backend\"}",
+          "legendFormat": "resident"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Generation latency (p95)",
+      "id": 9,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, source) (rate(synthflow_generation_seconds_bucket[5m])))",
+          "legendFormat": "{{source}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Errors/sec by kind",
+      "id": 10,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rps",
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "sum by (source) (rate(synthflow_generation_errors_total[1m]))",
+          "legendFormat": "generation: {{source}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "sum by (kind) (rate(synthflow_output_delivery_errors_total[1m]))",
+          "legendFormat": "delivery: {{kind}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Output deliveries/sec by kind",
+      "id": 11,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rps",
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "synthflow-prometheus" },
+          "expr": "sum by (kind) (rate(synthflow_output_deliveries_total[1m]))",
+          "legendFormat": "{{kind}}"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Backend logs",
+      "id": 12,
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 29 },
+      "datasource": { "type": "loki", "uid": "synthflow-loki" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "synthflow-loki" },
+          "expr": "{container=\"synthflow-backend\"}"
+        }
+      ]
+    }
+  ]
+}

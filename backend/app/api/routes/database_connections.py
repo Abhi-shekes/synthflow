@@ -17,6 +17,7 @@ from app.schemas.database_connection import (
     DatabasePushRequest,
     DatabasePushResult,
 )
+from app.services import metrics
 from app.services.db_output import DatabaseOutputError, push_rows, test_connection
 from app.services.generator import build_lookup_pools, generate_rows
 
@@ -112,17 +113,19 @@ def push(
     table_name = payload.table_name or entity.name.lower().replace(" ", "_")
 
     try:
-        rows = generate_rows(
-            entity.fields,
-            payload.count,
-            fk_pools=build_lookup_pools(entity.lookup_attachments),
-            rules=entity.rules,
-            workflows=entity.workflows,
-            trends=entity.trends,
-            error_injections=entity.error_injections,
-            event_triggers=entity.event_triggers,
-            geo_routes=entity.geo_routes,
-        )
+        with metrics.generation("database_push") as recorder:
+            rows = generate_rows(
+                entity.fields,
+                payload.count,
+                fk_pools=build_lookup_pools(entity.lookup_attachments),
+                rules=entity.rules,
+                workflows=entity.workflows,
+                trends=entity.trends,
+                error_injections=entity.error_injections,
+                event_triggers=entity.event_triggers,
+                geo_routes=entity.geo_routes,
+            )
+            recorder.count(len(rows))
         rows_written = push_rows(connection, entity.fields, rows, table_name)
     except (ValueError, DatabaseOutputError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
