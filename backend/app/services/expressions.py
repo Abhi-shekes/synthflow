@@ -10,11 +10,21 @@ arbitrary calls.
 exist specifically so a formula field can express a *correlation* with
 realistic scatter instead of a perfectly deterministic line, e.g.
 `humidity = 100 - temperature * 0.8 + noise(3)`. This is same-row,
-same-entity correlation only: a formula can already reference any
+same-entity correlation — a formula can already reference any
 earlier-ordered field on its own row (that's the whole formula-field
-mechanism, not something new here), but it still can't see another entity's
-data — cross-entity correlation needs the same extension cross-entity rules
-would (see TODO.md), not built yet.
+mechanism, not something new here).
+
+Cross-entity references (`Customer.age` from an `Order` formula/rule, when
+a Relationship connects the two) reuse that same "already in `variables`"
+model rather than adding a second mechanism: `ast.Attribute` is allowed,
+but *only* one level deep on a name that already resolves to a plain dict
+already present in `variables` — never real attribute/method access on an
+actual object. `app.services.generator` is what puts a related entity's
+linked row into `variables` under that entity's name in the first place;
+this evaluator only needs to know how to read one field off of it once
+it's there. See Relationship's docstring and generator.py's
+`relationship_lookup`/`cross-entity` handling for how the *specific*
+linked row (not just any row of that entity) ends up there.
 """
 
 import ast
@@ -103,6 +113,14 @@ def _eval(node: ast.AST, variables: dict[str, Any]) -> Any:
                 return False
             left = right
         return True
+
+    if isinstance(node, ast.Attribute):
+        base = _eval(node.value, variables)
+        if not isinstance(base, dict):
+            raise ExpressionError(f"'.{node.attr}' can only follow a related entity's name")
+        if node.attr not in base:
+            raise ExpressionError(f"Unknown variable '{node.attr}'")
+        return base[node.attr]
 
     if isinstance(node, ast.IfExp):
         branch = node.body if _eval(node.test, variables) else node.orelse

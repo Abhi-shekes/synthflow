@@ -17,9 +17,10 @@ Core platform (auth, projects, entities/fields, generation engine) and
 simulation (relationships, rules, formulas, stateful entities/workflows) are
 both live, backend and frontend, verified end-to-end in a browser. Full
 checklists: ROADMAP.md Phases 1–2. Known simplifications carried forward —
-`many_to_many` generates like `one_to_many`, rules/formulas are same-row only
-(no cross-entity), event-style triggers aren't implemented, workflows are a
-bounded per-call random walk with no cross-call record identity yet.
+`many_to_many` generates like `one_to_many`, workflows are a bounded
+per-call random walk with no cross-call record identity yet. (Rules/
+formulas gained cross-entity references later — see below — and
+event-style triggers shipped in Phase 4.)
 
 ## Phase 3 — done (file outputs, database connectors, REST output, plugin
 manager, WebSocket streaming)
@@ -77,18 +78,36 @@ discoverability: closed with a one-click "Use as auto-increment" preset
 button in the trend dialog. 1 new test (50 rows → exactly `1..50`, all
 distinct), 155 passed / 3 skipped total. Verified end-to-end in a browser.
 
+## Cross-entity rules + correlation — done
+
+A formula, rule, or event trigger can now reference `RelatedEntity.field`
+for an entity connected by a `Relationship` (e.g. an Order's `discount`
+formula reading `Customer.discount_rate`) — resolves to the *specific*
+linked row, not a random one of that entity. Reused the existing
+evaluator (`ast.Attribute`, one level deep, only on names already
+resolving to a plain dict — no real attribute/object access) rather than
+adding a second mechanism. The real work was generator-side: relationship
+-sourced FK fields are now resolved in a pre-pass before an entity's main
+field loop, so a formula can see `Customer.age` regardless of whether its
+own `order` comes before or after the FK field's. Deliberately project-wide
+only — a single-entity `generate` call fails cleanly with "Unknown
+variable" since it has no other entity's rows to draw from, the same
+asymmetry `Relationship` itself already has (unlike `LookupAttachment`/
+`GeoRoute`, which don't need it). 5 new tests including one proving the
+formula picks up the *exact* fk-linked customer's rate across 30 orders,
+not just any customer's, 160 passed / 3 skipped total, lint clean. Verified
+end-to-end in a browser: 10/10 generated orders came back with
+`discount = price × Customer.discount_rate` exactly, zero console errors.
+
 ## Now
 
 Next up is either Phase 5 (Extensibility — plugin framework, marketplace,
 monitoring dashboard, modular install; none of it scoped yet, needs its
-own design pass) or one of the two remaining backlog items below —
-whichever "next" picks.
+own design pass) or the one remaining backlog item below — whichever
+"next" picks.
 
 ## Backlog (not started, roughly in order)
 
-- [ ] Cross-entity rules + correlation (Phase 2/4, stretch — a formula or
-      rule seeing another entity's already-generated data, not just its own
-      row; both features hit this same wall independently, see above)
 - [ ] Kafka/MQTT streaming outputs (Phase 3, needs the background-task
       execution model noted above)
 

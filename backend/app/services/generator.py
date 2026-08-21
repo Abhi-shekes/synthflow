@@ -150,10 +150,13 @@ def _evaluate_formula(field: EntityField, row_so_far: dict[str, Any]) -> Any:
         raise ValueError(f"Formula for field '{field.name}' failed: {exc}") from exc
 
 
-def _row_satisfies_rules(row: dict[str, Any], rules: list[Rule]) -> bool:
+def _row_satisfies_rules(
+    row: dict[str, Any], rules: list[Rule], cross_entity_context: dict[str, dict[str, Any]]
+) -> bool:
+    variables = {**row, **cross_entity_context} if cross_entity_context else row
     for rule in rules:
         try:
-            if not evaluate(rule.condition, row):
+            if not evaluate(rule.condition, variables):
                 return False
         except ExpressionError as exc:
             raise ValueError(f"Rule '{rule.condition}' failed to evaluate: {exc}") from exc
@@ -161,15 +164,18 @@ def _row_satisfies_rules(row: dict[str, Any], rules: list[Rule]) -> bool:
 
 
 def _evaluate_event_triggers(
-    row: dict[str, Any], event_triggers: list[EventTrigger]
+    row: dict[str, Any],
+    event_triggers: list[EventTrigger],
+    cross_entity_context: dict[str, dict[str, Any]],
 ) -> list[str]:
     """Unlike a rule, a matching trigger doesn't reject the row — it collects
     labels for `_triggered_events`. See EventTrigger's docstring for why
     that's the whole feature for now (no external notification fires)."""
+    variables = {**row, **cross_entity_context} if cross_entity_context else row
     triggered: list[str] = []
     for trigger in event_triggers:
         try:
-            if evaluate(trigger.condition, row):
+            if evaluate(trigger.condition, variables):
                 triggered.append(trigger.label)
         except ExpressionError as exc:
             raise ValueError(
@@ -273,16 +279,47 @@ def _generate_one_row(
     trend_state: dict[str, dict],
     error_injections: dict[str, ErrorInjection],
     geo_routes: dict[str, GeoRoute],
+    relationship_lookup: dict[str, dict[Any, dict[str, Any]]],
+    relationship_entity_name: dict[str, str],
     previous_row: dict[str, Any] | None,
     position: int,
     count: int,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     row: dict[str, Any] = {}
+    cross_entity_context: dict[str, dict[str, Any]] = {}
+
+    # Relationship-sourced FK fields are resolved up front, before the main
+    # field loop below, so the linked target row is available to every
+    # field's formula/rule regardless of declared field order — a formula
+    # earlier in `order` than its entity's FK field still needs to see
+    # `Customer.age`. A field with its own `formula` keeps formula's
+    # existing higher priority (matches the elif ordering below) rather
+    # than being silently overridden by its relationship value.
+    for field in fields:
+        if field.formula or field.name not in relationship_lookup:
+            continue
+        if field.unique:
+            queue = unique_fk_queues[field.name]
+            if not queue:
+                raise ValueError(
+                    f"Field '{field.name}' is unique and ran out of distinct values "
+                    "in its pool (relationship or lookup table)"
+                )
+            value = queue.pop()
+        else:
+            value = random.choice(fk_pools[field.name])
+        row[field.name] = value
+        target_row = relationship_lookup[field.name].get(value)
+        if target_row is not None:
+            cross_entity_context[relationship_entity_name[field.name]] = target_row
+
     for field in fields:
         workflow_path: list[str] | None = None
 
-        if field.formula:
-            value = _evaluate_formula(field, row)
+        if field.name in row:
+            value = row[field.name]
+        elif field.formula:
+            value = _evaluate_formula(field, {**row, **cross_entity_context})
         elif field.name in trends:
             raw = generate_trend_value(trends[field.name], position, trend_state[field.name])
             value = round(raw) if field.field_type == FieldType.INTEGER else round(raw, 2)
@@ -319,7 +356,7 @@ def _generate_one_row(
         row[field.name] = value
         if workflow_path is not None:
             row[f"{field.name}_history"] = workflow_path
-    return row
+    return row, cross_entity_context
 
 
 def generate_rows(
@@ -332,6 +369,8 @@ def generate_rows(
     error_injections: list[ErrorInjection] | None = None,
     event_triggers: list[EventTrigger] | None = None,
     geo_routes: list[GeoRoute] | None = None,
+    relationship_lookup: dict[str, dict[Any, dict[str, Any]]] | None = None,
+    relationship_entity_name: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate `count` rows for `fields`.
 
@@ -379,6 +418,22 @@ def generate_rows(
     row's position within this call's batch (see app.services.geo_routes)
     — the same "function of batch position" idea as `trends`, just for a 2D
     path instead of a scalar curve.
+
+    `relationship_lookup` and `relationship_entity_name` (built by the
+    caller — see generate_project) are what let a formula/rule/event
+    trigger reference *another entity's* field via `TargetEntity.field`
+    syntax (see app.services.expressions), for a target entity connected by
+    a Relationship: `relationship_lookup[source_field_name]` maps that
+    field's possible values to the *specific* already-generated target row
+    that value came from, and `relationship_entity_name[source_field_name]`
+    is the name that row gets exposed under. Resolved once per row, before
+    any of that row's other fields are computed, so it doesn't matter
+    whether the referencing formula's `order` comes before or after the
+    relationship field's own. Only available from `generate_project`
+    (project-wide generation) — a single-entity `generate` call has no
+    other entity's data to draw from, so a cross-entity reference there
+    fails with a clear "Unknown variable" error rather than silently
+    resolving to nothing.
     """
     fk_pools = fk_pools or {}
     rules = rules or []
@@ -388,6 +443,8 @@ def generate_rows(
     trend_state: dict[str, dict] = {name: {} for name in trends_by_field}
     error_injections_by_field = {ei.field.name: ei for ei in (error_injections or [])}
     geo_routes_by_field = {g.field.name: g for g in (geo_routes or [])}
+    relationship_lookup = relationship_lookup or {}
+    relationship_entity_name = relationship_entity_name or {}
     seen_per_field: dict[str, set] = {
         f.name: set() for f in fields if f.unique and f.name not in fk_pools
     }
@@ -402,8 +459,9 @@ def generate_rows(
     for position in range(count):
         previous_row = rows[-1] if rows else None
         row = None
+        cross_entity_context: dict[str, dict[str, Any]] = {}
         for _attempt in range(MAX_RULE_ATTEMPTS if rules else 1):
-            candidate = _generate_one_row(
+            candidate, candidate_context = _generate_one_row(
                 fields,
                 fk_pools,
                 seen_per_field,
@@ -413,12 +471,15 @@ def generate_rows(
                 trend_state,
                 error_injections_by_field,
                 geo_routes_by_field,
+                relationship_lookup,
+                relationship_entity_name,
                 previous_row,
                 position,
                 count,
             )
-            if _row_satisfies_rules(candidate, rules):
+            if _row_satisfies_rules(candidate, rules, candidate_context):
                 row = candidate
+                cross_entity_context = candidate_context
                 break
         if row is None:
             raise ValueError(
@@ -426,7 +487,9 @@ def generate_rows(
                 "attempts — the rules may be too strict or contradictory"
             )
         if event_triggers:
-            row["_triggered_events"] = _evaluate_event_triggers(row, event_triggers)
+            row["_triggered_events"] = _evaluate_event_triggers(
+                row, event_triggers, cross_entity_context
+            )
         rows.append(row)
 
     return rows
@@ -469,7 +532,16 @@ def generate_project(
     Each entity's lookup attachments are merged into that same fk_pools dict
     (see build_lookup_pools) after the relationship pools are built, so a
     lookup pool wins if a field somehow ends up targeted by both — not
-    cross-validated against each other, same as Trend/Workflow aren't."""
+    cross-validated against each other, same as Trend/Workflow aren't.
+
+    Alongside each relationship's fk_pools entry, also builds the
+    `relationship_lookup`/`relationship_entity_name` structures
+    `generate_rows` needs for cross-entity formula/rule/event-trigger
+    references (`TargetEntity.field` — see that function's docstring and
+    app.services.expressions) — a value-to-target-row map keyed by the
+    source field's name, and the entity name that row should be exposed
+    under. This only works here, not from single-entity generation, since
+    it needs another entity's rows to already exist."""
     entities_by_id = {e.id: e for e in entities}
     fields_by_id = {f.id: f for e in entities for f in e.fields}
 
@@ -489,9 +561,12 @@ def generate_project(
             continue
 
         fk_pools: dict[str, list[Any]] = {}
+        relationship_lookup: dict[str, dict[Any, dict[str, Any]]] = {}
+        relationship_entity_name: dict[str, str] = {}
         for rel in relationships_by_source.get(entity_id, []):
             target_field = fields_by_id[rel.target_field_id]
             source_field = fields_by_id[rel.source_field_id]
+            target_entity = entities_by_id[rel.target_entity_id]
             target_rows = generated.get(rel.target_entity_id, [])
             pool = [
                 row[target_field.name]
@@ -499,13 +574,18 @@ def generate_project(
                 if row.get(target_field.name) is not None
             ]
             if not pool:
-                target_entity = entities_by_id[rel.target_entity_id]
                 raise ValueError(
                     f"Cannot generate '{entity.name}.{source_field.name}': "
                     f"'{target_entity.name}.{target_field.name}' has no generated values "
                     "to reference (check that entity has fields and a non-zero count)"
                 )
             fk_pools[source_field.name] = pool
+            relationship_lookup[source_field.name] = {
+                row[target_field.name]: row
+                for row in target_rows
+                if row.get(target_field.name) is not None
+            }
+            relationship_entity_name[source_field.name] = target_entity.name
 
         fk_pools.update(build_lookup_pools(entity.lookup_attachments))
 
@@ -519,6 +599,8 @@ def generate_project(
             entity.error_injections,
             entity.event_triggers,
             entity.geo_routes,
+            relationship_lookup,
+            relationship_entity_name,
         )
 
     return generated

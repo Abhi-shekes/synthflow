@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.api.routes.entities import _get_owned_entity
+from app.api.routes.entities import _get_owned_entity, dummy_row_values
 from app.db.session import get_db
 from app.models.rule import Rule
 from app.models.user import User
@@ -35,12 +35,13 @@ def create_rule(
 ) -> Rule:
     entity = _get_owned_entity(project_id, entity_id, current_user, db)
 
-    # Sanity-check the expression against dummy values for the entity's current
-    # fields so an obviously broken/unsafe condition is rejected up front,
+    # Sanity-check the expression against dummy values for the entity's own
+    # fields plus a dummy row per related entity (see dummy_row_values) so
+    # an obviously broken/unsafe condition — including a cross-entity
+    # reference to a nonexistent relationship — is rejected up front,
     # rather than surfacing only when someone tries to generate data.
-    dummy_values = {field.name: 1 for field in entity.fields}
     try:
-        evaluate(payload.condition, dummy_values)
+        evaluate(payload.condition, dummy_row_values(entity, db))
     except ExpressionError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

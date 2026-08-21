@@ -392,7 +392,10 @@ export default function EntityDetailPage() {
             <p className="text-sm text-muted-foreground">
               A rule is an expression a generated row must satisfy (e.g.{" "}
               <code className="font-mono">temperature &gt; 60</code>); rows that
-              fail are discarded and regenerated.
+              fail are discarded and regenerated. Can also reference{" "}
+              <code className="font-mono">RelatedEntity.field</code> for an
+              entity this one has a relationship to, but only when
+              generating the whole project.
             </p>
             <form
               className="flex gap-2"
@@ -437,7 +440,9 @@ export default function EntityDetailPage() {
               it annotates it. Every trigger whose condition is true for a
               row appends its label to that row&apos;s{" "}
               <code className="font-mono">_triggered_events</code> list; no
-              external notification is sent (yet).
+              external notification is sent (yet). Can also reference{" "}
+              <code className="font-mono">RelatedEntity.field</code>, same
+              as a rule.
             </p>
             <form
               className="flex gap-2"

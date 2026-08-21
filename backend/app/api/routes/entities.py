@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.entity import Entity
 from app.models.field import EntityField, FieldType
+from app.models.relationship import Relationship
 from app.models.user import User
 from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateRequest
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
@@ -63,6 +64,28 @@ def _validate_preset(field_type: FieldType, preset: str | None, regex: str | Non
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="preset and regex are mutually exclusive — preset fully determines the value",
         )
+
+
+def dummy_row_values(entity: Entity, db: Session) -> dict[str, object]:
+    """Dummy values for validating a formula/rule/event-trigger condition at
+    creation time: 1 for each of the entity's own fields, plus a nested
+    dummy dict per related entity (keyed by that entity's *name*) for any
+    Relationship sourced from this entity. This is what lets a formula or
+    condition reference `TargetEntity.field` (see
+    app.services.expressions and app.services.generator's
+    relationship_lookup/cross-entity handling) validate before ever
+    generating data — shared by rules.py and event_triggers.py, not just
+    formula validation here, since all three use the same evaluator and the
+    same cross-entity mechanism."""
+    values: dict[str, object] = {f.name: 1 for f in entity.fields}
+    relationships = (
+        db.query(Relationship).filter(Relationship.source_entity_id == entity.id).all()
+    )
+    for rel in relationships:
+        target_entity = db.get(Entity, rel.target_entity_id)
+        if target_entity is not None:
+            values[target_entity.name] = {f.name: 1 for f in target_entity.fields}
+    return values
 
 
 def _get_owned_entity(
@@ -151,9 +174,8 @@ def add_field(
     entity = _get_owned_entity(project_id, entity_id, current_user, db)
 
     if payload.formula:
-        dummy_values = {f.name: 1 for f in entity.fields}
         try:
-            evaluate(payload.formula, dummy_values)
+            evaluate(payload.formula, dummy_row_values(entity, db))
         except ExpressionError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -183,9 +205,8 @@ def update_field(
 
     updates = payload.model_dump(exclude_unset=True)
     if updates.get("formula"):
-        dummy_values = {f.name: 1 for f in entity.fields}
         try:
-            evaluate(updates["formula"], dummy_values)
+            evaluate(updates["formula"], dummy_row_values(entity, db))
         except ExpressionError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

@@ -187,7 +187,12 @@ export function AddFieldDialog({
               <code className="font-mono">abs min max round len</code>, plus{" "}
               <code className="font-mono">noise(stddev)</code> and{" "}
               <code className="font-mono">uniform(low, high)</code> for
-              realistic scatter instead of a dead-flat line.
+              realistic scatter instead of a dead-flat line. If this entity
+              has a relationship to another one, you can also reference{" "}
+              <code className="font-mono">RelatedEntity.field</code> (e.g.{" "}
+              <code className="font-mono">price * Customer.discount_rate</code>
+              ) — only works when generating the whole project, not this
+              entity alone.
             </p>
           </div>
 

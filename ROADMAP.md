@@ -43,9 +43,30 @@ and formulas instead of pure randomness.
 - [x] Rules engine: logical, mathematical, conditional rules — a safe
       restricted-AST expression evaluator (`app/services/expressions.py`, no
       `eval()`) backs per-entity validation rules; a row failing a rule is
-      discarded and regenerated. Cross-entity rules (referencing another
-      entity's fields, not just this row's) are not yet supported — see
-      Notes in TODO.md
+      discarded and regenerated. Cross-entity rules/correlation (a formula,
+      rule, or event trigger referencing another entity's fields via
+      `RelatedEntity.field`, not just this row's) shipped later as its own
+      backlog item, once entities/relationships/formulas/rules were all in
+      place to build on — reused the existing evaluator rather than adding
+      a second mechanism: `ast.Attribute` is now allowed, but *only* one
+      level deep on a name that already resolves to a plain dict already
+      present in `variables` — never real attribute/method access on an
+      actual object, so the "no `eval()`" safety property is unchanged.
+      The harder part wasn't syntax — it was making sure `Customer.age`
+      resolves to the *specific* customer this order's foreign key actually
+      points to, not a random customer. `generate_project` now builds a
+      `relationship_lookup` (source field name → {fk value → full target
+      row}) alongside the existing `fk_pools`, and `_generate_one_row`
+      resolves every relationship-sourced FK field in a pre-pass *before*
+      its main per-field loop, so the linked row is available to every
+      field's formula/rule/event-trigger regardless of declared field
+      order. Deliberately project-wide only: a single-entity `generate`
+      call has no other entity's rows to draw from, so a cross-entity
+      reference there fails with a clear "Unknown variable" 400 rather than
+      silently resolving to nothing — the same asymmetry already accepted
+      for `Relationship` itself (unlike `LookupAttachment`/`GeoRoute`,
+      which work from single-entity generation precisely because they
+      don't need another entity's rows).
 - [x] Formula engine: derived/computed fields (`Total = Price × Quantity`) —
       a field's `formula` is evaluated against the row's already-generated
       fields using the same expression evaluator
@@ -147,10 +168,9 @@ Goal: data behaves over time, not just at generation time.
       `noise(stddev)` (gaussian) and `uniform(low, high)`, so
       `humidity = 100 - temperature * 1.5 + noise(3)` gives a real, scattered
       correlation, not new backend machinery. Cross-entity correlation
-      ("Stock A ↑ → Stock B ↑" where A and B are different entities) is not
-      covered — merged into the cross-entity-rules backlog item, since both
-      need the same underlying extension (a formula/rule seeing another
-      entity's already-generated data, not just its own row).
+      ("Stock A ↑ → Stock B ↑" where A and B are different entities) shipped
+      later as its own backlog item, `RelatedEntity.field` syntax — see the
+      Rules engine bullet in Phase 2 for the full writeup.
 - [x] Probability engine: weighted categorical generation — `EntityField.enum_weights`,
       an optional array parallel to `enum_values` (`None` keeps the prior
       uniform `random.choice`; present, it's `random.choices(..., weights=...)`).
