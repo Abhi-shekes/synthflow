@@ -356,11 +356,49 @@ delivery errors through the backoff path, and returned to 0 on delete.
 Dashboard screenshotted under load and inspected: every panel populated,
 no "No data", no console errors.
 
+## Modular installation — done (completes Phase 5)
+
+Genuine, not cosmetic. `aiokafka`/`aiomqtt` were *core* deps until now,
+so every install pulled both — the opposite of modular. They're optional
+extras now, which forced three real changes: `stream_producers` imports
+its broker client inside the loop that needs it (so the module imports
+on an install with neither); `app/services/install.py` detects
+availability with `find_spec`, not a real import, since it's called per
+request; and the create routes 400 with a message *naming the extra to
+install* instead of 500-ing or spawning a task that dies on tick one.
+
+`synthflow init` (`app/cli.py`, a real console script) writes one `.env`
+with `COMPOSE_PROFILES` (which services start) and `SYNTHFLOW_EXTRAS`
+(which extras the image installs, via a Docker build arg). It
+deliberately does NOT generate a compose file — Compose already reads
+COMPOSE_PROFILES and the profiles already exist, so a generated file
+would just be a second source of truth that drifts. Interactive by
+default, non-interactive for CI, rewrites only its own two keys so it
+can't eat a SECRET_KEY, and walks up to find the repo root.
+
+The Web UI half is honest about the browser's limits: it can't restart
+Docker (and shouldn't have the socket), so `GET /install-config` reports
+what's actually installed and the entity page greys out Kafka/MQTT when
+their extra is missing, naming the command that enables it.
+
+19 new tests; the 4 broker-output tests are now skipif-gated on their
+extra, which is the feature working. Verified both directions: extras
+removed → app imports, reports both False, 263 passed / 7 skipped;
+`.[all]` installed → 267 passed / 3 skipped. Build arg verified by
+building two real images — core-only has neither client, a
+`SYNTHFLOW_EXTRAS=kafka` image has aiokafka and genuinely no aiomqtt
+while still booting. Wizard verified end to end: `--services
+kafka,monitoring` produced an .env that made compose resolve to core +
+redpanda + 4 monitoring services and no mosquitto. An idempotency test
+caught a real bug (the banner comment stacking on every re-run), fixed.
+
 ## Now
 
-Modular install (`synthflow init` wizard + Web UI service picker) is the
-last unstarted Phase 5 item and is still unscoped — it needs its own
-design pass. AI provider plugins wait for Phase 6.
+**Phase 5 is complete** — every item done. Phase 6 (the optional AI
+layer: BYO-LLM provider integration, prompt → schema/rules/workflow/
+full-project generation with a mandatory human review step) is the only
+phase left, and none of it is scoped yet. AI provider plugins, deferred
+from the plugin framework, belong there.
 
 ## Backlog (not started, roughly in order)
 

@@ -723,9 +723,62 @@ Goal: the community can extend SynthFlow without forking it.
       spike, its errors in red, p95 latency split by source, backend
       CPU/RSS, and live logs — every panel populated, no "No data", no
       console errors.
-- [ ] Modular installation: `synthflow init` wizard and Web UI service picker that
+- [x] Modular installation: `synthflow init` wizard and Web UI service picker that
       only pull/build the plugins actually selected (e.g. Kafka-only install skips
-      MQTT/RabbitMQ/GraphQL/MongoDB entirely)
+      MQTT/RabbitMQ/GraphQL/MongoDB entirely) — and this one is genuine, not
+      cosmetic. Until now `aiokafka` and `aiomqtt` were *core* dependencies,
+      so every install pulled both whether or not you'd ever start a
+      broker — the exact opposite of modular. They're now optional extras
+      (`pip install '.[kafka]'`), which forced three real changes rather
+      than a config flag: `stream_producers` imports its broker client
+      inside the loop that needs it so the module still imports when
+      neither is present; `app/services/install.py` detects availability
+      at runtime with `find_spec` (not a real import — this is called per
+      request); and the create routes refuse with a 400 that *names the
+      extra to install* rather than 500-ing or spawning a background task
+      that dies on its first tick.
+
+      `synthflow init` (a real console script, `app/cli.py`) writes one
+      `.env` and deliberately does not generate a bespoke compose file:
+      Compose already reads `COMPOSE_PROFILES` from `.env` and profiles
+      already exist for every optional service, so one variable makes a
+      plain `docker compose up` start exactly what you picked — a
+      generated second compose file would just be a parallel source of
+      truth that drifts. It writes two keys: `COMPOSE_PROFILES` (which
+      *services* start) and `SYNTHFLOW_EXTRAS` (which *Python extras* the
+      backend image installs, passed through as a Docker build arg). It's
+      interactive by default and non-interactive for CI
+      (`--services kafka,monitoring --yes`, `--all`, `--none`), rewrites
+      only the two keys it owns so re-running can't eat someone's
+      `SECRET_KEY`, and finds the repo root by walking up so it works from
+      `backend/` too.
+
+      The "Web UI service picker" half is honest about what a browser can
+      do: the frontend can't restart Docker for you (and giving it the
+      socket would be a serious privilege escalation), so instead
+      `GET /install-config` reports what this install actually supports
+      and the entity page greys out the Kafka/MQTT cards when their extra
+      is missing, naming the `synthflow init` command that enables them —
+      a picker that reflects reality rather than a control whose only
+      possible outcome is an error.
+
+      19 new tests; the 4 existing broker-output tests became
+      `skipif`-gated on their extra, which is itself the feature working.
+      Verified in both directions rather than one: with extras removed the
+      app imports fine, reports `kafka: False, mqtt: False`, and the suite
+      is 263 passed / 7 skipped; with `.[all]` installed it's 267 passed /
+      3 skipped and those tests really run. The build arg was verified by
+      actually building two images — a core-only image has neither client,
+      a `SYNTHFLOW_EXTRAS=kafka` image has aiokafka and genuinely **no**
+      aiomqtt while still booting and reporting `mqtt: False`. And the
+      wizard was verified end to end: `synthflow init --services
+      kafka,monitoring` produced an `.env` that made `docker compose`
+      resolve to core + redpanda + the four monitoring services and no
+      mosquitto. One real bug surfaced along the way — an idempotency test
+      caught the wizard stacking a duplicate banner comment on every
+      re-run, fixed by stripping its own marker line as well as the keys.
+
+      **This completes Phase 5.**
 
 ## Phase 6 — AI (optional layer)
 

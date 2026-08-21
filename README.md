@@ -106,7 +106,22 @@ docker compose exec backend alembic upgrade head
 ### Optional services
 
 Extras are behind Compose profiles, so the default `docker compose up`
-stays a three-container stack:
+stays a three-container stack. Either pick them with the wizard:
+
+```bash
+synthflow init                              # interactive
+synthflow init --services kafka,monitoring --yes   # or not
+docker compose build backend && docker compose up -d
+```
+
+`synthflow init` writes a single `.env` with `COMPOSE_PROFILES` (which
+services start) and `SYNTHFLOW_EXTRAS` (which optional Python
+dependencies go into the backend image). That second one is what makes
+the install genuinely modular — a Kafka-only install never pulls
+`aiomqtt` at all, and the UI greys out the MQTT output and tells you how
+to enable it.
+
+Or turn profiles on directly, without the wizard:
 
 ```bash
 docker compose --profile monitoring up -d   # Prometheus + Grafana + Loki

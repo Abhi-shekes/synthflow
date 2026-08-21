@@ -24,9 +24,6 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from aiokafka import AIOKafkaProducer
-from aiomqtt import Client as MQTTClient
-
 from app.db import session as db_session
 from app.models.kafka_output import KafkaOutput
 from app.models.mqtt_output import MQTTOutput
@@ -86,6 +83,12 @@ def _load_batch_sync(
 
 
 async def _kafka_loop(output_id: UUID, bootstrap_servers: str, topic: str) -> None:
+    # Imported here, not at module scope: aiokafka is an optional extra
+    # (see app.services.install), so this module has to import cleanly on
+    # an MQTT-only install. The create route already refused if it's
+    # missing, so by the time this runs the import is safe.
+    from aiokafka import AIOKafkaProducer
+
     producer = AIOKafkaProducer(
         bootstrap_servers=bootstrap_servers,
         request_timeout_ms=CONNECT_TIMEOUT_SECONDS * 1000,
@@ -131,6 +134,9 @@ async def _kafka_loop(output_id: UUID, bootstrap_servers: str, topic: str) -> No
 
 
 async def _mqtt_loop(output_id: UUID, host: str, port: int, topic: str) -> None:
+    # Optional extra — see the note in _kafka_loop.
+    from aiomqtt import Client as MQTTClient
+
     failures = 0
     while True:
         try:

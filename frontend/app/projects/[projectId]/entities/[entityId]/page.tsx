@@ -83,6 +83,23 @@ export default function EntityDetailPage() {
     .filter((f) => f.source !== "builtin")
     .map((f) => f.name);
 
+  // Which optional outputs this backend install actually supports (see
+  // the backend's app/services/install.py). Used to disable a card whose
+  // extra isn't installed rather than offer a button that can only 400.
+  const installQuery = useQuery({
+    queryKey: ["install-config"],
+    queryFn: () => api.listInstallConfig(accessToken!),
+    enabled: !!accessToken,
+  });
+  const feature = (key: string) =>
+    (installQuery.data ?? []).find((f) => f.key === key);
+  const kafkaFeature = feature("kafka");
+  const mqttFeature = feature("mqtt");
+  // Default to enabled until the query resolves, so the controls don't
+  // flicker disabled on every page load.
+  const kafkaAvailable = kafkaFeature?.available ?? true;
+  const mqttAvailable = mqttFeature?.available ?? true;
+
   const addField = useMutation({
     mutationFn: (field: FieldCreateInput) => api.addField(accessToken!, projectId, entityId, field),
     onSuccess: () => {
@@ -1114,12 +1131,22 @@ export default function EntityDetailPage() {
                   addKafkaOutput.isPending ||
                   !entity?.fields.length ||
                   !kafkaBootstrapServers ||
-                  !kafkaTopic
+                  !kafkaTopic ||
+                  !kafkaAvailable
                 }
               >
                 {addKafkaOutput.isPending ? "Creating…" : "Create output"}
               </Button>
             </div>
+            {!kafkaAvailable && (
+              <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                Not available in this install — the optional{" "}
+                <code className="font-mono">{kafkaFeature?.extra ?? "kafka"}</code> extra
+                isn&apos;t installed. Run{" "}
+                <code className="font-mono">synthflow init --services kafka</code>, then
+                rebuild the backend to enable it.
+              </p>
+            )}
             {kafkaOutputsQuery.data?.length === 0 && (
               <p className="text-sm text-muted-foreground">No Kafka outputs yet.</p>
             )}
@@ -1209,12 +1236,25 @@ export default function EntityDetailPage() {
               <Button
                 onClick={() => addMqttOutput.mutate()}
                 disabled={
-                  addMqttOutput.isPending || !entity?.fields.length || !mqttBrokerHost || !mqttTopic
+                  addMqttOutput.isPending ||
+                  !entity?.fields.length ||
+                  !mqttBrokerHost ||
+                  !mqttTopic ||
+                  !mqttAvailable
                 }
               >
                 {addMqttOutput.isPending ? "Creating…" : "Create output"}
               </Button>
             </div>
+            {!mqttAvailable && (
+              <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                Not available in this install — the optional{" "}
+                <code className="font-mono">{mqttFeature?.extra ?? "mqtt"}</code> extra
+                isn&apos;t installed. Run{" "}
+                <code className="font-mono">synthflow init --services mqtt</code>, then
+                rebuild the backend to enable it.
+              </p>
+            )}
             {mqttOutputsQuery.data?.length === 0 && (
               <p className="text-sm text-muted-foreground">No MQTT outputs yet.</p>
             )}

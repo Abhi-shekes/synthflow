@@ -18,13 +18,23 @@ dependencies = [
     "faker>=30.0",
     "exrex>=0.11",
     "openpyxl>=3.1",
-    "aiokafka>=0.11",
-    "aiomqtt>=2.1",
     "qrcode[pil]>=7.4",
     "prometheus-client>=0.21",
 ]
 
+# Optional broker clients — this is what "modular installation" means in
+# practice: a Kafka-only deployment installs `.[kafka]` and never pulls
+# aiomqtt, and vice versa. app.services.install detects at runtime which
+# of these are present and the API/UI degrade cleanly for the rest, so
+# the code still imports and every other feature still works either way.
+[project.scripts]
+synthflow = "app.cli:main"
+
 [project.optional-dependencies]
+kafka = ["aiokafka>=0.11"]
+mqtt = ["aiomqtt>=2.1"]
+# Everything, for a batteries-included install or local development.
+all = ["aiokafka>=0.11", "aiomqtt>=2.1"]
 dev = [
     "pytest>=8.3",
     "httpx>=0.27",

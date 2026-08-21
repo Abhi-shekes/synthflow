@@ -9,6 +9,16 @@ shutdown hook would also catch it at test teardown, but there's no reason
 to rely on that as the only safety net.
 """
 
+import pytest
+
+from app.services import install
+
+requires_kafka = pytest.mark.skipif(
+    not install.is_available("kafka"),
+    reason="optional 'kafka' extra is not installed in this environment",
+)
+
+
 
 def _create_project(client, headers, name="Streaming"):
     return client.post("/api/v1/projects", json={"name": name}, headers=headers).json()["id"]
@@ -26,6 +36,7 @@ def _create_entity_with_field(client, headers, project_id, name="Reading"):
     return entity["id"]
 
 
+@requires_kafka
 def test_create_list_and_delete_kafka_output(client, auth_headers):
     project_id = _create_project(client, auth_headers)
     entity_id = _create_entity_with_field(client, auth_headers, project_id)
@@ -66,6 +77,7 @@ def test_kafka_output_requires_fields(client, auth_headers):
     assert resp.status_code == 400
 
 
+@requires_kafka
 def test_kafka_output_appears_in_outputs_aggregate(client, auth_headers):
     project_id = _create_project(client, auth_headers)
     entity_id = _create_entity_with_field(client, auth_headers, project_id)

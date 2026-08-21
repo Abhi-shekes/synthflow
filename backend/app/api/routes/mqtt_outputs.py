@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.mqtt_output import MQTTOutput
 from app.models.user import User
 from app.schemas.mqtt_output import MQTTOutputCreate, MQTTOutputRead
+from app.services import install
 from app.services.stream_producers import start_mqtt_producer, stop_producer
 
 router = APIRouter(
@@ -40,6 +41,12 @@ async def create_mqtt_output(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Entity has no fields to generate"
         )
+    try:
+        install.require("mqtt")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
     output = MQTTOutput(entity_id=entity_id, **payload.model_dump())
     db.add(output)
     db.commit()

@@ -18,7 +18,14 @@ services:
 
   backend:
     container_name: synthflow-backend
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        # Set by `synthflow init` in .env — controls which optional
+        # broker clients get installed into the image. Defaults to empty
+        # (core only), so an install that never selected Kafka or MQTT
+        # doesn't carry their dependencies.
+        SYNTHFLOW_EXTRAS: ${SYNTHFLOW_EXTRAS:-}
     environment:
       DATABASE_URL: postgresql+psycopg://synthflow:synthflow@postgres:5432/synthflow
       SECRET_KEY: change-me-in-production

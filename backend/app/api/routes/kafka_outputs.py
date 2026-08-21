@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.kafka_output import KafkaOutput
 from app.models.user import User
 from app.schemas.kafka_output import KafkaOutputCreate, KafkaOutputRead
+from app.services import install
 from app.services.stream_producers import start_kafka_producer, stop_producer
 
 router = APIRouter(
@@ -40,6 +41,12 @@ async def create_kafka_output(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Entity has no fields to generate"
         )
+    try:
+        install.require("kafka")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
     output = KafkaOutput(entity_id=entity_id, **payload.model_dump())
     db.add(output)
     db.commit()

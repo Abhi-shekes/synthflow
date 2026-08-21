@@ -12,6 +12,7 @@ from app.api.routes import (
     generator_plugins,
     geo_routes,
     health,
+    install_config,
     kafka_outputs,
     lookup_attachments,
     lookup_tables,
@@ -70,6 +71,7 @@ app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
 app.include_router(generator_plugins.router, prefix=settings.API_V1_PREFIX)
+app.include_router(install_config.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rule_functions.router, prefix=settings.API_V1_PREFIX)
 app.include_router(relationships.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rules.router, prefix=settings.API_V1_PREFIX)

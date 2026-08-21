@@ -4,6 +4,16 @@ via docker-compose instead) and why every successful create is followed
 by a delete in the same test.
 """
 
+import pytest
+
+from app.services import install
+
+requires_mqtt = pytest.mark.skipif(
+    not install.is_available("mqtt"),
+    reason="optional 'mqtt' extra is not installed in this environment",
+)
+
+
 
 def _create_project(client, headers, name="Streaming"):
     return client.post("/api/v1/projects", json={"name": name}, headers=headers).json()["id"]
@@ -21,6 +31,7 @@ def _create_entity_with_field(client, headers, project_id, name="Reading"):
     return entity["id"]
 
 
+@requires_mqtt
 def test_create_list_and_delete_mqtt_output(client, auth_headers):
     project_id = _create_project(client, auth_headers)
     entity_id = _create_entity_with_field(client, auth_headers, project_id)
@@ -62,6 +73,7 @@ def test_mqtt_output_requires_fields(client, auth_headers):
     assert resp.status_code == 400
 
 
+@requires_mqtt
 def test_mqtt_output_appears_in_outputs_aggregate(client, auth_headers):
     project_id = _create_project(client, auth_headers)
     entity_id = _create_entity_with_field(client, auth_headers, project_id)

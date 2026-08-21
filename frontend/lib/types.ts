@@ -432,6 +432,18 @@ export interface OutputPluginSummary {
   source: string;
 }
 
+// What this particular backend install can actually do — see the
+// backend's app/services/install.py. The entity page uses this to grey
+// out an output whose optional extra isn't installed, instead of showing
+// a control whose only outcome would be a 400.
+export interface InstallFeature {
+  key: string;
+  label: string;
+  description: string;
+  extra: string;
+  available: boolean;
+}
+
 export interface OutputSummary {
   type: "database" | "rest" | "websocket" | "timeline_replay" | "kafka" | "mqtt" | "plugin";
   id: string;

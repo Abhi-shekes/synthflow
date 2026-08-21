@@ -11,6 +11,7 @@ import type {
   GeneratorPresetSummary,
   GeoRoute,
   GeoRouteCreateInput,
+  InstallFeature,
   KafkaOutput,
   KafkaOutputCreateInput,
   LookupAttachment,
@@ -648,6 +649,9 @@ export const api = {
       { method: "DELETE" },
       token
     ),
+
+  listInstallConfig: (token: string) =>
+    request<InstallFeature[]>("/api/v1/install-config", {}, token),
 
   listOutputPlugins: (token: string) =>
     request<OutputPluginSummary[]>("/api/v1/output-plugins", {}, token),
