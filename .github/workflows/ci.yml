@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch/PR makes an in-flight run pointless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (extras=${{ matrix.extras || 'core' }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both halves of the modular install (see backend/app/services/install.py):
+        # "core" proves the app imports and the suite passes with neither
+        # broker client present — the kafka/mqtt tests skip themselves.
+        # "all" proves those tests actually run when the extras are there.
+        # Testing only one of these would let the other silently break.
+        include:
+          - extras: ""
+          - extras: "all"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pipx install uv
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${{ matrix.extras }}" ]; then
+            uv pip install --system ".[dev,${{ matrix.extras }}]"
+          else
+            uv pip install --system ".[dev]"
+          fi
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Format check
+        run: ruff format --check .
+
+      - name: Tests
+        # The suite uses in-memory SQLite, so no database service is needed.
+        run: pytest -q
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  compose:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      - name: Default profile starts exactly the core three services
+        # Guards the modular-install promise that optional services stay
+        # opt-in — a stray profile-less service would show up here.
+        run: |
+          services=$(docker compose config --services | sort | tr '\n' ' ')
+          echo "default services: $services"
+          [ "$services" = "backend frontend postgres " ]
+
+      - name: Build backend image (core only)
+        run: docker compose build backend
+
+      - name: Build backend image (with extras)
+        run: SYNTHFLOW_EXTRAS=kafka,mqtt docker compose build backend

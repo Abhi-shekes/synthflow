@@ -3,13 +3,25 @@
 Active task list. This is the working checklist — for the phased overview see
 [ROADMAP.md](ROADMAP.md). Keep this file short: only what's in flight or next up.
 
-## Repo bootstrap (not blocking, pick up anytime)
+## Repo bootstrap
 
 - [x] Initialize repo, README, ROADMAP, LICENSE
-- [ ] Add `.github/ISSUE_TEMPLATE` (bug report, feature request)
-- [ ] Add `.github/PULL_REQUEST_TEMPLATE.md`
-- [ ] Set up CI: lint + typecheck on push (GitHub Actions)
-- [ ] Add branch protection on `main` once CI exists
+- [x] Add `.github/ISSUE_TEMPLATE` (bug report, feature request)
+- [x] Add `.github/PULL_REQUEST_TEMPLATE.md`
+- [x] Set up CI: lint + typecheck on push (GitHub Actions) — three jobs.
+      Backend runs as a **matrix over both halves of the modular install**
+      (core-only and `[all]`), because testing one leg would let the other
+      silently break: core proves the app imports and the broker tests skip
+      themselves, `all` proves those tests actually run. Frontend runs lint
+      and build. A third job validates the compose file, asserts the default
+      profile still starts exactly the core three services, and builds the
+      backend image both with and without extras. Every job was replicated
+      locally before committing — including a clean non-editable install into
+      a throwaway 3.12 venv, which is what CI actually does and is not what
+      local development does.
+- [ ] Add branch protection on `main` — **needs repo-admin action in the
+      GitHub UI**; it can't be committed. Suggested: require the `Backend`,
+      `Frontend` and `Docker build` checks, and require a PR before merging.
 
 ## Phase 1 & 2 — done
 

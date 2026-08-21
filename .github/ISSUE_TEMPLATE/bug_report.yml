@@ -1,0 +1,73 @@
+name: Bug report
+description: Something behaves differently from how it's documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A note that saves everyone time: several
+        behaviours that look like bugs are documented tradeoffs — background
+        producers not surviving a backend restart, trends restarting each
+        generate call, `many_to_many` generating like `one_to_many`. Those
+        are listed in ROADMAP.md and TODO.md. If yours is one of them,
+        a feature request is the better fit.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a project with…
+        2. Add an entity with a `float` field…
+        3. Generate 10 rows
+        4. Every row has the same value
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - Generation engine (fields, rules, formulas, workflows, trends)
+        - Relationships / cross-entity references
+        - Outputs (CSV/Excel, REST, WebSocket, Kafka, MQTT, database, plugin)
+        - Templates (import/export, starter templates)
+        - Plugins (generator, rule function, output)
+        - Monitoring / metrics
+        - Install and setup (`synthflow init`, Docker)
+        - Frontend / UI
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >
+        How you're running it, and — if relevant — which optional extras are
+        enabled. `GET /api/v1/install-config` reports the latter.
+      placeholder: |
+        docker compose, default profile
+        SYNTHFLOW_EXTRAS=kafka
+        browser: Firefox 130
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: >
+        `docker compose logs backend`, and any browser console errors.
+        Please redact anything sensitive.
+      render: shell

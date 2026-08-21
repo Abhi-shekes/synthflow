@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest something SynthFlow should be able to do.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth a quick look at ROADMAP.md first — Phases 7–16 already plan a
+        fair amount (schema import, scale and scheduled jobs, learning from
+        real data, privacy, more connectors). If your idea is already there,
+        saying so in an issue is still useful: it's a signal about priority.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: >
+        The underlying goal, not just the feature. "I need to test my ETL
+        pipeline against realistic late-arriving data" tells us more than
+        "add a delay option".
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like it to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How are you working around it today?
+      description: >
+        If you've solved it with a plugin, a formula, or an external script,
+        that's genuinely useful to know — sometimes the answer is better
+        documentation rather than new code.
+
+  - type: dropdown
+    id: roadmap
+    attributes:
+      label: Is this already on the roadmap?
+      options:
+        - "No / not sure"
+        - "Yes — and I'd like to see it sooner"
+    validations:
+      required: true
