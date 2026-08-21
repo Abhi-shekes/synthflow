@@ -28,9 +28,7 @@ def test_signup_login_me_flow(client):
     assert me.status_code == 200
     assert me.json()["email"] == "a@example.com"
 
-    refreshed = client.post(
-        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
-    )
+    refreshed = client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert refreshed.status_code == 200
     assert "access_token" in refreshed.json()
 

@@ -12,9 +12,7 @@ from app.models.user import User
 from app.schemas.trend import TrendCreate, TrendRead
 from app.services.trends import validate_params
 
-router = APIRouter(
-    prefix="/projects/{project_id}/entities/{entity_id}/trends", tags=["trends"]
-)
+router = APIRouter(prefix="/projects/{project_id}/entities/{entity_id}/trends", tags=["trends"])
 
 
 @router.get("", response_model=list[TrendRead])

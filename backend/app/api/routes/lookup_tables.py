@@ -69,8 +69,6 @@ def delete_lookup_table(
     _get_owned_project(project_id, current_user, db)
     lookup_table = db.get(LookupTable, lookup_table_id)
     if lookup_table is None or lookup_table.project_id != project_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Lookup table not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lookup table not found")
     db.delete(lookup_table)
     db.commit()

@@ -44,9 +44,7 @@ async def create_mqtt_output(
     try:
         install.require("mqtt")
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     output = MQTTOutput(entity_id=entity_id, **payload.model_dump())
     db.add(output)
     db.commit()

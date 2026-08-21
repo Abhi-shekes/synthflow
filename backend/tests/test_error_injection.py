@@ -252,9 +252,7 @@ def test_delete_error_injection(client, auth_headers):
         headers=auth_headers,
     ).json()
 
-    deleted = client.delete(
-        f"{base}/error-injections/{created['id']}", headers=auth_headers
-    )
+    deleted = client.delete(f"{base}/error-injections/{created['id']}", headers=auth_headers)
     assert deleted.status_code == 204
 
     listed = client.get(f"{base}/error-injections", headers=auth_headers)
@@ -280,9 +278,7 @@ def test_rule_can_discard_corrupted_rows(client, auth_headers):
         json={"field_id": field_id, "rate": 1, "error_types": ["null"]},
         headers=auth_headers,
     )
-    client.post(
-        f"{base}/rules", json={"condition": "value != None"}, headers=auth_headers
-    )
+    client.post(f"{base}/rules", json={"condition": "value != None"}, headers=auth_headers)
 
     resp = client.post(f"{base}/generate", json={"count": 5}, headers=auth_headers)
     assert resp.status_code == 400

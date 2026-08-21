@@ -47,9 +47,7 @@ def test_rule_rejected_when_referencing_unknown_field(client, auth_headers):
     entity_id = _create_entity(client, auth_headers, project_id)
     base = f"/api/v1/projects/{project_id}/entities/{entity_id}"
 
-    resp = client.post(
-        f"{base}/rules", json={"condition": "nonexistent > 0"}, headers=auth_headers
-    )
+    resp = client.post(f"{base}/rules", json={"condition": "nonexistent > 0"}, headers=auth_headers)
     assert resp.status_code == 400
 
 
@@ -81,9 +79,7 @@ def test_delete_rule(client, auth_headers):
     entity_id = _create_entity(client, auth_headers, project_id)
     base = f"/api/v1/projects/{project_id}/entities/{entity_id}"
 
-    rule = client.post(
-        f"{base}/rules", json={"condition": "1 > 0"}, headers=auth_headers
-    ).json()
+    rule = client.post(f"{base}/rules", json={"condition": "1 > 0"}, headers=auth_headers).json()
 
     deleted = client.delete(f"{base}/rules/{rule['id']}", headers=auth_headers)
     assert deleted.status_code == 204

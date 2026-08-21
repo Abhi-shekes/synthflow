@@ -9,9 +9,7 @@ def _create_project(client, headers, name="Reference Data"):
     return client.post("/api/v1/projects", json={"name": name}, headers=headers).json()["id"]
 
 
-def _create_entity_with_field(
-    client, headers, project_id, field_payload, entity_name="Record"
-):
+def _create_entity_with_field(client, headers, project_id, field_payload, entity_name="Record"):
     entity = client.post(
         f"/api/v1/projects/{project_id}/entities", json={"name": entity_name}, headers=headers
     ).json()
@@ -99,17 +97,13 @@ def test_upload_excel_creates_lookup_table(client, auth_headers):
 
 def test_reject_unsupported_file_type(client, auth_headers):
     project_id = _create_project(client, auth_headers)
-    resp = _upload(
-        client, auth_headers, project_id, "Notes", "notes.txt", b"hello", "text/plain"
-    )
+    resp = _upload(client, auth_headers, project_id, "Notes", "notes.txt", b"hello", "text/plain")
     assert resp.status_code == 400
 
 
 def test_reject_empty_csv(client, auth_headers):
     project_id = _create_project(client, auth_headers)
-    resp = _upload(
-        client, auth_headers, project_id, "Empty", "empty.csv", b"name\n", "text/csv"
-    )
+    resp = _upload(client, auth_headers, project_id, "Empty", "empty.csv", b"name\n", "text/csv")
     assert resp.status_code == 400
 
 
@@ -117,9 +111,7 @@ def test_reject_file_exceeding_row_limit(client, auth_headers, monkeypatch):
     monkeypatch.setattr(settings, "MAX_LOOKUP_ROWS", 2)
     project_id = _create_project(client, auth_headers)
     csv_content = b"n\n1\n2\n3\n"
-    resp = _upload(
-        client, auth_headers, project_id, "TooBig", "big.csv", csv_content, "text/csv"
-    )
+    resp = _upload(client, auth_headers, project_id, "TooBig", "big.csv", csv_content, "text/csv")
     assert resp.status_code == 400
 
 
@@ -134,9 +126,7 @@ def test_delete_lookup_table(client, auth_headers):
     )
     assert deleted.status_code == 204
 
-    listed = client.get(
-        f"/api/v1/projects/{project_id}/lookup-tables", headers=auth_headers
-    )
+    listed = client.get(f"/api/v1/projects/{project_id}/lookup-tables", headers=auth_headers)
     assert listed.json() == []
 
 

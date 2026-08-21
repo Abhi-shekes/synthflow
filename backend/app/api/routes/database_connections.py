@@ -45,9 +45,7 @@ def list_connections(
     db: Session = Depends(get_db),
 ) -> list[DatabaseConnection]:
     _get_owned_project(project_id, current_user, db)
-    return (
-        db.query(DatabaseConnection).filter(DatabaseConnection.project_id == project_id).all()
-    )
+    return db.query(DatabaseConnection).filter(DatabaseConnection.project_id == project_id).all()
 
 
 @router.post("", response_model=DatabaseConnectionRead, status_code=status.HTTP_201_CREATED)

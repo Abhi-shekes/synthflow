@@ -85,9 +85,7 @@ def parse_upload(
     if not rows:
         raise LookupParseError("File contains no rows")
     if len(rows) > max_rows:
-        raise LookupParseError(
-            f"File has {len(rows)} rows, which exceeds the {max_rows}-row limit"
-        )
+        raise LookupParseError(f"File has {len(rows)} rows, which exceeds the {max_rows}-row limit")
 
     columns: list[str] = []
     seen = set()

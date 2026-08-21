@@ -14,7 +14,6 @@ requires_mqtt = pytest.mark.skipif(
 )
 
 
-
 def _create_project(client, headers, name="Streaming"):
     return client.post("/api/v1/projects", json={"name": name}, headers=headers).json()["id"]
 

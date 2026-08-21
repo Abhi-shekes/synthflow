@@ -80,9 +80,7 @@ def test_seasonal_trend_oscillates(client, auth_headers):
 
     gen = client.post(f"{base}/generate", json={"count": 4}, headers=auth_headers)
     values = [row["value"] for row in gen.json()]
-    expected = [
-        round(50 + 10 * math.sin(2 * math.pi * i / 4), 2) for i in range(4)
-    ]
+    expected = [round(50 + 10 * math.sin(2 * math.pi * i / 4), 2) for i in range(4)]
     assert values == expected
 
 

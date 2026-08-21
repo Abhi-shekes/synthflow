@@ -46,9 +46,7 @@ def list_relationships(
     return db.query(Relationship).filter(Relationship.project_id == project_id).all()
 
 
-@router.post(
-    "/relationships", response_model=RelationshipRead, status_code=status.HTTP_201_CREATED
-)
+@router.post("/relationships", response_model=RelationshipRead, status_code=status.HTTP_201_CREATED)
 def create_relationship(
     project_id: uuid.UUID,
     payload: RelationshipCreate,
@@ -137,8 +135,7 @@ def generate_all(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    f"count for '{entity.name}' must be between 1 and "
-                    f"{settings.MAX_GENERATE_ROWS}"
+                    f"count for '{entity.name}' must be between 1 and {settings.MAX_GENERATE_ROWS}"
                 ),
             )
         counts[entity.id] = count

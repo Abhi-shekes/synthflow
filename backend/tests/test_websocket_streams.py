@@ -65,9 +65,7 @@ def test_deleting_stream_stops_an_open_connection(client, auth_headers):
     entity_id = _create_entity_with_field(client, auth_headers, project_id)
     base = f"/api/v1/projects/{project_id}/entities/{entity_id}/websocket-streams"
 
-    created = client.post(
-        base, json={"events_per_second": 30}, headers=auth_headers
-    ).json()
+    created = client.post(base, json={"events_per_second": 30}, headers=auth_headers).json()
 
     with client.websocket_connect(f"/public/stream/{created['token']}") as ws:
         ws.receive_json()  # first batch succeeds

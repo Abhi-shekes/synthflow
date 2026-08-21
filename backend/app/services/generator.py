@@ -178,9 +178,7 @@ def _evaluate_event_triggers(
             if evaluate(trigger.condition, variables):
                 triggered.append(trigger.label)
         except ExpressionError as exc:
-            raise ValueError(
-                f"Event trigger '{trigger.label}' failed to evaluate: {exc}"
-            ) from exc
+            raise ValueError(f"Event trigger '{trigger.label}' failed to evaluate: {exc}") from exc
     return triggered
 
 

@@ -91,9 +91,7 @@ def test_install_config_route_requires_auth(client):
     assert client.get("/api/v1/install-config").status_code == 401
 
 
-def test_creating_an_output_for_a_missing_extra_fails_cleanly(
-    client, auth_headers, monkeypatch
-):
+def test_creating_an_output_for_a_missing_extra_fails_cleanly(client, auth_headers, monkeypatch):
     """A 400 naming the fix, not a 500 and not a background task that
     dies on its first tick."""
     monkeypatch.setattr(install, "is_available", lambda key: False)

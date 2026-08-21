@@ -1,7 +1,5 @@
 def _create_project(client, headers):
-    return client.post("/api/v1/projects", json={"name": "Logistics"}, headers=headers).json()[
-        "id"
-    ]
+    return client.post("/api/v1/projects", json={"name": "Logistics"}, headers=headers).json()["id"]
 
 
 def _create_entity_with_status_field(client, headers, project_id, name="Order"):

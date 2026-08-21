@@ -1,6 +1,7 @@
 def test_project_crud(client, auth_headers):
     create = client.post(
-        "/api/v1/projects", json={"name": "Stock Market", "description": "NSE sim"},
+        "/api/v1/projects",
+        json={"name": "Stock Market", "description": "NSE sim"},
         headers=auth_headers,
     )
     assert create.status_code == 201
