@@ -66,6 +66,15 @@ export default function EntityDetailPage() {
     enabled: !!accessToken,
   });
 
+  const ruleFunctionsQuery = useQuery({
+    queryKey: ["rule-functions"],
+    queryFn: () => api.listRuleFunctions(accessToken!),
+    enabled: !!accessToken,
+  });
+  const pluginRuleFunctionNames = (ruleFunctionsQuery.data ?? [])
+    .filter((f) => f.source !== "builtin")
+    .map((f) => f.name);
+
   const addField = useMutation({
     mutationFn: (field: FieldCreateInput) => api.addField(accessToken!, projectId, entityId, field),
     onSuccess: () => {
@@ -468,6 +477,13 @@ export default function EntityDetailPage() {
               <code className="font-mono">RelatedEntity.field</code> for an
               entity this one has a relationship to, but only when
               generating the whole project.
+              {pluginRuleFunctionNames.length > 0 && (
+                <>
+                  {" "}
+                  From installed plugins:{" "}
+                  <code className="font-mono">{pluginRuleFunctionNames.join(" ")}</code>.
+                </>
+              )}
             </p>
             <form
               className="flex gap-2"
@@ -515,6 +531,13 @@ export default function EntityDetailPage() {
               external notification is sent (yet). Can also reference{" "}
               <code className="font-mono">RelatedEntity.field</code>, same
               as a rule.
+              {pluginRuleFunctionNames.length > 0 && (
+                <>
+                  {" "}
+                  From installed plugins:{" "}
+                  <code className="font-mono">{pluginRuleFunctionNames.join(" ")}</code>.
+                </>
+              )}
             </p>
             <form
               className="flex gap-2"

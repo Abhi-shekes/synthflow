@@ -394,9 +394,10 @@ Goal: data behaves over time, not just at generation time.
 
 Goal: the community can extend SynthFlow without forking it.
 
-- [x] Formal plugin framework — generator plugins only for now; output, rule,
-      and AI provider plugins are still just `[ ]` items below, deliberately
-      not started in this pass. Real third-party extensibility via Python's
+- [x] Formal plugin framework — generator plugins in this pass, rule-function
+      plugins added in a follow-up pass below; output and AI provider
+      plugins are still just `[ ]` items further down, deliberately not
+      started. Real third-party extensibility via Python's
       standard entry-point mechanism (`app/services/plugins.py`): any
       package installed into the backend's environment that declares a
       zero-arg callable under the `synthflow.generators` entry-point group
@@ -445,6 +446,62 @@ Goal: the community can extend SynthFlow without forking it.
       console errors, then uninstalled the plugin and confirmed both that
       it disappears from the registry and that a field still referencing
       it now fails generation with a clean 400, not a 500.
+- [x] Rule-function plugins — the second half of the plugin framework,
+      following the same "check existing infrastructure first" pattern
+      that closed out correlation/API-behavior/user-behavior in Phase 4:
+      a "rule plugin" isn't a new concept bolted onto `Rule`, it's a new
+      capability in the expression evaluator every rule/event-trigger
+      condition and formula already runs through
+      (`app/services/expressions.evaluate`). Any package installed into
+      the backend's environment that declares a callable under the
+      `synthflow.rule_functions` entry-point group becomes callable *by
+      name* from inside any expression, exactly like the built-in
+      `noise()`/`uniform()` already are — `is_business_day(order_date)`
+      or `luhn_valid(card_number)`, not just presets. Discovery lives in
+      `app/services/plugins.py` next to the generator-plugin mechanism
+      (shared `PLUGIN_API_VERSION`, same collision/broken-plugin
+      handling), but the two modules stay one-directional
+      (expressions.py imports plugins.py, never the reverse) to avoid a
+      circular import — `GET /rule-functions` merges the built-in names
+      (now exported as `expressions.BUILTIN_FUNCTIONS`) with the plugin
+      ones at the route layer instead.
+
+      Building the example rule-function plugin (`is_business_day`,
+      added to `examples/example-plugin/` alongside the existing
+      `license_plate` generator — renamed from `example-generator-plugin`
+      since it now demonstrates both halves of the framework) surfaced a
+      real bug, not a hypothetical one: creating a rule/event-trigger/
+      formula validates the condition against dummy stand-in values
+      first, and every field's stand-in was the integer `1` regardless of
+      its real type — so `is_business_day(order_date)` on a DATE field
+      raised an unhandled `TypeError` (`date.fromisoformat(1)`) that
+      surfaced as a raw 500, not a 400. Fixed two ways: `dummy_row_values`
+      (`app/api/routes/entities.py`) now picks a type-appropriate
+      stand-in per field (a real ISO date for DATE, an enum's first value
+      for ENUM, etc.) so realistic conditions actually validate instead
+      of always being rejected or crashing; and `evaluate()`'s function
+      call handling now wraps *any* exception a called function raises
+      (built-in or plugin) in `ExpressionError`, so a user-authored
+      condition can never 500 the server no matter what the function
+      does internally — defense in depth, not reliant on the dummy-value
+      fix alone.
+
+      13 new tests for the plugin mechanism itself plus 2 regression
+      tests for the dummy-value/exception-safety bugs, 227 passed / 3
+      skipped total, lint clean. Verified against the real installed
+      example plugin, not mocks: `is_business_day` appeared via
+      `GET /rule-functions` after a restart, a rule using
+      `is_business_day(order_date)` on a DATE field failed to create with
+      a 500 *before* the fix and created cleanly *after* it, then
+      generating 15 rows against Postgres confirmed every single
+      `order_date` really did land on a weekday — the rule's
+      discard-and-regenerate loop was genuinely calling the plugin
+      function per candidate row, not just accepting the condition
+      syntactically. Confirmed in a browser too: the Rules and Event
+      triggers cards' helper text now lists `is_business_day` under "From
+      installed plugins" with zero console errors. Uninstalling the
+      plugin made it disappear from `GET /rule-functions` and a new rule
+      referencing it fail with a clean 400.
 - [x] Generator plugin examples: PAN, VIN, IMEI, GST, QR, email generators —
       `IdentifierPreset` (`app/services/identifier_generators.py`), the same
       "canned generator behind a STRING field's `preset` column" mechanism

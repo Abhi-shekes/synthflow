@@ -25,6 +25,7 @@ import type {
   RelationshipCreateInput,
   RestOutput,
   Rule,
+  RuleFunctionSummary,
   StarterTemplateSummary,
   TimelineReplay,
   TimelineReplayCreateInput,
@@ -621,6 +622,9 @@ export const api = {
 
   listGeneratorPlugins: (token: string) =>
     request<GeneratorPresetSummary[]>("/api/v1/generator-plugins", {}, token),
+
+  listRuleFunctions: (token: string) =>
+    request<RuleFunctionSummary[]>("/api/v1/rule-functions", {}, token),
 
   exportProject: (token: string, projectId: string) =>
     request<ProjectTemplate>(`/api/v1/projects/${projectId}/export`, {}, token),

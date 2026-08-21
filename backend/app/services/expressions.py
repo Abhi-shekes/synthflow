@@ -25,12 +25,22 @@ this evaluator only needs to know how to read one field off of it once
 it's there. See Relationship's docstring and generator.py's
 `relationship_lookup`/`cross-entity` handling for how the *specific*
 linked row (not just any row of that entity) ends up there.
+
+Beyond the built-in whitelist, a call can also reach a name registered by
+an installed rule-function plugin (see app.services.plugins — the
+"synthflow.rule_functions" entry-point group) — the plugin half of
+Phase 5's formal plugin framework that isn't a generator: a
+`luhn_valid(card_number)` or `is_business_day(order_date)` a project
+author installed becomes callable here by name, exactly like `noise()`
+is. A plugin function can't shadow a built-in name; the built-in wins.
 """
 
 import ast
 import operator
 import random
 from typing import Any
+
+from app.services.plugins import available_rule_functions
 
 _BINOPS: dict[type, Any] = {
     ast.Add: operator.add,
@@ -63,6 +73,8 @@ _FUNCTIONS: dict[str, Any] = {
     "noise": lambda stddev: random.gauss(0, stddev),
     "uniform": random.uniform,
 }
+
+BUILTIN_FUNCTIONS = sorted(_FUNCTIONS)
 
 
 class ExpressionError(ValueError):
@@ -127,12 +139,31 @@ def _eval(node: ast.AST, variables: dict[str, Any]) -> Any:
         return _eval(branch, variables)
 
     if isinstance(node, ast.Call):
-        if not isinstance(node.func, ast.Name) or node.func.id not in _FUNCTIONS:
-            allowed = ", ".join(sorted(_FUNCTIONS))
-            raise ExpressionError(f"Only these functions are allowed: {allowed}")
+        if not isinstance(node.func, ast.Name):
+            raise ExpressionError("Only direct function calls are allowed")
+        func_name = node.func.id
+        if func_name in _FUNCTIONS:
+            fn = _FUNCTIONS[func_name]
+        else:
+            plugin_functions = available_rule_functions()
+            if func_name not in plugin_functions:
+                allowed = ", ".join(sorted(_FUNCTIONS.keys() | plugin_functions.keys()))
+                raise ExpressionError(f"Only these functions are allowed: {allowed}")
+            fn = plugin_functions[func_name]
         if node.keywords:
             raise ExpressionError("Keyword arguments are not allowed")
         args = [_eval(a, variables) for a in node.args]
-        return _FUNCTIONS[node.func.id](*args)
+        try:
+            return fn(*args)
+        except ExpressionError:
+            raise
+        except Exception as exc:
+            # A built-in or plugin function can raise anything (a plugin's
+            # date.fromisoformat on a value it doesn't like, say) — never
+            # let that escape as a raw 500, especially since the *dummy*
+            # values used to validate a condition at creation time
+            # (app.api.routes.entities.dummy_row_values) are only a
+            # best-effort stand-in for what a real row will contain.
+            raise ExpressionError(f"'{func_name}(...)' raised an error: {exc}") from exc
 
     raise ExpressionError(f"Expression contains unsupported syntax: {type(node).__name__}")

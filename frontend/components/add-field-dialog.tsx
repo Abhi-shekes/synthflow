@@ -90,6 +90,15 @@ export function AddFieldDialog({
   const presets = presetsQuery.data ?? [];
   const logPresets = presets.filter((p) => p.category === "log");
   const identifierPresets = presets.filter((p) => p.category === "identifier");
+
+  const ruleFunctionsQuery = useQuery({
+    queryKey: ["rule-functions"],
+    queryFn: () => api.listRuleFunctions(accessToken!),
+    enabled: !!accessToken && open,
+  });
+  const pluginRuleFunctions = (ruleFunctionsQuery.data ?? []).filter(
+    (f) => f.source !== "builtin"
+  );
   const pluginPresets = presets.filter((p) => p.category === "plugin");
 
   const submit = (values: FormValues) => {
@@ -203,6 +212,16 @@ export function AddFieldDialog({
               <code className="font-mono">price * Customer.discount_rate</code>
               ) — only works when generating the whole project, not this
               entity alone.
+              {pluginRuleFunctions.length > 0 && (
+                <>
+                  {" "}
+                  From installed plugins:{" "}
+                  <code className="font-mono">
+                    {pluginRuleFunctions.map((f) => f.name).join(" ")}
+                  </code>
+                  .
+                </>
+              )}
             </p>
           </div>
 

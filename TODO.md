@@ -240,9 +240,49 @@ UI, and generating from the GPS Fleet template's `LocationPing` entity
 produced real interpolated lat/lon points along its bundled route — the
 geo-route attachment survived the import intact — zero console errors.
 
+## Rule-function plugins — done
+
+The second half of the plugin framework — not a new `Rule` concept, a new
+capability in the expression evaluator every rule/event-trigger
+condition and formula already runs through
+(`app.services.expressions.evaluate`). A package installed into the
+backend's environment that declares a callable under the
+`synthflow.rule_functions` entry-point group becomes callable *by name*
+from inside any expression, the same way built-in `noise()`/`uniform()`
+already are. Discovery lives next to the generator-plugin mechanism in
+`app/services/plugins.py`, sharing `PLUGIN_API_VERSION` and the same
+collision/broken-plugin handling, but stays one-directional
+(expressions.py imports plugins.py, not the reverse) — `GET
+/rule-functions` merges built-ins and plugins at the route layer instead
+of inside plugins.py, to avoid a circular import.
+
+Writing the example plugin (`is_business_day`, added to
+`examples/example-plugin/` — renamed from `example-generator-plugin`
+since it now covers both plugin kinds) surfaced a real bug: a rule's
+condition is validated against dummy stand-in values at creation time,
+and every field's stand-in was hardcoded to the integer `1` regardless
+of its real type, so a date-specific function on a DATE field raised an
+unhandled `TypeError` that surfaced as a raw 500. Fixed two ways —
+`dummy_row_values` now picks a type-appropriate stand-in per field type,
+and `evaluate()`'s function-call handling now wraps any exception a
+called function raises in a clean `ExpressionError` regardless of cause,
+so a condition can never 500 the server no matter what a plugin does
+internally.
+
+15 new tests (13 for the plugin mechanism, 2 regression tests for the
+bugs found), 227 passed / 3 skipped, lint clean. Verified against the
+real installed example plugin: the exact rule that 500'd before the fix
+created cleanly after it, and generating rows against Postgres confirmed
+every single generated date actually landed on a weekday — the rule was
+genuinely calling the plugin function per candidate row through the
+discard-and-regenerate loop, not just accepting the condition
+syntactically. Confirmed in a browser too, and confirmed uninstalling
+the plugin degrades cleanly (disappears from the list, a new rule
+referencing it gets a 400).
+
 ## Now
 
-The rest of Phase 5 (output/rule/AI provider plugins to round out the
+The rest of Phase 5 (output and AI provider plugins to round out the
 plugin framework, live monitoring dashboard, modular install) is still
 unscoped and needs its own design pass before starting.
 

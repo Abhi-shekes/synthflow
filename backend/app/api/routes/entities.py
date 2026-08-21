@@ -1,4 +1,5 @@
 import uuid
+from datetime import date, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,7 +11,7 @@ from app.api.routes.projects import _get_owned_project
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entity import Entity
-from app.models.field import EntityField
+from app.models.field import EntityField, FieldType
 from app.models.relationship import Relationship
 from app.models.user import User
 from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateRequest
@@ -21,24 +22,56 @@ from app.services.generator import build_lookup_pools, generate_rows, rows_to_cs
 
 router = APIRouter(prefix="/projects/{project_id}/entities", tags=["entities"])
 
+_DUMMY_UUID = "00000000-0000-0000-0000-000000000000"
+
+
+def _dummy_value_for_field(field: EntityField) -> object:
+    """A type-appropriate stand-in for a field's real generated value,
+    used only for validating a formula/rule/event-trigger condition at
+    creation time (see dummy_row_values below) — close enough to what a
+    real row will contain that a condition calling a type-specific
+    function (a plugin's `is_business_day(order_date)`, say) validates
+    successfully instead of being rejected just because a DATE field's
+    stand-in used to always be the integer 1 regardless of its real
+    type."""
+    if field.field_type == FieldType.ENUM:
+        return field.enum_values[0] if field.enum_values else "x"
+    if field.field_type == FieldType.STRING:
+        return "x"
+    if field.field_type == FieldType.BOOLEAN:
+        return True
+    if field.field_type == FieldType.DATE:
+        return date.today().isoformat()
+    if field.field_type == FieldType.DATETIME:
+        return datetime.now().isoformat()
+    if field.field_type == FieldType.UUID:
+        return _DUMMY_UUID
+    if field.field_type == FieldType.ARRAY:
+        return []
+    if field.field_type in (FieldType.OBJECT, FieldType.JSON):
+        return {}
+    return 1
+
 
 def dummy_row_values(entity: Entity, db: Session) -> dict[str, object]:
     """Dummy values for validating a formula/rule/event-trigger condition at
-    creation time: 1 for each of the entity's own fields, plus a nested
-    dummy dict per related entity (keyed by that entity's *name*) for any
-    Relationship sourced from this entity. This is what lets a formula or
-    condition reference `TargetEntity.field` (see
-    app.services.expressions and app.services.generator's
-    relationship_lookup/cross-entity handling) validate before ever
-    generating data — shared by rules.py and event_triggers.py, not just
-    formula validation here, since all three use the same evaluator and the
-    same cross-entity mechanism."""
-    values: dict[str, object] = {f.name: 1 for f in entity.fields}
+    creation time: a type-appropriate stand-in for each of the entity's
+    own fields (see _dummy_value_for_field), plus a nested dummy dict per
+    related entity (keyed by that entity's *name*) for any Relationship
+    sourced from this entity. This is what lets a formula or condition
+    reference `TargetEntity.field` (see app.services.expressions and
+    app.services.generator's relationship_lookup/cross-entity handling)
+    validate before ever generating data — shared by rules.py and
+    event_triggers.py, not just formula validation here, since all three
+    use the same evaluator and the same cross-entity mechanism."""
+    values: dict[str, object] = {f.name: _dummy_value_for_field(f) for f in entity.fields}
     relationships = db.query(Relationship).filter(Relationship.source_entity_id == entity.id).all()
     for rel in relationships:
         target_entity = db.get(Entity, rel.target_entity_id)
         if target_entity is not None:
-            values[target_entity.name] = {f.name: 1 for f in target_entity.fields}
+            values[target_entity.name] = {
+                f.name: _dummy_value_for_field(f) for f in target_entity.fields
+            }
     return values
 
 

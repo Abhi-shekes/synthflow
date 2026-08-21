@@ -35,6 +35,14 @@ export interface GeneratorPresetSummary {
   category: "log" | "identifier" | "plugin";
 }
 
+// Every function callable by name from a rule/event-trigger condition or
+// a formula (built-ins like noise()/uniform() plus whatever rule-function
+// plugins are installed) — see backend app.services.expressions.
+export interface RuleFunctionSummary {
+  name: string;
+  source: string;
+}
+
 export interface EntityField {
   id: string;
   entity_id: string;

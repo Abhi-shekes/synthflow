@@ -1,7 +1,7 @@
 [project]
 name = "synthflow-example-plugin"
 version = "0.1.0"
-description = "Example SynthFlow generator plugin — a template for writing your own"
+description = "Example SynthFlow plugin — a template for writing your own generator and rule-function plugins"
 requires-python = ">=3.11"
 
 # This is the whole mechanism: SynthFlow's backend discovers every
@@ -12,6 +12,12 @@ requires-python = ">=3.11"
 # backend and a process restart.
 [project.entry-points."synthflow.generators"]
 license_plate = "synthflow_example_plugin.generators:license_plate"
+
+# Same discovery mechanism, different group: an entry here becomes
+# callable by name from inside any rule condition, event-trigger
+# condition, or formula field (app/services/expressions.py).
+[project.entry-points."synthflow.rule_functions"]
+is_business_day = "synthflow_example_plugin.rule_functions:is_business_day"
 
 [build-system]
 requires = ["setuptools>=68"]
