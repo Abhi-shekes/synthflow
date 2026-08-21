@@ -9,6 +9,7 @@ from app.api.routes import (
     entities,
     error_injections,
     event_triggers,
+    generator_plugins,
     geo_routes,
     health,
     kafka_outputs,
@@ -52,6 +53,7 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
+app.include_router(generator_plugins.router, prefix=settings.API_V1_PREFIX)
 app.include_router(relationships.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rules.router, prefix=settings.API_V1_PREFIX)
 app.include_router(event_triggers.router, prefix=settings.API_V1_PREFIX)

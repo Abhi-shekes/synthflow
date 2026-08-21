@@ -17,6 +17,7 @@ from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateR
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
 from app.services.expressions import ExpressionError, evaluate
 from app.services.generator import build_lookup_pools, generate_rows, rows_to_csv, rows_to_excel
+from app.services.plugins import available_presets
 
 router = APIRouter(prefix="/projects/{project_id}/entities", tags=["entities"])
 
@@ -63,6 +64,11 @@ def _validate_preset(field_type: FieldType, preset: str | None, regex: str | Non
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="preset and regex are mutually exclusive — preset fully determines the value",
+        )
+    if preset not in available_presets():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown preset '{preset}'",
         )
 
 

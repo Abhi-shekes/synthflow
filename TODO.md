@@ -141,13 +141,44 @@ first" result Phase 4 kept finding. 9 new tests, 176 passed / 3 skipped
 total, lint clean. Verified end-to-end in a browser: a VIN-preset field
 generated 10 real 17-character, I/O/Q-free values, zero console errors.
 
+## Formal plugin framework (generator plugins) — done
+
+Real third-party extensibility, not just an internal abstraction: any
+Python package installed into the backend's own environment that
+declares a zero-arg callable under the `synthflow.generators` entry-point
+group (the standard mechanism pytest/Flask/etc. use for plugins) is
+discovered automatically and offered as a `preset` — no SynthFlow code
+change. `app/services/plugins.py` is the registry; `preset` moved from a
+closed `LogPreset | IdentifierPreset` Pydantic union to a plain `str`,
+validated dynamically instead of at compile time, since that's the whole
+point. A colliding plugin name is skipped (logged, not silently
+overriding a built-in); a plugin that fails to load doesn't take down the
+others. Deliberately scoped to generators only — output, rule, and AI
+provider plugins from the original roadmap line are still `[ ]`, not
+started.
+
+`examples/example-generator-plugin/` is a real, working, documented
+example package (a `license_plate` generator) — both the "documented
+interface" deliverable and this feature's proof: built and
+`pip install -e`'d into the actual running Docker backend against
+Postgres, not mocked. `GET /generator-plugins` is new; the frontend
+preset picker fetches from it instead of hardcoding preset names (the old
+`LOG_PRESETS`/`IDENTIFIER_PRESETS` arrays are gone — dead code once
+nothing read them), so a newly installed plugin shows up in the UI
+without a frontend rebuild.
+
+11 new tests, 187 passed / 3 skipped total, lint clean. Verified live: the
+example plugin's preset appeared via the API after a container restart,
+generated real rows through the actual UI with zero console errors, and
+uninstalling it made both the registry and generation for an
+already-created field fail cleanly (400, not 500) rather than silently.
+
 ## Now
 
-Generator plugin examples are done. What's left of Phase 5 (formal plugin
-framework, template marketplace + starter templates, live monitoring
-dashboard, modular install) is still unscoped and needs its own design
-pass before starting — likely starting with the formal plugin framework,
-since template marketplace and modular install both plausibly build on it.
+The rest of Phase 5 (output/rule/AI provider plugins to round out the
+plugin framework, template marketplace + starter templates, live
+monitoring dashboard, modular install) is still unscoped and needs its
+own design pass before starting.
 
 ## Backlog (not started, roughly in order)
 

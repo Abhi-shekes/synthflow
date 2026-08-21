@@ -8,6 +8,7 @@ import type {
   ErrorInjectionCreateInput,
   EventTrigger,
   FieldCreateInput,
+  GeneratorPresetSummary,
   GeoRoute,
   GeoRouteCreateInput,
   KafkaOutput,
@@ -615,4 +616,7 @@ export const api = {
       { method: "DELETE" },
       token
     ),
+
+  listGeneratorPlugins: (token: string) =>
+    request<GeneratorPresetSummary[]>("/api/v1/generator-plugins", {}, token),
 };

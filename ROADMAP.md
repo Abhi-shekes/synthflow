@@ -394,8 +394,57 @@ Goal: data behaves over time, not just at generation time.
 
 Goal: the community can extend SynthFlow without forking it.
 
-- [ ] Formal plugin framework (output plugins, rule plugins, generator plugins,
-      AI provider plugins) with a documented interface + versioning
+- [x] Formal plugin framework — generator plugins only for now; output, rule,
+      and AI provider plugins are still just `[ ]` items below, deliberately
+      not started in this pass. Real third-party extensibility via Python's
+      standard entry-point mechanism (`app/services/plugins.py`): any
+      package installed into the backend's environment that declares a
+      zero-arg callable under the `synthflow.generators` entry-point group
+      is discovered automatically and offered as a `preset` — no SynthFlow
+      code change, no registration step beyond `pip install` + a process
+      restart (entry-point discovery isn't cached, so nothing else has to
+      change; a *running* worker only misses a brand-new install until it
+      restarts, which is expected and documented, not a bug). This is a
+      real architecture change, not just an additive one: `preset` moved
+      from a closed `LogPreset | IdentifierPreset` Pydantic union to a
+      plain `str`, validated dynamically against the live registry in
+      `entities._validate_preset` instead of a compile-time enum — the
+      whole point of a plugin system is that the valid set isn't known
+      until runtime. `PLUGIN_API_VERSION = 1` exists for a future breaking
+      change to check against; there's nothing to enforce yet. A plugin
+      name colliding with a built-in preset is skipped (with a logged
+      warning) rather than allowed to shadow it, and a plugin that fails to
+      load doesn't take down the others or the app. Security is the same
+      "documented, not hidden" trust model as everywhere else in this repo:
+      a generator plugin is arbitrary Python code running with the
+      backend's own privileges, no sandboxing — the deployer vets what they
+      `pip install`, same as any other dependency.
+      `examples/example-generator-plugin/` is a real, minimal,
+      pip-installable plugin package (a `license_plate` generator) that
+      doubles as the "documented interface" the roadmap item calls for and
+      as this feature's genuine end-to-end proof: built and installed with
+      `pip install -e`, not mocked, into the actual running Docker backend
+      container against Postgres. `GET /generator-plugins` is new — the
+      frontend's preset picker now fetches presets instead of hardcoding
+      `LOG_PRESETS`/`IDENTIFIER_PRESETS` (removed as dead code), so a newly
+      installed plugin shows up in the UI without a frontend rebuild; it
+      renders as a third `Plugins` group in the Select, only when at least
+      one is installed. `entity_fields.preset` widened from `VARCHAR(50)`
+      to `VARCHAR(100)` (first `ALTER COLUMN TYPE` migration in the repo —
+      needed `op.batch_alter_table` since SQLite, used for local dev/tests,
+      has no native `ALTER COLUMN TYPE`; Postgres doesn't need the batch
+      wrapper but it's harmless there). 11 new tests (mocking
+      `importlib.metadata.entry_points` for discovery/collision/
+      broken-plugin/stale-plugin-after-uninstall cases), 187 passed / 3
+      skipped total, lint clean. Verified against a real installed package,
+      not just mocks: `pip install -e` the example plugin into the live
+      backend container, confirmed `license_plate` appears via the API
+      after a restart, created a field with it and generated real
+      license-plate-shaped rows against Postgres, confirmed the picker's
+      new `Plugins` group renders and is selectable in a browser with zero
+      console errors, then uninstalled the plugin and confirmed both that
+      it disappears from the registry and that a field still referencing
+      it now fails generation with a clean 400, not a 500.
 - [x] Generator plugin examples: PAN, VIN, IMEI, GST, QR, email generators —
       `IdentifierPreset` (`app/services/identifier_generators.py`), the same
       "canned generator behind a STRING field's `preset` column" mechanism

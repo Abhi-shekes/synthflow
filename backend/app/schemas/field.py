@@ -2,7 +2,14 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.field import FieldType, IdentifierPreset, LogPreset
+from app.models.field import FieldType
+
+# preset is deliberately `str` rather than a closed Enum union: since
+# app.services.plugins can surface preset names from installed third-party
+# packages at runtime, the valid set isn't known at schema-definition time
+# any more. Membership is checked dynamically instead, in
+# app.api.routes.entities._validate_preset against
+# app.services.plugins.available_presets().
 
 
 class EntityFieldCreate(BaseModel):
@@ -16,7 +23,7 @@ class EntityFieldCreate(BaseModel):
     min_value: float | None = None
     max_value: float | None = None
     regex: str | None = None
-    preset: LogPreset | IdentifierPreset | None = None
+    preset: str | None = None
     enum_values: list[str] | None = None
     enum_weights: list[float] | None = None
     formula: str | None = None
@@ -33,7 +40,7 @@ class EntityFieldUpdate(BaseModel):
     min_value: float | None = None
     max_value: float | None = None
     regex: str | None = None
-    preset: LogPreset | IdentifierPreset | None = None
+    preset: str | None = None
     enum_values: list[str] | None = None
     enum_weights: list[float] | None = None
     formula: str | None = None
@@ -54,7 +61,7 @@ class EntityFieldRead(BaseModel):
     min_value: float | None
     max_value: float | None
     regex: str | None
-    preset: LogPreset | IdentifierPreset | None
+    preset: str | None
     enum_values: list[str] | None
     enum_weights: list[float] | None
     formula: str | None

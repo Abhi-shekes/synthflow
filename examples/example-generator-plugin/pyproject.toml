@@ -1,0 +1,18 @@
+[project]
+name = "synthflow-example-plugin"
+version = "0.1.0"
+description = "Example SynthFlow generator plugin — a template for writing your own"
+requires-python = ">=3.11"
+
+# This is the whole mechanism: SynthFlow's backend discovers every
+# installed package that declares an entry under "synthflow.generators"
+# (see app/services/plugins.py in the main repo) and offers each one as a
+# preset a STRING field can use. No SynthFlow code change, no
+# registration step beyond `pip install` into the same environment as the
+# backend and a process restart.
+[project.entry-points."synthflow.generators"]
+license_plate = "synthflow_example_plugin.generators:license_plate"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

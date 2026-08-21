@@ -1,8 +1,11 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { api } from "@/lib/api";
+import { useAuthStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -25,15 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  FIELD_TYPES,
-  IDENTIFIER_PRESETS,
-  LOG_PRESETS,
-  type FieldCreateInput,
-  type FieldType,
-  type IdentifierPreset,
-  type LogPreset,
-} from "@/lib/types";
+import { FIELD_TYPES, type FieldCreateInput, type FieldType } from "@/lib/types";
 
 interface FormValues {
   name: string;
@@ -44,7 +39,7 @@ interface FormValues {
   min_value: string;
   max_value: string;
   regex: string;
-  preset: LogPreset | IdentifierPreset | "";
+  preset: string;
   enum_values: string;
   enum_weights: string;
   formula: string;
@@ -85,6 +80,17 @@ export function AddFieldDialog({
   const formula = watch("formula");
   const regex = watch("regex");
   const preset = watch("preset");
+
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const presetsQuery = useQuery({
+    queryKey: ["generator-plugins"],
+    queryFn: () => api.listGeneratorPlugins(accessToken!),
+    enabled: !!accessToken && open,
+  });
+  const presets = presetsQuery.data ?? [];
+  const logPresets = presets.filter((p) => p.category === "log");
+  const identifierPresets = presets.filter((p) => p.category === "identifier");
+  const pluginPresets = presets.filter((p) => p.category === "plugin");
 
   const submit = (values: FormValues) => {
     onSubmit({
@@ -230,9 +236,7 @@ export function AddFieldDialog({
               <Label>Preset (optional)</Label>
               <Select
                 value={preset}
-                onValueChange={(v) =>
-                  setValue("preset", (v ?? "") as LogPreset | IdentifierPreset | "")
-                }
+                onValueChange={(v) => setValue("preset", v ?? "")}
                 disabled={!!regex}
               >
                 <SelectTrigger>
@@ -243,26 +247,37 @@ export function AddFieldDialog({
                 <SelectContent>
                   <SelectGroup>
                     <SelectLabel>Log & security events</SelectLabel>
-                    {LOG_PRESETS.map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {p.replaceAll("_", " ")}
+                    {logPresets.map((p) => (
+                      <SelectItem key={p.name} value={p.name}>
+                        {p.name.replaceAll("_", " ")}
                       </SelectItem>
                     ))}
                   </SelectGroup>
                   <SelectGroup>
                     <SelectLabel>Identifiers & codes</SelectLabel>
-                    {IDENTIFIER_PRESETS.map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {p.replaceAll("_", " ")}
+                    {identifierPresets.map((p) => (
+                      <SelectItem key={p.name} value={p.name}>
+                        {p.name.replaceAll("_", " ")}
                       </SelectItem>
                     ))}
                   </SelectGroup>
+                  {pluginPresets.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Plugins</SelectLabel>
+                      {pluginPresets.map((p) => (
+                        <SelectItem key={p.name} value={p.name}>
+                          {p.name.replaceAll("_", " ")} ({p.source})
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
                 Generates a realistic single-line log/security event (e.g. an
-                nginx access line) or a format-valid synthetic identifier
-                (e.g. a PAN, VIN, or QR code) instead of a random word.
+                nginx access line), a format-valid synthetic identifier (e.g.
+                a PAN, VIN, or QR code), or a value from an installed
+                third-party generator plugin, instead of a random word.
                 Mutually exclusive with regex.
               </p>
             </div>

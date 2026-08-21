@@ -31,7 +31,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from app.models.entity import Entity
 from app.models.error_injection import ErrorInjection, ErrorType
 from app.models.event_trigger import EventTrigger
-from app.models.field import EntityField, FieldType, IdentifierPreset
+from app.models.field import EntityField, FieldType
 from app.models.geo_route import GeoRoute
 from app.models.lookup_attachment import LookupAttachment
 from app.models.relationship import Relationship
@@ -40,14 +40,11 @@ from app.models.trend import Trend
 from app.models.workflow import Workflow
 from app.services.expressions import ExpressionError, evaluate
 from app.services.geo_routes import generate_geo_point
-from app.services.identifier_generators import generate_identifier
-from app.services.log_generators import generate_log_line
 from app.services.lookup_tables import coerce_numeric
+from app.services.plugins import generate_preset_value
 from app.services.trends import generate_trend_value
 
 faker = Faker()
-
-_IDENTIFIER_PRESET_VALUES = {p.value for p in IdentifierPreset}
 
 NULLABLE_PROBABILITY = 0.15
 MAX_UNIQUE_ATTEMPTS = 100
@@ -59,9 +56,7 @@ WORKFLOW_STOP_PROBABILITY = 0.35
 def _generate_value(field: EntityField) -> Any:
     if field.field_type == FieldType.STRING:
         if field.preset:
-            if field.preset in _IDENTIFIER_PRESET_VALUES:
-                return generate_identifier(field.preset)
-            return generate_log_line(field.preset)
+            return generate_preset_value(field.preset)
         if field.regex:
             return exrex.getone(field.regex)
         return faker.word()

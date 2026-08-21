@@ -25,49 +25,15 @@ export const FIELD_TYPES: FieldType[] = [
   "json",
 ];
 
-export type LogPreset =
-  | "nginx_access_log"
-  | "docker_log"
-  | "kubernetes_event"
-  | "linux_syslog"
-  | "application_log"
-  | "failed_login"
-  | "brute_force"
-  | "sqli_attempt"
-  | "ddos_attempt"
-  | "port_scan"
-  | "malware_alert";
-
-export const LOG_PRESETS: LogPreset[] = [
-  "nginx_access_log",
-  "docker_log",
-  "kubernetes_event",
-  "linux_syslog",
-  "application_log",
-  "failed_login",
-  "brute_force",
-  "sqli_attempt",
-  "ddos_attempt",
-  "port_scan",
-  "malware_alert",
-];
-
-export type IdentifierPreset =
-  | "pan"
-  | "vin"
-  | "imei"
-  | "gstin"
-  | "qr_code"
-  | "business_email";
-
-export const IDENTIFIER_PRESETS: IdentifierPreset[] = [
-  "pan",
-  "vin",
-  "imei",
-  "gstin",
-  "qr_code",
-  "business_email",
-];
+// The preset picker (add-field-dialog.tsx) doesn't hardcode preset names —
+// it fetches them from `GET /generator-plugins`, since that list can
+// include generators from installed third-party plugins that a fixed
+// union type can't know about (see backend app.services.plugins).
+export interface GeneratorPresetSummary {
+  name: string;
+  source: string;
+  category: "log" | "identifier" | "plugin";
+}
 
 export interface EntityField {
   id: string;
@@ -82,7 +48,7 @@ export interface EntityField {
   min_value: number | null;
   max_value: number | null;
   regex: string | null;
-  preset: LogPreset | IdentifierPreset | null;
+  preset: string | null;
   enum_values: string[] | null;
   enum_weights: number[] | null;
   formula: string | null;
@@ -311,7 +277,7 @@ export interface FieldCreateInput {
   min_value?: number | null;
   max_value?: number | null;
   regex?: string | null;
-  preset?: LogPreset | IdentifierPreset | null;
+  preset?: string | null;
   enum_values?: string[] | null;
   enum_weights?: number[] | null;
   formula?: string | null;
