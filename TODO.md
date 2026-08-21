@@ -121,12 +121,33 @@ MQTT with `mosquitto_sub`; separately proved `DELETE` actually stops
 production (Kafka topic end-offset unchanged 6 seconds after delete, not
 just the DB row gone).
 
+## Generator plugin examples (PAN, VIN, IMEI, GST, QR, email) — done
+
+The first Phase 5 item picked up, ahead of the formal plugin framework it
+was listed under — a design pass showed it didn't need that framework to
+exist first. `IdentifierPreset` reuses the exact mechanism `LogPreset`
+established (a canned generator behind a STRING field's `preset` column):
+`pan`, `vin`, `imei`, `gstin`, `qr_code`, `business_email`, in a new
+`app/services/identifier_generators.py` mirroring `log_generators.py`.
+VIN excludes I/O/Q, IMEI carries a real Luhn check digit; GSTIN's checksum
+character is left random rather than guessed at, since that algorithm
+isn't public/simple like Luhn's — documented, not hidden. `qr_code` is the
+one preset that doesn't fit a plain string well: it renders a real PNG
+(new `qrcode[pil]` dependency) encoding a synthetic URL, as a base64 data
+URI, which meant teaching `db_output.py`'s Postgres-push column mapping to
+use `Text()` instead of `String(255)` for that one preset specifically.
+No new model, schema migration, or route — same "check existing infra
+first" result Phase 4 kept finding. 9 new tests, 176 passed / 3 skipped
+total, lint clean. Verified end-to-end in a browser: a VIN-preset field
+generated 10 real 17-character, I/O/Q-free values, zero console errors.
+
 ## Now
 
-The backlog is now empty. The only remaining work is Phase 5
-(Extensibility — plugin framework, marketplace, monitoring dashboard,
-modular install); none of it is scoped yet and needs its own design pass
-before starting.
+Generator plugin examples are done. What's left of Phase 5 (formal plugin
+framework, template marketplace + starter templates, live monitoring
+dashboard, modular install) is still unscoped and needs its own design
+pass before starting — likely starting with the formal plugin framework,
+since template marketplace and modular install both plausibly build on it.
 
 ## Backlog (not started, roughly in order)
 

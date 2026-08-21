@@ -18,16 +18,20 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   FIELD_TYPES,
+  IDENTIFIER_PRESETS,
   LOG_PRESETS,
   type FieldCreateInput,
   type FieldType,
+  type IdentifierPreset,
   type LogPreset,
 } from "@/lib/types";
 
@@ -40,7 +44,7 @@ interface FormValues {
   min_value: string;
   max_value: string;
   regex: string;
-  preset: LogPreset | "";
+  preset: LogPreset | IdentifierPreset | "";
   enum_values: string;
   enum_weights: string;
   formula: string;
@@ -223,10 +227,12 @@ export function AddFieldDialog({
 
           {!formula && fieldType === "string" && (
             <div className="flex flex-col gap-2">
-              <Label>Log/event preset (optional)</Label>
+              <Label>Preset (optional)</Label>
               <Select
                 value={preset}
-                onValueChange={(v) => setValue("preset", (v ?? "") as LogPreset | "")}
+                onValueChange={(v) =>
+                  setValue("preset", (v ?? "") as LogPreset | IdentifierPreset | "")
+                }
                 disabled={!!regex}
               >
                 <SelectTrigger>
@@ -235,17 +241,29 @@ export function AddFieldDialog({
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {LOG_PRESETS.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p.replaceAll("_", " ")}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectLabel>Log & security events</SelectLabel>
+                    {LOG_PRESETS.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p.replaceAll("_", " ")}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Identifiers & codes</SelectLabel>
+                    {IDENTIFIER_PRESETS.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p.replaceAll("_", " ")}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Generates a realistic single-line log or security event (e.g.
-                an nginx access line or a failed-login alert) instead of a
-                random word. Mutually exclusive with regex.
+                Generates a realistic single-line log/security event (e.g. an
+                nginx access line) or a format-valid synthetic identifier
+                (e.g. a PAN, VIN, or QR code) instead of a random word.
+                Mutually exclusive with regex.
               </p>
             </div>
           )}

@@ -35,7 +35,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.database_connection import DatabaseConnection, DatabaseDialect
-from app.models.field import EntityField, FieldType
+from app.models.field import EntityField, FieldType, IdentifierPreset
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 
@@ -117,7 +117,16 @@ def push_rows(
 
     engine = build_engine(connection)
     metadata = MetaData()
-    columns = [Column(f.name, _TYPE_MAP[f.field_type]()) for f in fields]
+    # A qr_code preset's base64 PNG data URI is far longer than the
+    # String(255) a plain STRING field otherwise gets — give it Text()
+    # instead so a push doesn't silently truncate the image data.
+    columns = [
+        Column(
+            f.name,
+            Text() if f.preset == IdentifierPreset.QR_CODE else _TYPE_MAP[f.field_type](),
+        )
+        for f in fields
+    ]
     table = Table(table_name, metadata, *columns)
 
     payload = [

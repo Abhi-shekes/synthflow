@@ -46,6 +46,23 @@ class LogPreset(enum.StrEnum):
     MALWARE_ALERT = "malware_alert"
 
 
+class IdentifierPreset(enum.StrEnum):
+    """A canned domain-specific identifier/code format for a STRING field —
+    see app.services.identifier_generators for what each one actually
+    produces. Same mechanism as LogPreset (shares the `preset` column;
+    a field's preset value is validated against the union of both enums),
+    just a different domain: syntactically valid-looking identifiers for
+    testing systems that parse or validate these formats, not real-world
+    PAN/VIN/IMEI/GSTIN values or anyone's real email address."""
+
+    PAN = "pan"
+    VIN = "vin"
+    IMEI = "imei"
+    GSTIN = "gstin"
+    QR_CODE = "qr_code"
+    BUSINESS_EMAIL = "business_email"
+
+
 class EntityField(Base):
     __tablename__ = "entity_fields"
 
@@ -66,10 +83,11 @@ class EntityField(Base):
 
     # When set (STRING fields only, mutually exclusive with regex — see
     # entities._validate_preset), the field's value comes from one of the
-    # canned log/event line generators in app.services.log_generators
-    # instead of exrex/faker.word(). Stored as a plain string rather than a
-    # DB-level Enum column, same choice already made for regex: validated at
-    # the schema/route layer, not enforced by the database.
+    # canned generators in app.services.log_generators (LogPreset) or
+    # app.services.identifier_generators (IdentifierPreset) instead of
+    # exrex/faker.word(). Stored as a plain string rather than a DB-level
+    # Enum column, same choice already made for regex: validated at the
+    # schema/route layer (as the union of both enums), not the database.
     preset: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Always configured as strings (e.g. "200", not 200), but a value that

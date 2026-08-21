@@ -396,7 +396,33 @@ Goal: the community can extend SynthFlow without forking it.
 
 - [ ] Formal plugin framework (output plugins, rule plugins, generator plugins,
       AI provider plugins) with a documented interface + versioning
-- [ ] Generator plugin examples: PAN, VIN, IMEI, GST, QR, email generators
+- [x] Generator plugin examples: PAN, VIN, IMEI, GST, QR, email generators —
+      `IdentifierPreset` (`app/services/identifier_generators.py`), the same
+      "canned generator behind a STRING field's `preset` column" mechanism
+      `LogPreset` already established, not a new concept or a real plugin
+      system: `pan`/`vin`/`imei`/`gstin`/`qr_code`/`business_email`. Formats
+      match the real-world position/charset rules closely enough to pass a
+      naive shape check — VIN excludes I/O/Q, IMEI's 15th digit is a real
+      Luhn check digit — but GSTIN's checksum char is left random rather
+      than guessed at, since that algorithm isn't simple/public like Luhn's
+      (documented in the module docstring, same "ship the honest version"
+      choice as everywhere else). `qr_code` renders an actual PNG (via the
+      new `qrcode[pil]` dependency) encoding a synthetic URL, returned as a
+      base64 data URI — the one preset whose value is much longer than
+      String(255), so `db_output.py`'s Postgres-push column-type mapping
+      now special-cases it to `Text()` instead of truncating. Frontend's
+      preset picker is one `Select` with two groups (log/security events,
+      identifiers/codes) over the same field, not two mutually-exclusive
+      controls, since it's still one string column either way. This is the
+      first Phase 5 item shipped, and it confirms the "check existing
+      infrastructure first" pattern extends past Phase 4: no new model, no
+      schema migration, no new route — just a new enum, a new generator
+      module mirroring `log_generators.py`, and a two-place schema/db_output
+      update. 9 new tests (including a full Luhn-digit recompute and a real
+      PNG-magic-bytes check on the decoded QR image), 176 passed / 3 skipped
+      total, lint clean. Verified end-to-end in a browser: a VIN-preset
+      field generated 10 rows of real 17-character, I/O/Q-free values with
+      zero console errors.
 - [ ] Template marketplace format (import/export a project as a shareable template)
 - [ ] Starter templates: banking, stock market, smart city, weather, hospital,
       manufacturing, CCTV, logistics, GPS fleet, retail, IoT

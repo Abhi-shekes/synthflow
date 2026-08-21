@@ -52,6 +52,23 @@ export const LOG_PRESETS: LogPreset[] = [
   "malware_alert",
 ];
 
+export type IdentifierPreset =
+  | "pan"
+  | "vin"
+  | "imei"
+  | "gstin"
+  | "qr_code"
+  | "business_email";
+
+export const IDENTIFIER_PRESETS: IdentifierPreset[] = [
+  "pan",
+  "vin",
+  "imei",
+  "gstin",
+  "qr_code",
+  "business_email",
+];
+
 export interface EntityField {
   id: string;
   entity_id: string;
@@ -65,7 +82,7 @@ export interface EntityField {
   min_value: number | null;
   max_value: number | null;
   regex: string | null;
-  preset: LogPreset | null;
+  preset: LogPreset | IdentifierPreset | null;
   enum_values: string[] | null;
   enum_weights: number[] | null;
   formula: string | null;
@@ -294,7 +311,7 @@ export interface FieldCreateInput {
   min_value?: number | null;
   max_value?: number | null;
   regex?: string | null;
-  preset?: LogPreset | null;
+  preset?: LogPreset | IdentifierPreset | null;
   enum_values?: string[] | null;
   enum_weights?: number[] | null;
   formula?: string | null;
