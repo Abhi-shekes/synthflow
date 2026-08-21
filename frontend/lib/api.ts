@@ -6,6 +6,7 @@ import type {
   Entity,
   ErrorInjection,
   ErrorInjectionCreateInput,
+  EventTrigger,
   FieldCreateInput,
   LookupAttachment,
   LookupAttachmentCreateInput,
@@ -252,6 +253,33 @@ export const api = {
   deleteRule: (token: string, projectId: string, entityId: string, ruleId: string) =>
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}/rules/${ruleId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listEventTriggers: (token: string, projectId: string, entityId: string) =>
+    request<EventTrigger[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/event-triggers`,
+      {},
+      token
+    ),
+
+  createEventTrigger: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    label: string,
+    condition: string
+  ) =>
+    request<EventTrigger>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/event-triggers`,
+      { method: "POST", body: JSON.stringify({ label, condition }) },
+      token
+    ),
+
+  deleteEventTrigger: (token: string, projectId: string, entityId: string, eventTriggerId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/event-triggers/${eventTriggerId}`,
       { method: "DELETE" },
       token
     ),

@@ -97,6 +97,7 @@ def fetch_public_rest_output(
             workflows=entity.workflows,
             trends=entity.trends,
             error_injections=entity.error_injections,
+            event_triggers=entity.event_triggers,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

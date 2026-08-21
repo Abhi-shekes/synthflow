@@ -1,6 +1,7 @@
 from app.models.database_connection import DatabaseConnection
 from app.models.entity import Entity
 from app.models.error_injection import ErrorInjection
+from app.models.event_trigger import EventTrigger
 from app.models.field import EntityField
 from app.models.lookup_attachment import LookupAttachment
 from app.models.lookup_table import LookupTable
@@ -28,4 +29,5 @@ __all__ = [
     "ErrorInjection",
     "LookupTable",
     "LookupAttachment",
+    "EventTrigger",
 ]

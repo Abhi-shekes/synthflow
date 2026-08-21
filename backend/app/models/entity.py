@@ -9,6 +9,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.error_injection import ErrorInjection
+    from app.models.event_trigger import EventTrigger
     from app.models.field import EntityField
     from app.models.lookup_attachment import LookupAttachment
     from app.models.project import Project
@@ -31,6 +32,9 @@ class Entity(Base):
     )
     rules: Mapped[list["Rule"]] = relationship(
         back_populates="entity", cascade="all, delete-orphan", order_by="Rule.created_at"
+    )
+    event_triggers: Mapped[list["EventTrigger"]] = relationship(
+        back_populates="entity", cascade="all, delete-orphan", order_by="EventTrigger.created_at"
     )
     workflows: Mapped[list["Workflow"]] = relationship(
         cascade="all, delete-orphan", order_by="Workflow.created_at"

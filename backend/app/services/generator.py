@@ -30,6 +30,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from app.models.entity import Entity
 from app.models.error_injection import ErrorInjection, ErrorType
+from app.models.event_trigger import EventTrigger
 from app.models.field import EntityField, FieldType
 from app.models.lookup_attachment import LookupAttachment
 from app.models.relationship import Relationship
@@ -145,6 +146,24 @@ def _row_satisfies_rules(row: dict[str, Any], rules: list[Rule]) -> bool:
         except ExpressionError as exc:
             raise ValueError(f"Rule '{rule.condition}' failed to evaluate: {exc}") from exc
     return True
+
+
+def _evaluate_event_triggers(
+    row: dict[str, Any], event_triggers: list[EventTrigger]
+) -> list[str]:
+    """Unlike a rule, a matching trigger doesn't reject the row — it collects
+    labels for `_triggered_events`. See EventTrigger's docstring for why
+    that's the whole feature for now (no external notification fires)."""
+    triggered: list[str] = []
+    for trigger in event_triggers:
+        try:
+            if evaluate(trigger.condition, row):
+                triggered.append(trigger.label)
+        except ExpressionError as exc:
+            raise ValueError(
+                f"Event trigger '{trigger.label}' failed to evaluate: {exc}"
+            ) from exc
+    return triggered
 
 
 def _generate_state_walk(workflow: Workflow) -> list[str]:
@@ -284,6 +303,7 @@ def generate_rows(
     workflows: list[Workflow] | None = None,
     trends: list[Trend] | None = None,
     error_injections: list[ErrorInjection] | None = None,
+    event_triggers: list[EventTrigger] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate `count` rows for `fields`.
 
@@ -319,9 +339,16 @@ def generate_rows(
     before rule-checking, a rule constraining the same field can discard and
     regenerate the very rows error injection was meant to produce — see the
     ErrorInjection model docstring for that tradeoff.
+
+    `event_triggers` are boolean expressions evaluated against each *kept*
+    row (after it has already passed every rule); every trigger that matches
+    has its `label` appended to that row's `_triggered_events` list, added
+    only when at least one trigger is configured (see EventTrigger's
+    docstring — this doesn't discard the row or send anything externally).
     """
     fk_pools = fk_pools or {}
     rules = rules or []
+    event_triggers = event_triggers or []
     workflows_by_field = {w.field.name: w for w in (workflows or [])}
     trends_by_field = {t.field.name: t for t in (trends or [])}
     trend_state: dict[str, dict] = {name: {} for name in trends_by_field}
@@ -361,6 +388,8 @@ def generate_rows(
                 f"Could not generate a row satisfying all rules after {MAX_RULE_ATTEMPTS} "
                 "attempts — the rules may be too strict or contradictory"
             )
+        if event_triggers:
+            row["_triggered_events"] = _evaluate_event_triggers(row, event_triggers)
         rows.append(row)
 
     return rows
@@ -451,6 +480,7 @@ def generate_project(
             entity.workflows,
             entity.trends,
             entity.error_injections,
+            entity.event_triggers,
         )
 
     return generated

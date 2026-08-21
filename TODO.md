@@ -43,8 +43,8 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   route that bypassed the test suite's DB session override by importing
   `SessionLocal` directly instead of looking it up on the module each call.
 
-## Phase 4, parts 1–5: probability, trend, correlation, error injection,
-lookup tables — done
+## Phase 4, parts 1–6: probability, trend, correlation, error injection,
+lookup tables, event triggers — done
 
 Full detail for each lives in ROADMAP.md Phase 4; condensed here:
 
@@ -69,24 +69,27 @@ Full detail for each lives in ROADMAP.md Phase 4; condensed here:
   a table" path — and because a lookup doesn't need another entity
   generated first, it works from single-entity generation too, not just
   project-wide (a real capability advantage over relationships).
-- 55 new tests across all five, 111 passed / 3 skipped total, lint clean.
+- **Event triggers**: `EventTrigger` is entity-scoped like `Rule` (same
+  boolean-condition validation), but additive rather than a filter — a
+  matching trigger appends its `label` to the row's `_triggered_events`
+  list instead of discarding/regenerating the row. No external
+  notification fires; "firing" means "visible in the generated data" for
+  now, per the design question flagged before starting.
+- 61 new tests across all six, 117 passed / 3 skipped total, lint clean.
   Verified end-to-end in a browser for each (weighted enum distribution
   matched configured weights; linear trend gave an exact arithmetic
   sequence; temperature/humidity correlation came back with Pearson
   r = -0.985; a rate-1 null injection returned 10/10 nulls; a lookup
-  attachment returned 10/10 rows drawing the uploaded value).
+  attachment returned 10/10 rows drawing the uploaded value; a
+  temperature-range trigger annotated 10/10 rows with its label).
 
 ## Now — Phase 4, remainder
 
-Not started. Remaining items: event triggers (threshold-based actions,
-e.g. `temp > 80 → fire alert` — needs a design pass on what "firing" means
-without a notification system yet; likely starts as a flagged/annotated
-row rather than an actual external send), timeline replay, geographic
-simulation, user-behavior simulation, API-behavior simulation, and
-log/security-event generators. Log/security-event generators are mostly
-"more Faker-shaped generation content" (closer to Phase 1 field types than
-a new engine) — likely simpler than they sound once there's a reason to
-build them.
+Not started. Remaining items: timeline replay, geographic simulation,
+user-behavior simulation, API-behavior simulation, and log/security-event
+generators. Log/security-event generators are mostly "more Faker-shaped
+generation content" (closer to Phase 1 field types than a new engine) —
+likely simpler than they sound once there's a reason to build them.
 
 ## Backlog (not started, roughly in order)
 

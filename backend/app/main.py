@@ -6,6 +6,7 @@ from app.api.routes import (
     database_connections,
     entities,
     error_injections,
+    event_triggers,
     health,
     lookup_attachments,
     lookup_tables,
@@ -36,6 +37,7 @@ app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
 app.include_router(relationships.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rules.router, prefix=settings.API_V1_PREFIX)
+app.include_router(event_triggers.router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflows.router, prefix=settings.API_V1_PREFIX)
 app.include_router(trends.router, prefix=settings.API_V1_PREFIX)
 app.include_router(error_injections.router, prefix=settings.API_V1_PREFIX)

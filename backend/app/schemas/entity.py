@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.error_injection import ErrorInjectionRead
+from app.schemas.event_trigger import EventTriggerRead
 from app.schemas.field import EntityFieldRead
 from app.schemas.lookup_attachment import LookupAttachmentRead
 from app.schemas.rule import RuleRead
@@ -28,6 +29,7 @@ class EntityRead(BaseModel):
     created_at: datetime
     fields: list[EntityFieldRead] = []
     rules: list[RuleRead] = []
+    event_triggers: list[EventTriggerRead] = []
     workflows: list[WorkflowRead] = []
     trends: list[TrendRead] = []
     error_injections: list[ErrorInjectionRead] = []

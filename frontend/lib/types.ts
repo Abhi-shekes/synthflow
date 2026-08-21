@@ -50,6 +50,14 @@ export interface Rule {
   created_at: string;
 }
 
+export interface EventTrigger {
+  id: string;
+  entity_id: string;
+  label: string;
+  condition: string;
+  created_at: string;
+}
+
 export interface WorkflowTransition {
   source: string;
   target: string;
@@ -186,6 +194,7 @@ export interface Entity {
   created_at: string;
   fields: EntityField[];
   rules: Rule[];
+  event_triggers: EventTrigger[];
   workflows: Workflow[];
   trends: Trend[];
   error_injections: ErrorInjection[];

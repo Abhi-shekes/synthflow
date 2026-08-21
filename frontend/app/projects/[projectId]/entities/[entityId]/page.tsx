@@ -41,6 +41,11 @@ interface RuleFormValues {
   condition: string;
 }
 
+interface EventTriggerFormValues {
+  label: string;
+  condition: string;
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 const WS_URL = API_URL.replace(/^http/, "ws");
 
@@ -51,6 +56,7 @@ export default function EntityDetailPage() {
   const [count, setCount] = useState(10);
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const ruleForm = useForm<RuleFormValues>();
+  const eventTriggerForm = useForm<EventTriggerFormValues>();
 
   const entityQuery = useQuery({
     queryKey: ["entity", projectId, entityId],
@@ -95,6 +101,25 @@ export default function EntityDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete rule"),
+  });
+
+  const addEventTrigger = useMutation({
+    mutationFn: (values: EventTriggerFormValues) =>
+      api.createEventTrigger(accessToken!, projectId, entityId, values.label, values.condition),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+      eventTriggerForm.reset();
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not add event trigger"),
+  });
+
+  const deleteEventTrigger = useMutation({
+    mutationFn: (eventTriggerId: string) =>
+      api.deleteEventTrigger(accessToken!, projectId, entityId, eventTriggerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not delete event trigger"),
   });
 
   const addWorkflow = useMutation({
@@ -372,6 +397,65 @@ export default function EntityDetailPage() {
                   >
                     <code className="font-mono">{rule.condition}</code>
                     <Button variant="ghost" size="sm" onClick={() => deleteRule.mutate(rule.id)}>
+                      Delete
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Event triggers</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Unlike a rule, a matching trigger doesn&apos;t reject the row —
+              it annotates it. Every trigger whose condition is true for a
+              row appends its label to that row&apos;s{" "}
+              <code className="font-mono">_triggered_events</code> list; no
+              external notification is sent (yet).
+            </p>
+            <form
+              className="flex gap-2"
+              onSubmit={eventTriggerForm.handleSubmit((v) => addEventTrigger.mutate(v))}
+            >
+              <Input
+                placeholder="label, e.g. high_temperature"
+                className="max-w-48"
+                {...eventTriggerForm.register("label", { required: true })}
+              />
+              <Input
+                placeholder="e.g. temperature > 80"
+                {...eventTriggerForm.register("condition", { required: true })}
+              />
+              <Button type="submit" disabled={addEventTrigger.isPending}>
+                Add
+              </Button>
+            </form>
+            {entity?.event_triggers.length === 0 && (
+              <p className="text-sm text-muted-foreground">No event triggers yet.</p>
+            )}
+            {entity && entity.event_triggers.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {entity.event_triggers.map((trigger) => (
+                  <li
+                    key={trigger.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">{trigger.label}</span>{" "}
+                      <code className="ml-1 font-mono text-muted-foreground">
+                        {trigger.condition}
+                      </code>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteEventTrigger.mutate(trigger.id)}
+                    >
                       Delete
                     </Button>
                   </li>

@@ -145,7 +145,22 @@ Goal: data behaves over time, not just at generation time.
       formula/rules/relationships/workflow machinery already built — no
       changes needed there, since weighting only changes how one value is
       picked, not the row-building pipeline around it.
-- [ ] Event triggers: threshold-based actions (e.g. `temp > 80 → fire alert`)
+- [x] Event triggers: threshold-based actions (e.g. `temp > 80 → fire alert`)
+      — `EventTrigger` is entity-scoped like `Rule` (not field-scoped like
+      Trend/Workflow/ErrorInjection/LookupAttachment), holding a `label`
+      and the same kind of boolean `condition` a Rule uses, validated the
+      same way (evaluated against dummy field values at creation time).
+      Resolved design question, called out explicitly in TODO.md before
+      starting: what does "firing" mean without a notification system yet?
+      Answer — a satisfied trigger doesn't discard/regenerate the row the
+      way a Rule does; it's additive, not a filter. Every trigger that
+      matches has its `label` appended to that row's `_triggered_events`
+      list, a sibling to a Workflow field's `<field>_history` — present in
+      JSON/Excel output, dropped from CSV the same way `_history` already
+      is (CSV has no place for a variable-length array column), and only
+      added at all when the entity has at least one trigger configured.
+      No email/Slack/webhook fires; sending a real external notification is
+      future work once there's a reason to build that delivery mechanism.
 - [x] Error injection: missing values, duplicate IDs, corrupted payloads, invalid
       formats — an `ErrorInjection` attaches to one field (same per-field
       pattern as Rule/Workflow/Trend) with a `rate` (0–1) and a set of
