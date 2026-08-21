@@ -1,0 +1,265 @@
+{
+  "template_version": 1,
+  "name": "Banking",
+  "description": "Customers, accounts, and transactions with fraud-style anomalies and a high-value transaction alert.",
+  "entities": [
+    {
+      "name": "Customer",
+      "fields": [
+        {
+          "name": "customer_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "pan",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": "pan",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "email",
+          "field_type": "string",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": "business_email",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "credit_score",
+          "field_type": "integer",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 300.0,
+          "max_value": 850.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Account",
+      "fields": [
+        {
+          "name": "account_number",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "customer_id",
+          "field_type": "integer",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "balance",
+          "field_type": "float",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 0.0,
+          "max_value": 100000.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Transaction",
+      "fields": [
+        {
+          "name": "account_number",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "amount",
+          "field_type": "float",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 1.0,
+          "max_value": 5000.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "type",
+          "field_type": "enum",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": [
+            "deposit",
+            "withdrawal",
+            "transfer"
+          ],
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "occurred_at",
+          "field_type": "datetime",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Account",
+      "source_field": "customer_id",
+      "target_entity": "Customer",
+      "target_field": "customer_id"
+    },
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Transaction",
+      "source_field": "account_number",
+      "target_entity": "Account",
+      "target_field": "account_number"
+    }
+  ],
+  "rules": [
+    {
+      "entity": "Transaction",
+      "condition": "amount > 0"
+    }
+  ],
+  "event_triggers": [
+    {
+      "entity": "Transaction",
+      "label": "large_transaction",
+      "condition": "amount > 4000"
+    }
+  ],
+  "workflows": [],
+  "trends": [
+    {
+      "entity": "Customer",
+      "field": "customer_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    },
+    {
+      "entity": "Account",
+      "field": "account_number",
+      "trend_type": "linear",
+      "params": {
+        "start": 100000000,
+        "slope": 1
+      }
+    }
+  ],
+  "error_injections": [
+    {
+      "entity": "Transaction",
+      "field": "amount",
+      "rate": 0.03,
+      "error_types": [
+        "out_of_range"
+      ]
+    }
+  ],
+  "lookup_tables": [],
+  "lookup_attachments": [],
+  "geo_routes": []
+}

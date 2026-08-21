@@ -199,12 +199,52 @@ picker, zero console errors; separately verified the relational case
 (relationship + rule) via the live API, generating 10 real rows from an
 imported project that still respected the original's constraints.
 
+## Starter templates (all 11 roadmap domains) — done
+
+banking, stock market, smart city, weather, hospital, manufacturing,
+CCTV, logistics, GPS fleet, retail, IoT — each a plain `ProjectTemplate`
+JSON file bundled at `app/starter_templates/*.json`, served via
+`GET /starter-templates` (list) and `GET /starter-templates/{key}` (the
+full template), imported through the exact same `POST /projects/import`
+path real export/import already uses. No new model or import mechanism
+needed — that's the payoff from making the template format name-based
+and hand-editable last round.
+
+Building these surfaced a real gap in that import path first: it was
+resolving name references but skipping the type/shape validation each
+dedicated create-route already enforces (trend on the wrong field type,
+an error type invalid for its field type, a workflow transition to an
+unmodeled state, mismatched enum_weights, unknown/conflicting presets).
+Fixed by pulling the shared field checks into a new
+`app.services.field_validation` (now used by both the normal
+add_field/update_field routes and template import) and adding equivalent
+checks for trends/workflows/error-injections/lookup-attachments/geo-routes
+to the import path — a broken template now fails at import time with a
+clean 400 instead of generating silently-wrong data later.
+
+Each template deliberately uses a different slice of the simulation
+surface — presets (pan/vin/imei/business_email), auto-increment trends,
+a random-walk stock price, seasonal curves, weighted enums, regex
+identifiers, branching workflow funnels with `stop_probabilities`,
+lookup attachments, geo-routes — so between them they touch nearly
+everything Phase 4 built. Frontend: a "Starter templates" gallery on the
+projects list, one card per template, "Use template" fetches + imports
+in one click; `ProjectTemplate` gained an optional `description` used by
+the cards.
+
+26 new tests total (validation-gap fix + the templates themselves,
+including one that imports and generates from every bundled template),
+212 passed / 3 skipped, lint clean. Verified end-to-end in a browser:
+all 11 cards render, "Use template" created a real project through the
+UI, and generating from the GPS Fleet template's `LocationPing` entity
+produced real interpolated lat/lon points along its bundled route — the
+geo-route attachment survived the import intact — zero console errors.
+
 ## Now
 
 The rest of Phase 5 (output/rule/AI provider plugins to round out the
-plugin framework, starter templates — now unblocked by the format above
-— live monitoring dashboard, modular install) is still unscoped and
-needs its own design pass before starting.
+plugin framework, live monitoring dashboard, modular install) is still
+unscoped and needs its own design pass before starting.
 
 ## Backlog (not started, roughly in order)
 

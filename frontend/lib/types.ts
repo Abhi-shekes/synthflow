@@ -498,9 +498,16 @@ export interface ProjectTemplateGeoRoute {
   lon_column: string;
 }
 
+export interface StarterTemplateSummary {
+  key: string;
+  name: string;
+  description: string;
+}
+
 export interface ProjectTemplate {
   template_version: number;
   name: string;
+  description: string | null;
   entities: ProjectTemplateEntity[];
   relationships: ProjectTemplateRelationship[];
   rules: ProjectTemplateRule[];

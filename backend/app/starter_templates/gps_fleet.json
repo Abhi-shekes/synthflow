@@ -1,0 +1,178 @@
+{
+  "template_version": 1,
+  "name": "GPS Fleet",
+  "description": "Delivery vehicles pinging their position along a fixed route.",
+  "entities": [
+    {
+      "name": "Vehicle",
+      "fields": [
+        {
+          "name": "vehicle_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "vin",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": "vin",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "LocationPing",
+      "fields": [
+        {
+          "name": "vehicle_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "position",
+          "field_type": "object",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "speed_kmh",
+          "field_type": "float",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 0.0,
+          "max_value": 120.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "pinged_at",
+          "field_type": "datetime",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "LocationPing",
+      "source_field": "vehicle_id",
+      "target_entity": "Vehicle",
+      "target_field": "vehicle_id"
+    }
+  ],
+  "rules": [],
+  "event_triggers": [],
+  "workflows": [],
+  "trends": [
+    {
+      "entity": "Vehicle",
+      "field": "vehicle_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    }
+  ],
+  "error_injections": [],
+  "lookup_tables": [
+    {
+      "name": "DeliveryRoute",
+      "columns": [
+        "lat",
+        "lon"
+      ],
+      "data": [
+        {
+          "lat": 30.2672,
+          "lon": -97.7431
+        },
+        {
+          "lat": 30.2711,
+          "lon": -97.7437
+        },
+        {
+          "lat": 30.2849,
+          "lon": -97.7341
+        },
+        {
+          "lat": 30.2946,
+          "lon": -97.7266
+        },
+        {
+          "lat": 30.3078,
+          "lon": -97.7219
+        }
+      ]
+    }
+  ],
+  "lookup_attachments": [],
+  "geo_routes": [
+    {
+      "entity": "LocationPing",
+      "field": "position",
+      "lookup_table": "DeliveryRoute",
+      "lat_column": "lat",
+      "lon_column": "lon"
+    }
+  ]
+}

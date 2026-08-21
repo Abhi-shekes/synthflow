@@ -1,0 +1,174 @@
+{
+  "template_version": 1,
+  "name": "Smart City",
+  "description": "Traffic sensors placed along a city route with a seasonal vehicle-count pattern and a surge alert.",
+  "entities": [
+    {
+      "name": "Sensor",
+      "fields": [
+        {
+          "name": "sensor_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "location",
+          "field_type": "object",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Reading",
+      "fields": [
+        {
+          "name": "sensor_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "vehicle_count",
+          "field_type": "integer",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 0.0,
+          "max_value": 200.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "recorded_at",
+          "field_type": "datetime",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Reading",
+      "source_field": "sensor_id",
+      "target_entity": "Sensor",
+      "target_field": "sensor_id"
+    }
+  ],
+  "rules": [],
+  "event_triggers": [
+    {
+      "entity": "Reading",
+      "label": "traffic_surge",
+      "condition": "vehicle_count > 150"
+    }
+  ],
+  "workflows": [],
+  "trends": [
+    {
+      "entity": "Sensor",
+      "field": "sensor_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    },
+    {
+      "entity": "Reading",
+      "field": "vehicle_count",
+      "trend_type": "seasonal",
+      "params": {
+        "base": 60,
+        "amplitude": 50,
+        "period": 24
+      }
+    }
+  ],
+  "error_injections": [],
+  "lookup_tables": [
+    {
+      "name": "CityRoute",
+      "columns": [
+        "lat",
+        "lon"
+      ],
+      "data": [
+        {
+          "lat": 47.6062,
+          "lon": -122.3321
+        },
+        {
+          "lat": 47.6205,
+          "lon": -122.3493
+        },
+        {
+          "lat": 47.6097,
+          "lon": -122.3331
+        },
+        {
+          "lat": 47.6152,
+          "lon": -122.3477
+        }
+      ]
+    }
+  ],
+  "lookup_attachments": [],
+  "geo_routes": [
+    {
+      "entity": "Sensor",
+      "field": "location",
+      "lookup_table": "CityRoute",
+      "lat_column": "lat",
+      "lon_column": "lon"
+    }
+  ]
+}

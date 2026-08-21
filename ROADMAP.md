@@ -511,8 +511,46 @@ Goal: the community can extend SynthFlow without forking it.
       against the live API — export, import as a new project, generate 10
       real rows from the *imported* project, all respecting the
       original's constraints.
-- [ ] Starter templates: banking, stock market, smart city, weather, hospital,
-      manufacturing, CCTV, logistics, GPS fleet, retail, IoT
+- [x] Starter templates: banking, stock market, smart city, weather, hospital,
+      manufacturing, CCTV, logistics, GPS fleet, retail, IoT — all 11 roadmap
+      domains, each a plain `ProjectTemplate` JSON file bundled with the
+      backend (`app/starter_templates/*.json`), proving the template format
+      really is hand-editable/shareable and not just an export artifact: no
+      new model, no new import mechanism — `GET /starter-templates/{key}`
+      returns the exact same shape `POST /projects/import` already accepts,
+      so "use a starter template" is just "fetch this JSON, then import it,"
+      reusing the whole existing pipeline including its validation. That
+      validation turned out to have a real gap worth closing first: import
+      was resolving references but skipping the type/shape checks each
+      dedicated create-route already enforces (a trend on a non-numeric
+      field, an error type invalid for its field type, a workflow
+      transition to an unmodeled state, enum_weights/preset mismatches).
+      Fixed by extracting the shared checks into
+      `app.services.field_validation` (reused by both
+      `entities.add_field`/`update_field` and template import) and adding
+      the same trend/workflow/error-injection/lookup/geo-route validation
+      import had been missing — a template that would have silently
+      produced broken generation now fails at import time with a clean 400.
+      Each starter template exercises a different mix of the simulation
+      surface on purpose rather than being minimal: PAN/VIN/IMEI/
+      business-email presets, auto-increment trends, a random-walk stock
+      price, seasonal weather/traffic curves, weighted enums, regex SKUs,
+      branching workflow funnels with `stop_probabilities` (hospital
+      admissions, logistics fulfillment, retail checkout), lookup-table
+      attachments, and geo-routes. Frontend adds a "Starter templates"
+      gallery on the projects list (one card per template, "Use template"
+      fetches + imports in one click) — no new dialog components, and
+      `ProjectTemplate` picked up an optional `description` used by both
+      the gallery cards and any future hand-exported project. 26 new
+      backend tests total between the validation-gap fix and the starter
+      templates themselves (including one that imports and generates from
+      *every* bundled template and checks every declared field actually
+      comes back), 212 passed / 3 skipped, lint clean. Verified end-to-end
+      in a browser: all 11 cards render with real descriptions, "Use
+      template" on GPS Fleet created a real project through the actual UI,
+      and generating from its `LocationPing` entity produced real
+      interpolated lat/lon points walking the bundled route — the geo-route
+      attachment survived the import intact — zero console errors.
 - [ ] Live monitoring dashboard: events/sec, active streams, CPU/memory, connected
       clients, errors, output status (Prometheus + Grafana + Loki)
 - [ ] Modular installation: `synthflow init` wizard and Web UI service picker that

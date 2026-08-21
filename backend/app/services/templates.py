@@ -17,7 +17,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.models.entity import Entity
-from app.models.error_injection import ErrorInjection
+from app.models.error_injection import ErrorInjection, ErrorType
 from app.models.event_trigger import EventTrigger
 from app.models.field import EntityField, FieldType
 from app.models.geo_route import GeoRoute
@@ -43,6 +43,9 @@ from app.schemas.template import (
     TemplateTrend,
     TemplateWorkflow,
 )
+from app.services.error_injection import validate_error_types
+from app.services.field_validation import validate_enum_weights, validate_preset
+from app.services.trends import validate_params
 
 
 def export_project(project: Project, db: Session) -> ProjectTemplate:
@@ -64,6 +67,7 @@ def export_project(project: Project, db: Session) -> ProjectTemplate:
     return ProjectTemplate(
         template_version=TEMPLATE_VERSION,
         name=project.name,
+        description=project.description,
         entities=[
             TemplateEntity(
                 name=e.name,
@@ -192,7 +196,7 @@ def _resolve_lookup_table(name: str, lookup_tables_by_name: dict[str, LookupTabl
 
 
 def import_project(template: ProjectTemplate, owner_id: uuid.UUID, db: Session) -> Project:
-    project = Project(name=template.name, owner_id=owner_id)
+    project = Project(name=template.name, description=template.description, owner_id=owner_id)
     db.add(project)
     db.flush()
 
@@ -204,10 +208,16 @@ def import_project(template: ProjectTemplate, owner_id: uuid.UUID, db: Session) 
         db.flush()
         entities_by_name[template_entity.name] = entity
         for template_field in template_entity.fields:
+            field_type = FieldType(template_field.field_type)
+            validate_enum_weights(
+                field_type, template_field.enum_values, template_field.enum_weights
+            )
+            validate_preset(field_type, template_field.preset, template_field.regex)
+
             field = EntityField(
                 entity_id=entity.id,
                 name=template_field.name,
-                field_type=FieldType(template_field.field_type),
+                field_type=field_type,
                 order=template_field.order,
                 required=template_field.required,
                 nullable=template_field.nullable,
@@ -259,9 +269,42 @@ def import_project(template: ProjectTemplate, owner_id: uuid.UUID, db: Session) 
             )
         )
 
+    workflow_fields_used: set[uuid.UUID] = set()
     for template_workflow in template.workflows:
         entity = _resolve_entity(template_workflow.entity, entities_by_name)
         field = _resolve_field(template_workflow.entity, template_workflow.field, fields_by_ref)
+        if field.id in workflow_fields_used:
+            raise ValueError(f"Field '{template_workflow.field}' has more than one workflow")
+        workflow_fields_used.add(field.id)
+
+        states = set(template_workflow.states)
+        if not states:
+            raise ValueError(f"Workflow on '{template_workflow.field}' has no states")
+        if not template_workflow.initial_states:
+            raise ValueError(f"Workflow on '{template_workflow.field}' has no initial_states")
+        if not set(template_workflow.initial_states) <= states:
+            raise ValueError(
+                f"Workflow on '{template_workflow.field}': "
+                "initial_states must be a subset of states"
+            )
+        for t in template_workflow.transitions:
+            if t.get("source") not in states or t.get("target") not in states:
+                raise ValueError(
+                    f"Workflow on '{template_workflow.field}': transition "
+                    f"{t.get('source')} -> {t.get('target')} references a state not in states"
+                )
+        if template_workflow.stop_probabilities:
+            if not set(template_workflow.stop_probabilities) <= states:
+                raise ValueError(
+                    f"Workflow on '{template_workflow.field}': stop_probabilities keys "
+                    "must be states"
+                )
+            if any(not (0 <= p <= 1) for p in template_workflow.stop_probabilities.values()):
+                raise ValueError(
+                    f"Workflow on '{template_workflow.field}': stop_probabilities values "
+                    "must be between 0 and 1"
+                )
+
         db.add(
             Workflow(
                 entity_id=entity.id,
@@ -273,21 +316,39 @@ def import_project(template: ProjectTemplate, owner_id: uuid.UUID, db: Session) 
             )
         )
 
+    trend_fields_used: set[uuid.UUID] = set()
     for template_trend in template.trends:
         entity = _resolve_entity(template_trend.entity, entities_by_name)
         field = _resolve_field(template_trend.entity, template_trend.field, fields_by_ref)
+        if field.id in trend_fields_used:
+            raise ValueError(f"Field '{template_trend.field}' has more than one trend")
+        trend_fields_used.add(field.id)
+        if field.field_type not in (FieldType.INTEGER, FieldType.FLOAT):
+            raise ValueError(f"Trend on '{template_trend.field}': field must be integer or float")
+
+        trend_type = TrendType(template_trend.trend_type)
+        validate_params(trend_type, template_trend.params)
+
         db.add(
             Trend(
                 entity_id=entity.id,
                 field_id=field.id,
-                trend_type=TrendType(template_trend.trend_type),
+                trend_type=trend_type,
                 params=template_trend.params,
             )
         )
 
+    error_injection_fields_used: set[uuid.UUID] = set()
     for template_ei in template.error_injections:
         entity = _resolve_entity(template_ei.entity, entities_by_name)
         field = _resolve_field(template_ei.entity, template_ei.field, fields_by_ref)
+        if field.id in error_injection_fields_used:
+            raise ValueError(f"Field '{template_ei.field}' has more than one error injection")
+        error_injection_fields_used.add(field.id)
+
+        error_types = [ErrorType(e) for e in template_ei.error_types]
+        validate_error_types(field.field_type, error_types)
+
         db.add(
             ErrorInjection(
                 entity_id=entity.id,
@@ -310,10 +371,20 @@ def import_project(template: ProjectTemplate, owner_id: uuid.UUID, db: Session) 
         db.flush()
         lookup_tables_by_name[template_table.name] = table
 
+    lookup_attachment_fields_used: set[uuid.UUID] = set()
     for template_attachment in template.lookup_attachments:
         entity = _resolve_entity(template_attachment.entity, entities_by_name)
         field = _resolve_field(template_attachment.entity, template_attachment.field, fields_by_ref)
+        if field.id in lookup_attachment_fields_used:
+            raise ValueError(f"Field '{template_attachment.field}' has more than one lookup")
+        lookup_attachment_fields_used.add(field.id)
         table = _resolve_lookup_table(template_attachment.lookup_table, lookup_tables_by_name)
+        if template_attachment.column not in table.columns:
+            raise ValueError(
+                f"'{template_attachment.column}' is not a column of lookup table "
+                f"'{template_attachment.lookup_table}'"
+            )
+
         db.add(
             LookupAttachment(
                 entity_id=entity.id,
@@ -323,10 +394,22 @@ def import_project(template: ProjectTemplate, owner_id: uuid.UUID, db: Session) 
             )
         )
 
+    geo_route_fields_used: set[uuid.UUID] = set()
     for template_route in template.geo_routes:
         entity = _resolve_entity(template_route.entity, entities_by_name)
         field = _resolve_field(template_route.entity, template_route.field, fields_by_ref)
+        if field.id in geo_route_fields_used:
+            raise ValueError(f"Field '{template_route.field}' has more than one geo route")
+        geo_route_fields_used.add(field.id)
+        if field.field_type not in (FieldType.OBJECT, FieldType.JSON):
+            raise ValueError(f"Geo route on '{template_route.field}': field must be object or json")
         table = _resolve_lookup_table(template_route.lookup_table, lookup_tables_by_name)
+        for column in (template_route.lat_column, template_route.lon_column):
+            if column not in table.columns:
+                raise ValueError(
+                    f"'{column}' is not a column of lookup table '{template_route.lookup_table}'"
+                )
+
         db.add(
             GeoRoute(
                 entity_id=entity.id,

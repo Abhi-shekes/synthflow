@@ -1,0 +1,248 @@
+{
+  "template_version": 1,
+  "name": "Logistics",
+  "description": "Shipments moving through a branching fulfillment funnel (most deliver, some go delayed) between warehouses.",
+  "entities": [
+    {
+      "name": "Shipment",
+      "fields": [
+        {
+          "name": "shipment_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "status",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "origin",
+          "field_type": "string",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "destination",
+          "field_type": "string",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "weight_kg",
+          "field_type": "float",
+          "order": 4,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 0.1,
+          "max_value": 500.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Package",
+      "fields": [
+        {
+          "name": "shipment_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "tracking_code",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": "^[A-Z]{2}[0-9]{9}$",
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "contents",
+          "field_type": "string",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Package",
+      "source_field": "shipment_id",
+      "target_entity": "Shipment",
+      "target_field": "shipment_id"
+    }
+  ],
+  "rules": [],
+  "event_triggers": [],
+  "workflows": [
+    {
+      "entity": "Shipment",
+      "field": "status",
+      "states": [
+        "created",
+        "picked_up",
+        "in_transit",
+        "delivered",
+        "delayed"
+      ],
+      "initial_states": [
+        "created"
+      ],
+      "transitions": [
+        {
+          "source": "created",
+          "target": "picked_up"
+        },
+        {
+          "source": "picked_up",
+          "target": "in_transit"
+        },
+        {
+          "source": "in_transit",
+          "target": "delivered",
+          "weight": 0.85
+        },
+        {
+          "source": "in_transit",
+          "target": "delayed",
+          "weight": 0.15
+        }
+      ],
+      "stop_probabilities": {
+        "created": 0.05,
+        "picked_up": 0.1,
+        "in_transit": 0.15,
+        "delivered": 0.95,
+        "delayed": 0.95
+      }
+    }
+  ],
+  "trends": [
+    {
+      "entity": "Shipment",
+      "field": "shipment_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    }
+  ],
+  "error_injections": [],
+  "lookup_tables": [
+    {
+      "name": "Warehouses",
+      "columns": [
+        "name"
+      ],
+      "data": [
+        {
+          "name": "Seattle DC"
+        },
+        {
+          "name": "Austin DC"
+        },
+        {
+          "name": "Denver DC"
+        },
+        {
+          "name": "Atlanta DC"
+        }
+      ]
+    }
+  ],
+  "lookup_attachments": [
+    {
+      "entity": "Shipment",
+      "field": "origin",
+      "lookup_table": "Warehouses",
+      "column": "name"
+    },
+    {
+      "entity": "Shipment",
+      "field": "destination",
+      "lookup_table": "Warehouses",
+      "column": "name"
+    }
+  ],
+  "geo_routes": []
+}

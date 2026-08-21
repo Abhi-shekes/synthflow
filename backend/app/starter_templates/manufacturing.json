@@ -1,0 +1,160 @@
+{
+  "template_version": 1,
+  "name": "Manufacturing",
+  "description": "Factory machines streaming temperature and vibration readings, with an overheat alert and occasional faulty sensor spikes.",
+  "entities": [
+    {
+      "name": "Machine",
+      "fields": [
+        {
+          "name": "machine_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "line",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "SensorReading",
+      "fields": [
+        {
+          "name": "machine_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "temperature_c",
+          "field_type": "float",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 20.0,
+          "max_value": 120.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "vibration_mm_s",
+          "field_type": "float",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 0.0,
+          "max_value": 10.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "recorded_at",
+          "field_type": "datetime",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "SensorReading",
+      "source_field": "machine_id",
+      "target_entity": "Machine",
+      "target_field": "machine_id"
+    }
+  ],
+  "rules": [
+    {
+      "entity": "SensorReading",
+      "condition": "vibration_mm_s >= 0"
+    }
+  ],
+  "event_triggers": [
+    {
+      "entity": "SensorReading",
+      "label": "overheat",
+      "condition": "temperature_c > 100"
+    }
+  ],
+  "workflows": [],
+  "trends": [
+    {
+      "entity": "Machine",
+      "field": "machine_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    }
+  ],
+  "error_injections": [
+    {
+      "entity": "SensorReading",
+      "field": "temperature_c",
+      "rate": 0.04,
+      "error_types": [
+        "out_of_range"
+      ]
+    }
+  ],
+  "lookup_tables": [],
+  "lookup_attachments": [],
+  "geo_routes": []
+}

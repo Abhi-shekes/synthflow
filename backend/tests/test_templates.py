@@ -278,6 +278,150 @@ def test_import_rejects_invalid_field_type(client, auth_headers):
     assert resp.status_code == 400
 
 
+def test_import_rejects_an_unknown_preset(client, auth_headers):
+    template = {
+        "name": "Broken",
+        "entities": [
+            {
+                "name": "Order",
+                "fields": [{"name": "x", "field_type": "string", "preset": "not_a_real_preset"}],
+            }
+        ],
+    }
+    resp = client.post("/api/v1/projects/import", json=template, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_import_rejects_preset_and_regex_together(client, auth_headers):
+    template = {
+        "name": "Broken",
+        "entities": [
+            {
+                "name": "Order",
+                "fields": [
+                    {"name": "x", "field_type": "string", "preset": "pan", "regex": "^[A-Z]+$"}
+                ],
+            }
+        ],
+    }
+    resp = client.post("/api/v1/projects/import", json=template, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_import_rejects_mismatched_enum_weights(client, auth_headers):
+    template = {
+        "name": "Broken",
+        "entities": [
+            {
+                "name": "Order",
+                "fields": [
+                    {
+                        "name": "status",
+                        "field_type": "enum",
+                        "enum_values": ["a", "b"],
+                        "enum_weights": [1.0],
+                    }
+                ],
+            }
+        ],
+    }
+    resp = client.post("/api/v1/projects/import", json=template, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_import_rejects_a_trend_on_a_string_field(client, auth_headers):
+    template = {
+        "name": "Broken",
+        "entities": [{"name": "Order", "fields": [{"name": "status", "field_type": "string"}]}],
+        "trends": [
+            {
+                "entity": "Order",
+                "field": "status",
+                "trend_type": "linear",
+                "params": {"start": 0, "slope": 1},
+            }
+        ],
+    }
+    resp = client.post("/api/v1/projects/import", json=template, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_import_rejects_a_trend_missing_required_params(client, auth_headers):
+    template = {
+        "name": "Broken",
+        "entities": [{"name": "Order", "fields": [{"name": "price", "field_type": "float"}]}],
+        "trends": [
+            {"entity": "Order", "field": "price", "trend_type": "linear", "params": {"start": 0}}
+        ],
+    }
+    resp = client.post("/api/v1/projects/import", json=template, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_import_rejects_a_workflow_transition_referencing_an_unknown_state(client, auth_headers):
+    template = {
+        "name": "Broken",
+        "entities": [{"name": "Order", "fields": [{"name": "status", "field_type": "string"}]}],
+        "workflows": [
+            {
+                "entity": "Order",
+                "field": "status",
+                "states": ["placed", "shipped"],
+                "initial_states": ["placed"],
+                "transitions": [{"source": "placed", "target": "cancelled"}],
+            }
+        ],
+    }
+    resp = client.post("/api/v1/projects/import", json=template, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_import_rejects_an_error_type_not_valid_for_the_field_type(client, auth_headers):
+    template = {
+        "name": "Broken",
+        "entities": [{"name": "Order", "fields": [{"name": "price", "field_type": "float"}]}],
+        "error_injections": [
+            {"entity": "Order", "field": "price", "rate": 0.1, "error_types": ["truncate"]}
+        ],
+    }
+    resp = client.post("/api/v1/projects/import", json=template, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_import_rejects_a_lookup_attachment_column_not_in_the_table(client, auth_headers):
+    template = {
+        "name": "Broken",
+        "entities": [{"name": "Order", "fields": [{"name": "city", "field_type": "string"}]}],
+        "lookup_tables": [{"name": "Cities", "columns": ["name"], "data": [{"name": "Seattle"}]}],
+        "lookup_attachments": [
+            {"entity": "Order", "field": "city", "lookup_table": "Cities", "column": "no_such_col"}
+        ],
+    }
+    resp = client.post("/api/v1/projects/import", json=template, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_import_rejects_a_geo_route_on_a_non_object_field(client, auth_headers):
+    template = {
+        "name": "Broken",
+        "entities": [{"name": "Order", "fields": [{"name": "position", "field_type": "string"}]}],
+        "lookup_tables": [
+            {"name": "Route", "columns": ["lat", "lon"], "data": [{"lat": 1.0, "lon": 2.0}]}
+        ],
+        "geo_routes": [
+            {
+                "entity": "Order",
+                "field": "position",
+                "lookup_table": "Route",
+                "lat_column": "lat",
+                "lon_column": "lon",
+            }
+        ],
+    }
+    resp = client.post("/api/v1/projects/import", json=template, headers=auth_headers)
+    assert resp.status_code == 400
+
+
 def test_failed_import_does_not_create_a_partial_project(client, auth_headers):
     before = len(client.get("/api/v1/projects", headers=auth_headers).json())
 

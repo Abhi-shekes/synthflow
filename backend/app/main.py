@@ -21,6 +21,7 @@ from app.api.routes import (
     relationships,
     rest_outputs,
     rules,
+    starter_templates,
     templates,
     timeline_replays,
     trends,
@@ -72,6 +73,7 @@ app.include_router(kafka_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(mqtt_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(templates.router, prefix=settings.API_V1_PREFIX)
+app.include_router(starter_templates.router, prefix=settings.API_V1_PREFIX)
 
 # Deliberately outside /api/v1 and unauthenticated — see RestOutput's and
 # WebSocketStream's docstrings.

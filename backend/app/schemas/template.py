@@ -118,6 +118,7 @@ class TemplateGeoRoute(BaseModel):
 class ProjectTemplate(BaseModel):
     template_version: int = TEMPLATE_VERSION
     name: str
+    description: str | None = None
     entities: list[TemplateEntity] = []
     relationships: list[TemplateRelationship] = []
     rules: list[TemplateRule] = []
@@ -128,3 +129,14 @@ class ProjectTemplate(BaseModel):
     lookup_tables: list[TemplateLookupTable] = []
     lookup_attachments: list[TemplateLookupAttachment] = []
     geo_routes: list[TemplateGeoRoute] = []
+
+
+class StarterTemplateSummary(BaseModel):
+    """Metadata for one bundled starter template — see
+    app.services.starter_templates. Kept separate from ProjectTemplate so
+    the gallery listing (`GET /starter-templates`) doesn't have to ship
+    every template's full entity/field payload just to render a card."""
+
+    key: str
+    name: str
+    description: str

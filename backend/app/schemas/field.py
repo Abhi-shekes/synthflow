@@ -8,7 +8,7 @@ from app.models.field import FieldType
 # app.services.plugins can surface preset names from installed third-party
 # packages at runtime, the valid set isn't known at schema-definition time
 # any more. Membership is checked dynamically instead, in
-# app.api.routes.entities._validate_preset against
+# app.api.routes.entities.validate_preset against
 # app.services.plugins.available_presets().
 
 

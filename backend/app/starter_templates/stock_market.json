@@ -1,0 +1,159 @@
+{
+  "template_version": 1,
+  "name": "Stock Market",
+  "description": "Ticker symbols with a random-walk price series and a trade tape.",
+  "entities": [
+    {
+      "name": "Stock",
+      "fields": [
+        {
+          "name": "symbol",
+          "field_type": "string",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": "^[A-Z]{2,4}$",
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "price",
+          "field_type": "float",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Trade",
+      "fields": [
+        {
+          "name": "symbol",
+          "field_type": "string",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "quantity",
+          "field_type": "integer",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 1.0,
+          "max_value": 1000.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "price",
+          "field_type": "float",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 1.0,
+          "max_value": 1000.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "side",
+          "field_type": "enum",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": [
+            "buy",
+            "sell"
+          ],
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "traded_at",
+          "field_type": "datetime",
+          "order": 4,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Trade",
+      "source_field": "symbol",
+      "target_entity": "Stock",
+      "target_field": "symbol"
+    }
+  ],
+  "rules": [],
+  "event_triggers": [],
+  "workflows": [],
+  "trends": [
+    {
+      "entity": "Stock",
+      "field": "price",
+      "trend_type": "random_walk",
+      "params": {
+        "start": 100,
+        "step_size": 2
+      }
+    }
+  ],
+  "error_injections": [],
+  "lookup_tables": [],
+  "lookup_attachments": [],
+  "geo_routes": []
+}

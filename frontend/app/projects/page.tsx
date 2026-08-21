@@ -41,6 +41,12 @@ export default function ProjectsPage() {
     enabled: !!accessToken,
   });
 
+  const starterTemplatesQuery = useQuery({
+    queryKey: ["starter-templates"],
+    queryFn: () => api.listStarterTemplates(accessToken!),
+    enabled: !!accessToken,
+  });
+
   const createMutation = useMutation({
     mutationFn: (values: FormValues) => api.createProject(accessToken!, values),
     onSuccess: () => {
@@ -58,6 +64,18 @@ export default function ProjectsPage() {
       toast.success("Project imported");
     },
     onError: (error: Error) => toast.error(error.message || "Could not import project"),
+  });
+
+  const useStarterTemplate = useMutation({
+    mutationFn: async (key: string) => {
+      const template = await api.getStarterTemplate(accessToken!, key);
+      return api.importProject(accessToken!, template);
+    },
+    onSuccess: (project) => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toast.success(`"${project.name}" created from starter template`);
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not use starter template"),
   });
 
   const handleImportFile = async (file: File) => {
@@ -151,6 +169,42 @@ export default function ProjectsPage() {
               </Card>
             </Link>
           ))}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <h2 className="text-lg font-semibold tracking-tight">Starter templates</h2>
+          <p className="text-sm text-muted-foreground">
+            Pre-built entities, relationships, and simulation config for common domains —
+            creates a new project you can freely edit afterward.
+          </p>
+        </div>
+
+        {starterTemplatesQuery.isLoading && (
+          <p className="text-sm text-muted-foreground">Loading starter templates…</p>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+          {starterTemplatesQuery.data?.map((t) => {
+            const isThisPending = useStarterTemplate.isPending && useStarterTemplate.variables === t.key;
+            return (
+              <Card key={t.key} className="flex h-full flex-col justify-between">
+                <CardHeader>
+                  <CardTitle className="text-base">{t.name}</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3">
+                  <p className="text-sm text-muted-foreground">{t.description}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={useStarterTemplate.isPending}
+                    onClick={() => useStarterTemplate.mutate(t.key)}
+                  >
+                    {isThisPending ? "Creating…" : "Use template"}
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </AppShell>

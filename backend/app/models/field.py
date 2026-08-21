@@ -82,7 +82,7 @@ class EntityField(Base):
     regex: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # When set (STRING fields only, mutually exclusive with regex — see
-    # entities._validate_preset), the field's value comes from one of the
+    # entities.validate_preset), the field's value comes from one of the
     # generators registered in app.services.plugins.available_presets():
     # the built-in LogPreset/IdentifierPreset generators, plus whatever
     # third-party generator plugins are installed — instead of
@@ -90,7 +90,7 @@ class EntityField(Base):
     # Enum column (that closed-set approach stopped working once a
     # plugin's preset name isn't known at schema-definition time);
     # validated dynamically against the registry in
-    # entities._validate_preset, not the database.
+    # entities.validate_preset, not the database.
     preset: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Always configured as strings (e.g. "200", not 200), but a value that

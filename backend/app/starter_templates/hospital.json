@@ -1,0 +1,262 @@
+{
+  "template_version": 1,
+  "name": "Hospital",
+  "description": "Patients, admissions modeled as a treatment funnel, and vitals with occasional out-of-range sensor readings.",
+  "entities": [
+    {
+      "name": "Patient",
+      "fields": [
+        {
+          "name": "patient_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "email",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": "business_email",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "date_of_birth",
+          "field_type": "date",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Admission",
+      "fields": [
+        {
+          "name": "admission_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "patient_id",
+          "field_type": "integer",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "status",
+          "field_type": "string",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "admitted_at",
+          "field_type": "datetime",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Vitals",
+      "fields": [
+        {
+          "name": "admission_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "heart_rate",
+          "field_type": "integer",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 40.0,
+          "max_value": 180.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "recorded_at",
+          "field_type": "datetime",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Admission",
+      "source_field": "patient_id",
+      "target_entity": "Patient",
+      "target_field": "patient_id"
+    },
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Vitals",
+      "source_field": "admission_id",
+      "target_entity": "Admission",
+      "target_field": "admission_id"
+    }
+  ],
+  "rules": [],
+  "event_triggers": [],
+  "workflows": [
+    {
+      "entity": "Admission",
+      "field": "status",
+      "states": [
+        "admitted",
+        "in_treatment",
+        "discharged"
+      ],
+      "initial_states": [
+        "admitted"
+      ],
+      "transitions": [
+        {
+          "source": "admitted",
+          "target": "in_treatment"
+        },
+        {
+          "source": "in_treatment",
+          "target": "discharged"
+        }
+      ],
+      "stop_probabilities": {
+        "admitted": 0.1,
+        "in_treatment": 0.2,
+        "discharged": 0.9
+      }
+    }
+  ],
+  "trends": [
+    {
+      "entity": "Patient",
+      "field": "patient_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    },
+    {
+      "entity": "Admission",
+      "field": "admission_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    }
+  ],
+  "error_injections": [
+    {
+      "entity": "Vitals",
+      "field": "heart_rate",
+      "rate": 0.05,
+      "error_types": [
+        "out_of_range"
+      ]
+    }
+  ],
+  "lookup_tables": [],
+  "lookup_attachments": [],
+  "geo_routes": []
+}

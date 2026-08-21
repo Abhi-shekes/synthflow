@@ -1,0 +1,200 @@
+{
+  "template_version": 1,
+  "name": "CCTV",
+  "description": "Cameras placed in named zones detecting weighted event types with a synthetic system log line and a tamper alert.",
+  "entities": [
+    {
+      "name": "Camera",
+      "fields": [
+        {
+          "name": "camera_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "zone",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Event",
+      "fields": [
+        {
+          "name": "camera_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "event_type",
+          "field_type": "enum",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": [
+            "motion_detected",
+            "person_detected",
+            "vehicle_detected",
+            "tamper_alert"
+          ],
+          "enum_weights": [
+            0.5,
+            0.3,
+            0.15,
+            0.05
+          ],
+          "formula": null
+        },
+        {
+          "name": "confidence",
+          "field_type": "float",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 0.0,
+          "max_value": 1.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "log_line",
+          "field_type": "string",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": "application_log",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "detected_at",
+          "field_type": "datetime",
+          "order": 4,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Event",
+      "source_field": "camera_id",
+      "target_entity": "Camera",
+      "target_field": "camera_id"
+    }
+  ],
+  "rules": [],
+  "event_triggers": [
+    {
+      "entity": "Event",
+      "label": "tamper_detected",
+      "condition": "event_type == 'tamper_alert'"
+    }
+  ],
+  "workflows": [],
+  "trends": [
+    {
+      "entity": "Camera",
+      "field": "camera_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    }
+  ],
+  "error_injections": [],
+  "lookup_tables": [
+    {
+      "name": "Zones",
+      "columns": [
+        "name"
+      ],
+      "data": [
+        {
+          "name": "entrance"
+        },
+        {
+          "name": "lobby"
+        },
+        {
+          "name": "parking"
+        },
+        {
+          "name": "warehouse"
+        }
+      ]
+    }
+  ],
+  "lookup_attachments": [
+    {
+      "entity": "Camera",
+      "field": "zone",
+      "lookup_table": "Zones",
+      "column": "name"
+    }
+  ],
+  "geo_routes": []
+}

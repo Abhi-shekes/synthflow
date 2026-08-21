@@ -1,0 +1,197 @@
+{
+  "template_version": 1,
+  "name": "Weather",
+  "description": "Weather stations across a handful of cities with a seasonal temperature pattern and weighted sky conditions.",
+  "entities": [
+    {
+      "name": "Station",
+      "fields": [
+        {
+          "name": "station_code",
+          "field_type": "string",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": "^[A-Z]{3}[0-9]{2}$",
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "city",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Reading",
+      "fields": [
+        {
+          "name": "station_code",
+          "field_type": "string",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "temperature_c",
+          "field_type": "float",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "humidity_pct",
+          "field_type": "float",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 0.0,
+          "max_value": 100.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "condition",
+          "field_type": "enum",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": [
+            "sunny",
+            "cloudy",
+            "rainy",
+            "stormy",
+            "snowy"
+          ],
+          "enum_weights": [
+            0.4,
+            0.25,
+            0.2,
+            0.1,
+            0.05
+          ],
+          "formula": null
+        },
+        {
+          "name": "recorded_at",
+          "field_type": "datetime",
+          "order": 4,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Reading",
+      "source_field": "station_code",
+      "target_entity": "Station",
+      "target_field": "station_code"
+    }
+  ],
+  "rules": [],
+  "event_triggers": [],
+  "workflows": [],
+  "trends": [
+    {
+      "entity": "Reading",
+      "field": "temperature_c",
+      "trend_type": "seasonal",
+      "params": {
+        "base": 15,
+        "amplitude": 12,
+        "period": 24
+      }
+    }
+  ],
+  "error_injections": [],
+  "lookup_tables": [
+    {
+      "name": "Cities",
+      "columns": [
+        "name"
+      ],
+      "data": [
+        {
+          "name": "Seattle"
+        },
+        {
+          "name": "Austin"
+        },
+        {
+          "name": "Denver"
+        },
+        {
+          "name": "Miami"
+        }
+      ]
+    }
+  ],
+  "lookup_attachments": [
+    {
+      "entity": "Station",
+      "field": "city",
+      "lookup_table": "Cities",
+      "column": "name"
+    }
+  ],
+  "geo_routes": []
+}

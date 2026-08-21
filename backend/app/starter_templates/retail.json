@@ -1,0 +1,255 @@
+{
+  "template_version": 1,
+  "name": "Retail",
+  "description": "Customers placing orders that move through a purchase funnel, picking from a weighted category mix.",
+  "entities": [
+    {
+      "name": "Customer",
+      "fields": [
+        {
+          "name": "customer_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "email",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": "business_email",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Order",
+      "fields": [
+        {
+          "name": "customer_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "product_name",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "category",
+          "field_type": "enum",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": [
+            "electronics",
+            "clothing",
+            "home",
+            "grocery",
+            "toys"
+          ],
+          "enum_weights": [
+            0.3,
+            0.25,
+            0.2,
+            0.15,
+            0.1
+          ],
+          "formula": null
+        },
+        {
+          "name": "price",
+          "field_type": "float",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 5.0,
+          "max_value": 500.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "status",
+          "field_type": "string",
+          "order": 4,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "ordered_at",
+          "field_type": "datetime",
+          "order": 5,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Order",
+      "source_field": "customer_id",
+      "target_entity": "Customer",
+      "target_field": "customer_id"
+    }
+  ],
+  "rules": [],
+  "event_triggers": [],
+  "workflows": [
+    {
+      "entity": "Order",
+      "field": "status",
+      "states": [
+        "cart",
+        "checkout",
+        "paid",
+        "shipped",
+        "delivered"
+      ],
+      "initial_states": [
+        "cart"
+      ],
+      "transitions": [
+        {
+          "source": "cart",
+          "target": "checkout"
+        },
+        {
+          "source": "checkout",
+          "target": "paid"
+        },
+        {
+          "source": "paid",
+          "target": "shipped"
+        },
+        {
+          "source": "shipped",
+          "target": "delivered"
+        }
+      ],
+      "stop_probabilities": {
+        "cart": 0.4,
+        "checkout": 0.25,
+        "paid": 0.05,
+        "shipped": 0.1,
+        "delivered": 0.95
+      }
+    }
+  ],
+  "trends": [
+    {
+      "entity": "Customer",
+      "field": "customer_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    }
+  ],
+  "error_injections": [],
+  "lookup_tables": [
+    {
+      "name": "Products",
+      "columns": [
+        "name"
+      ],
+      "data": [
+        {
+          "name": "Wireless Earbuds"
+        },
+        {
+          "name": "Running Shoes"
+        },
+        {
+          "name": "Coffee Maker"
+        },
+        {
+          "name": "Cereal Box"
+        },
+        {
+          "name": "Building Blocks Set"
+        }
+      ]
+    }
+  ],
+  "lookup_attachments": [
+    {
+      "entity": "Order",
+      "field": "product_name",
+      "lookup_table": "Products",
+      "column": "name"
+    }
+  ],
+  "geo_routes": []
+}

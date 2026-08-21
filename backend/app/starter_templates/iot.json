@@ -1,0 +1,170 @@
+{
+  "template_version": 1,
+  "name": "IoT",
+  "description": "Connected devices streaming metric telemetry and device log lines, with occasional out-of-range sensor spikes.",
+  "entities": [
+    {
+      "name": "Device",
+      "fields": [
+        {
+          "name": "device_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "imei",
+          "field_type": "string",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": true,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": "imei",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    },
+    {
+      "name": "Telemetry",
+      "fields": [
+        {
+          "name": "device_id",
+          "field_type": "integer",
+          "order": 0,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "metric",
+          "field_type": "enum",
+          "order": 1,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": [
+            "temperature",
+            "humidity",
+            "battery",
+            "signal_strength"
+          ],
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "value",
+          "field_type": "float",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": 0.0,
+          "max_value": 100.0,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "log_line",
+          "field_type": "string",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": "docker_log",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "recorded_at",
+          "field_type": "datetime",
+          "order": 4,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_type": "one_to_many",
+      "source_entity": "Telemetry",
+      "source_field": "device_id",
+      "target_entity": "Device",
+      "target_field": "device_id"
+    }
+  ],
+  "rules": [],
+  "event_triggers": [],
+  "workflows": [],
+  "trends": [
+    {
+      "entity": "Device",
+      "field": "device_id",
+      "trend_type": "linear",
+      "params": {
+        "start": 1,
+        "slope": 1
+      }
+    }
+  ],
+  "error_injections": [
+    {
+      "entity": "Telemetry",
+      "field": "value",
+      "rate": 0.05,
+      "error_types": [
+        "out_of_range"
+      ]
+    }
+  ],
+  "lookup_tables": [],
+  "lookup_attachments": [],
+  "geo_routes": []
+}

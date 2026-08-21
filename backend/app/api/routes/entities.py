@@ -10,66 +10,16 @@ from app.api.routes.projects import _get_owned_project
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.entity import Entity
-from app.models.field import EntityField, FieldType
+from app.models.field import EntityField
 from app.models.relationship import Relationship
 from app.models.user import User
 from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateRequest
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
 from app.services.expressions import ExpressionError, evaluate
+from app.services.field_validation import validate_enum_weights, validate_preset
 from app.services.generator import build_lookup_pools, generate_rows, rows_to_csv, rows_to_excel
-from app.services.plugins import available_presets
 
 router = APIRouter(prefix="/projects/{project_id}/entities", tags=["entities"])
-
-
-def _validate_enum_weights(
-    field_type: FieldType, enum_values: list[str] | None, enum_weights: list[float] | None
-) -> None:
-    if enum_weights is None:
-        return
-    if field_type != FieldType.ENUM:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="enum_weights can only be set on enum fields",
-        )
-    if not enum_values:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="enum_weights requires enum_values"
-        )
-    if len(enum_weights) != len(enum_values):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="enum_weights must have the same length as enum_values",
-        )
-    if any(w < 0 for w in enum_weights):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="enum_weights must be non-negative"
-        )
-    if sum(enum_weights) <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="at least one enum_weight must be greater than 0",
-        )
-
-
-def _validate_preset(field_type: FieldType, preset: str | None, regex: str | None) -> None:
-    if preset is None:
-        return
-    if field_type != FieldType.STRING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="preset can only be set on string fields",
-        )
-    if regex:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="preset and regex are mutually exclusive — preset fully determines the value",
-        )
-    if preset not in available_presets():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown preset '{preset}'",
-        )
 
 
 def dummy_row_values(entity: Entity, db: Session) -> dict[str, object]:
@@ -84,9 +34,7 @@ def dummy_row_values(entity: Entity, db: Session) -> dict[str, object]:
     formula validation here, since all three use the same evaluator and the
     same cross-entity mechanism."""
     values: dict[str, object] = {f.name: 1 for f in entity.fields}
-    relationships = (
-        db.query(Relationship).filter(Relationship.source_entity_id == entity.id).all()
-    )
+    relationships = db.query(Relationship).filter(Relationship.source_entity_id == entity.id).all()
     for rel in relationships:
         target_entity = db.get(Entity, rel.target_entity_id)
         if target_entity is not None:
@@ -185,8 +133,11 @@ def add_field(
         except ExpressionError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    _validate_enum_weights(payload.field_type, payload.enum_values, payload.enum_weights)
-    _validate_preset(payload.field_type, payload.preset, payload.regex)
+    try:
+        validate_enum_weights(payload.field_type, payload.enum_values, payload.enum_weights)
+        validate_preset(payload.field_type, payload.preset, payload.regex)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     field = EntityField(entity_id=entity_id, **payload.model_dump())
     db.add(field)
@@ -216,16 +167,19 @@ def update_field(
         except ExpressionError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    _validate_enum_weights(
-        updates.get("field_type", field.field_type),
-        updates.get("enum_values", field.enum_values),
-        updates.get("enum_weights", field.enum_weights),
-    )
-    _validate_preset(
-        updates.get("field_type", field.field_type),
-        updates.get("preset", field.preset),
-        updates.get("regex", field.regex),
-    )
+    try:
+        validate_enum_weights(
+            updates.get("field_type", field.field_type),
+            updates.get("enum_values", field.enum_values),
+            updates.get("enum_weights", field.enum_weights),
+        )
+        validate_preset(
+            updates.get("field_type", field.field_type),
+            updates.get("preset", field.preset),
+            updates.get("regex", field.regex),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     for attr, value in updates.items():
         setattr(field, attr, value)

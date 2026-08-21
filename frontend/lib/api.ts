@@ -25,6 +25,7 @@ import type {
   RelationshipCreateInput,
   RestOutput,
   Rule,
+  StarterTemplateSummary,
   TimelineReplay,
   TimelineReplayCreateInput,
   Trend,
@@ -630,4 +631,10 @@ export const api = {
       { method: "POST", body: JSON.stringify(template) },
       token
     ),
+
+  listStarterTemplates: (token: string) =>
+    request<StarterTemplateSummary[]>("/api/v1/starter-templates", {}, token),
+
+  getStarterTemplate: (token: string, key: string) =>
+    request<ProjectTemplate>(`/api/v1/starter-templates/${key}`, {}, token),
 };
