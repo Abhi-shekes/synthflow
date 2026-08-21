@@ -131,6 +131,18 @@ export function AddTrendDialog({
             </Select>
           </div>
 
+          {trendType === "linear" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() => setValue("params", { start: "1", slope: "1" })}
+            >
+              Use as auto-increment (start 1, step 1)
+            </Button>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             {paramNames.map((name) => (
               <div key={name} className="flex flex-col gap-2">

@@ -201,3 +201,40 @@ def test_integer_trend_rounds_to_whole_numbers(client, auth_headers):
     gen = client.post(f"{base}/generate", json={"count": 6}, headers=auth_headers)
     values = [row["value"] for row in gen.json()]
     assert all(isinstance(v, int) for v in values)
+
+
+def test_linear_trend_on_unique_integer_field_is_an_auto_increment_id(client, auth_headers):
+    """No dedicated 'auto_increment' concept exists — a linear Trend
+    (integer start/slope=1) on an INTEGER field already produces exactly
+    that: sequential, guaranteed-unique ids. `unique=True` isn't required
+    for the values to actually be distinct (the math already guarantees
+    it), but a real id field would set it too, so this proves neither
+    setting interferes with the other."""
+    project_id = _create_project(client, auth_headers)
+    entity = client.post(
+        f"/api/v1/projects/{project_id}/entities", json={"name": "Row"}, headers=auth_headers
+    ).json()
+    field = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity['id']}/fields",
+        json={
+            "name": "id",
+            "field_type": "integer",
+            "required": True,
+            "nullable": False,
+            "unique": True,
+        },
+        headers=auth_headers,
+    ).json()
+    base = f"/api/v1/projects/{project_id}/entities/{entity['id']}"
+
+    client.post(
+        f"{base}/trends",
+        json={"field_id": field["id"], "trend_type": "linear", "params": {"start": 1, "slope": 1}},
+        headers=auth_headers,
+    )
+
+    gen = client.post(f"{base}/generate", json={"count": 50}, headers=auth_headers)
+    assert gen.status_code == 200
+    ids = [row["id"] for row in gen.json()]
+    assert ids == list(range(1, 51))
+    assert len(set(ids)) == 50

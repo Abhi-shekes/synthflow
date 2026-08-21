@@ -58,7 +58,21 @@ and formulas instead of pure randomness.
 - [x] Workflow / state machine builder UI — plain field-select + comma-list +
       "source -> target" textarea form, not the React Flow visual canvas from
       the spec (later polish pass, see TODO.md)
-- [ ] Generated-field and auto-increment field support
+- [x] Generated-field and auto-increment field support — turned out to
+      already be fully covered, the same "check existing infra first"
+      result as several Phase 4 items. "Generated field" is the existing
+      `formula` field (checked above) plus `FieldType.UUID` (Phase 1) for
+      generated identifiers. "Auto-increment" is a `Trend` with
+      `trend_type=linear`, integer `start`/`slope`, on an INTEGER field —
+      `start + slope * position` is already exactly a sequential counter,
+      and it's inherently collision-free for integer slope, so it composes
+      cleanly with `unique=True` even though the unique-value dedup path
+      isn't invoked for trend-driven fields (confirmed by test: 50 rows
+      produced exactly `1..50`, all distinct). No backend code changed.
+      The one real gap was discoverability, not capability — nothing in
+      the UI signposted "linear trend with slope 1" as the way to get an
+      auto-increment id — closed with a one-click "Use as auto-increment
+      (start 1, step 1)" preset button in the trend dialog.
 
 ## Phase 3 — Outputs
 

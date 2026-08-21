@@ -66,16 +66,26 @@ suite — most recently: an 11-row generate over a 2-waypoint route produced
 an exact linear interpolation (endpoints and midpoint matched precisely),
 zero console errors.
 
+## Generated-field and auto-increment field support — done
+
+Turned out to already be fully covered — "generated field" is the
+existing `formula` field + `FieldType.UUID`; "auto-increment" is a
+`Trend(trend_type=linear, start=1, slope=1)` on an INTEGER field, already
+exactly a sequential counter, collision-free by construction so it composes
+fine with `unique=True`. No backend code changed. The one real gap was
+discoverability: closed with a one-click "Use as auto-increment" preset
+button in the trend dialog. 1 new test (50 rows → exactly `1..50`, all
+distinct), 155 passed / 3 skipped total. Verified end-to-end in a browser.
+
 ## Now
 
-Phase 4 is fully done. Next up is either Phase 5 (Extensibility — plugin
-framework, marketplace, monitoring dashboard, modular install; none of it
-scoped yet, needs its own design pass) or one of the smaller backlog items
-below — whichever "next" picks.
+Next up is either Phase 5 (Extensibility — plugin framework, marketplace,
+monitoring dashboard, modular install; none of it scoped yet, needs its
+own design pass) or one of the two remaining backlog items below —
+whichever "next" picks.
 
 ## Backlog (not started, roughly in order)
 
-- [ ] Generated-field and auto-increment field support (Phase 2)
 - [ ] Cross-entity rules + correlation (Phase 2/4, stretch — a formula or
       rule seeing another entity's already-generated data, not just its own
       row; both features hit this same wall independently, see above)
