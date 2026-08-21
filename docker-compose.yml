@@ -1,5 +1,6 @@
 services:
   postgres:
+    container_name: synthflow-postgres
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: synthflow
@@ -16,6 +17,7 @@ services:
       retries: 5
 
   backend:
+    container_name: synthflow-backend
     build: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://synthflow:synthflow@postgres:5432/synthflow
@@ -30,6 +32,7 @@ services:
         condition: service_healthy
 
   frontend:
+    container_name: synthflow-frontend
     build: ./frontend
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8001
