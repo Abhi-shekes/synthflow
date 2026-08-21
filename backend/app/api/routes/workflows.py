@@ -69,6 +69,17 @@ def create_workflow(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Transition {t.source} -> {t.target} references a state not in states",
             )
+    if payload.stop_probabilities:
+        if not set(payload.stop_probabilities) <= states:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="stop_probabilities keys must be states",
+            )
+        if any(not (0 <= p <= 1) for p in payload.stop_probabilities.values()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="stop_probabilities values must be between 0 and 1",
+            )
 
     workflow = Workflow(
         entity_id=entity_id,
@@ -76,6 +87,7 @@ def create_workflow(
         states=payload.states,
         initial_states=payload.initial_states,
         transitions=[t.model_dump() for t in payload.transitions],
+        stop_probabilities=payload.stop_probabilities,
     )
     db.add(workflow)
     db.commit()

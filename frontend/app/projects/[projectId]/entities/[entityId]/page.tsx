@@ -507,7 +507,18 @@ export default function EntityDetailPage() {
                       Initial: {workflow.initial_states.join(", ")}
                       <br />
                       Transitions:{" "}
-                      {workflow.transitions.map((t) => `${t.source}→${t.target}`).join(", ")}
+                      {workflow.transitions
+                        .map((t) => `${t.source}→${t.target}${t.weight !== 1 ? ` (${t.weight})` : ""}`)
+                        .join(", ")}
+                      {workflow.stop_probabilities && (
+                        <>
+                          <br />
+                          Stop probabilities:{" "}
+                          {Object.entries(workflow.stop_probabilities)
+                            .map(([state, p]) => `${state}=${p}`)
+                            .join(", ")}
+                        </>
+                      )}
                     </p>
                   </li>
                 ))}

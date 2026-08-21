@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkflowTransition(BaseModel):
     source: str
     target: str
+    weight: float = Field(default=1.0, gt=0)
 
 
 class WorkflowCreate(BaseModel):
@@ -14,6 +15,7 @@ class WorkflowCreate(BaseModel):
     states: list[str]
     initial_states: list[str]
     transitions: list[WorkflowTransition]
+    stop_probabilities: dict[str, float] | None = None
 
 
 class WorkflowRead(BaseModel):
@@ -25,4 +27,5 @@ class WorkflowRead(BaseModel):
     states: list[str]
     initial_states: list[str]
     transitions: list[WorkflowTransition]
+    stop_probabilities: dict[str, float] | None
     created_at: datetime

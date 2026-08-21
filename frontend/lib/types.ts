@@ -89,6 +89,7 @@ export interface EventTrigger {
 export interface WorkflowTransition {
   source: string;
   target: string;
+  weight?: number;
 }
 
 export interface Workflow {
@@ -98,6 +99,7 @@ export interface Workflow {
   states: string[];
   initial_states: string[];
   transitions: WorkflowTransition[];
+  stop_probabilities: Record<string, number> | null;
   created_at: string;
 }
 
@@ -106,6 +108,7 @@ export interface WorkflowCreateInput {
   states: string[];
   initial_states: string[];
   transitions: WorkflowTransition[];
+  stop_probabilities?: Record<string, number> | null;
 }
 
 export type TrendType =

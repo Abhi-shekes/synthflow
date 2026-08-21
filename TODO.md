@@ -43,28 +43,33 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   route that bypassed the test suite's DB session override by importing
   `SessionLocal` directly instead of looking it up on the module each call.
 
-## Phase 4, parts 1–10 — done
+## Phase 4, parts 1–11 — done
 
 probability, trend, correlation, error injection, lookup tables, event
 triggers, log & security-event presets, API-behavior simulation, timeline
-replay. Full detail lives in ROADMAP.md Phase 4; the shape worth
-remembering: three of the ten (correlation, API-behavior, and part of
-lookup tables) turned out to already be ~90% covered by existing engines
-and only needed a small real gap closed, not a new concept — always check
-existing infra before adding a model/table. The two built as new
-project-scoped output kinds (lookup tables, timeline replay) both reuse
-the *same* upload/parsing (`app/services/lookup_tables.py`) for different
-consumption modes (sample vs. walk-in-order-against-a-clock).
+replay, user-behavior simulation. Full detail lives in ROADMAP.md Phase 4;
+the shape worth remembering: four of the eleven (correlation, API-behavior,
+user-behavior, and part of lookup tables) turned out to already be ~90%
+covered by existing engines and only needed a small real gap closed, not a
+new concept — always check existing infra before adding a model/table.
+User-behavior simulation's gap was realism, not capability: `Workflow`
+already produced funnels, it just applied one flat drop-off rate to every
+stage; `weight` (per transition) and `stop_probabilities` (per state) fixed
+that without a new concept.
 
-82 new tests across all ten parts, 138 passed / 3 skipped total, lint
+88 new tests across all eleven parts, 144 passed / 3 skipped total, lint
 clean. Every part verified end-to-end in a browser, not just by test
-suite — most recently: rows uploaded out of timestamp order replayed in
-correct ascending order over `/public/replay/{token}` and looped back to
-the start, zero console errors.
+suite — most recently: a funnel configured to always stop right after
+"search" did so in 10/10 generated rows, zero console errors.
 
 ## Now — Phase 4, remainder
 
-Not started: geographic simulation, user-behavior simulation.
+Not started: geographic simulation — the last Phase 4 item. Likely the
+biggest of the eleven: no existing engine produces a 2D path across rows
+(Trend is scalar-only) or lets a field see the *previous* row's value
+(ErrorInjection's `duplicate` does this internally but doesn't expose it),
+so this one probably needs real new machinery, not just a gap-close — do
+the design pass before assuming otherwise.
 
 ## Backlog (not started, roughly in order)
 

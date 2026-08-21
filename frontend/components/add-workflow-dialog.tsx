@@ -29,6 +29,7 @@ interface FormValues {
   states: string;
   initial_states: string;
   transitions: string;
+  stop_probabilities: string;
 }
 
 function splitList(value: string): string[] {
@@ -62,6 +63,7 @@ export function AddWorkflowDialog({
       states: "",
       initial_states: "",
       transitions: "",
+      stop_probabilities: "",
     },
   });
 
@@ -78,17 +80,37 @@ export function AddWorkflowDialog({
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const [source, target] = line.split("->").map((s) => s.trim());
-        return { source, target };
+        const [left, weightPart] = line.split(":").map((s) => s.trim());
+        const [source, target] = left.split("->").map((s) => s.trim());
+        const weight = weightPart ? Number(weightPart) : undefined;
+        return weight !== undefined && !Number.isNaN(weight)
+          ? { source, target, weight }
+          : { source, target };
       });
 
     if (transitions.some((t) => !t.source || !t.target)) {
-      setError('Each transition line must look like "source -> target"');
+      setError('Each transition line must look like "source -> target" (optionally ": weight")');
       return;
+    }
+
+    const stop_probabilities: Record<string, number> = {};
+    for (const line of values.stop_probabilities.split("\n").map((l) => l.trim()).filter(Boolean)) {
+      const [state, prob] = line.split(":").map((s) => s.trim());
+      if (!state || prob === undefined || Number.isNaN(Number(prob))) {
+        setError('Each stop-probability line must look like "state: 0.6"');
+        return;
+      }
+      stop_probabilities[state] = Number(prob);
     }
     setError(null);
 
-    onSubmit({ field_id: values.field_id, states, initial_states, transitions });
+    onSubmit({
+      field_id: values.field_id,
+      states,
+      initial_states,
+      transitions,
+      stop_probabilities: Object.keys(stop_probabilities).length ? stop_probabilities : null,
+    });
     reset();
     setOpen(false);
   };
@@ -159,13 +181,38 @@ export function AddWorkflowDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="transitions">Transitions (one per line, &quot;source -&gt; target&quot;)</Label>
+            <Label htmlFor="transitions">
+              Transitions (one per line, &quot;source -&gt; target&quot;, optionally
+              &quot;: weight&quot;)
+            </Label>
             <Textarea
               id="transitions"
-              placeholder={"created -> packed\npacked -> shipped\nshipped -> delivered"}
+              placeholder={"landing -> search\nsearch -> cart : 3\nsearch -> exit : 1"}
               rows={4}
               {...register("transitions")}
             />
+            <p className="text-xs text-muted-foreground">
+              A weight controls the odds among a state&apos;s several outgoing
+              transitions (default 1, uniform when omitted).
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="stop_probabilities">
+              Stop probabilities (optional, one per line, &quot;state: 0–1&quot;)
+            </Label>
+            <Textarea
+              id="stop_probabilities"
+              placeholder={"checkout: 0.6\nsearch: 0.1"}
+              rows={2}
+              {...register("stop_probabilities")}
+            />
+            <p className="text-xs text-muted-foreground">
+              Chance the walk ends right after reaching that state — a
+              higher-traffic drop-off point like checkout should be higher
+              than an early browsing step. States without an entry use the
+              default rate.
+            </p>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
 

@@ -240,7 +240,27 @@ Goal: data behaves over time, not just at generation time.
       Postgres default in docker-compose) doesn't enforce FK constraints
       without a PRAGMA this app doesn't set.
 - [ ] Geographic simulation: GPS routes, speed, stops, traffic, delivery vehicles
-- [ ] User behavior simulation: login/logout/search/click/scroll/cart/purchase funnels
+- [x] User behavior simulation: login/logout/search/click/scroll/cart/purchase
+      funnels — turned out to already be exactly what a `Workflow` produces:
+      a linear chain of states (e.g. `landing -> search -> cart -> checkout
+      -> purchase`) with a random walk that stops early is already a funnel
+      with realistic drop-off, no new concept needed. The one real gap: a
+      single flat `WORKFLOW_STOP_PROBABILITY` applied at every step
+      regardless of state, so every funnel stage lost the same fraction of
+      sessions — wrong, since real drop-off is asymmetric (checkout
+      abandons far more than an early browsing click). Closed with two
+      small, backward-compatible additions to `Workflow`: an optional
+      `weight` per transition (`app/schemas/workflow.py`'s
+      `WorkflowTransition`, default 1.0/uniform, for picking among a
+      branching state's several outgoing edges) and an optional
+      `stop_probabilities: dict[str, float]` mapping a state to its own
+      stop chance, overriding the global default for that state only —
+      states without an entry behave exactly as before. Neither changed the
+      DB shape of `transitions` (still schema-flexible JSON, `weight` is
+      just an optional key within each edge dict already stored there);
+      only `stop_probabilities` needed a migration. `_generate_state_walk`
+      in `app/services/generator.py` now resolves both per step, defaulting
+      to the old uniform/flat behavior when unset.
 - [x] API behavior simulation: status code mixes, latency, timeouts for frontend testing
       — turned out to need almost no new machinery, the same "check
       existing infra first" result as correlation and lookup tables.

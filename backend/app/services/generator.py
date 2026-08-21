@@ -179,24 +179,32 @@ def _evaluate_event_triggers(
 def _generate_state_walk(workflow: Workflow) -> list[str]:
     """A random walk through the workflow's transition graph, starting from a
     random initial state and stopping (with WORKFLOW_STOP_PROBABILITY chance
-    per step, or when a state has no outgoing transitions) within
-    MAX_WORKFLOW_STEPS hops. Later states are naturally rarer since they
-    require surviving more consecutive "don't stop" draws — a deliberate,
-    simple stand-in for "most records are further along than not yet started,
-    but few reach the very end," not a claim about any real-world process."""
+    per step by default, or a per-state override from `stop_probabilities`,
+    or when a state has no outgoing transitions) within MAX_WORKFLOW_STEPS
+    hops. Later states are naturally rarer since they require surviving more
+    consecutive "don't stop" draws — a deliberate, simple stand-in for "most
+    records are further along than not yet started, but few reach the very
+    end," not a claim about any real-world process. A state with multiple
+    outgoing transitions picks among them by `weight` (default 1.0, i.e.
+    uniform) rather than always uniformly — together with per-state stop
+    probabilities, this is what makes a linear chain a realistic funnel with
+    asymmetric drop-off per stage, not just a flat one."""
     if not workflow.initial_states:
         raise ValueError("Workflow has no initial states")
 
-    by_source: dict[str, list[str]] = {}
+    by_source: dict[str, list[tuple[str, float]]] = {}
     for t in workflow.transitions:
-        by_source.setdefault(t["source"], []).append(t["target"])
+        by_source.setdefault(t["source"], []).append((t["target"], t.get("weight", 1.0)))
+    stop_probabilities = workflow.stop_probabilities or {}
 
     path = [random.choice(workflow.initial_states)]
     for _ in range(MAX_WORKFLOW_STEPS - 1):
         options = by_source.get(path[-1], [])
-        if not options or random.random() < WORKFLOW_STOP_PROBABILITY:
+        stop_probability = stop_probabilities.get(path[-1], WORKFLOW_STOP_PROBABILITY)
+        if not options or random.random() < stop_probability:
             break
-        path.append(random.choice(options))
+        targets, weights = zip(*options, strict=True)
+        path.append(random.choices(targets, weights=weights, k=1)[0])
     return path
 
 
