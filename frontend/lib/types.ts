@@ -39,6 +39,7 @@ export interface EntityField {
   max_value: number | null;
   regex: string | null;
   enum_values: string[] | null;
+  enum_weights: number[] | null;
   formula: string | null;
 }
 
@@ -105,6 +106,7 @@ export interface FieldCreateInput {
   max_value?: number | null;
   regex?: string | null;
   enum_values?: string[] | null;
+  enum_weights?: number[] | null;
   formula?: string | null;
 }
 

@@ -51,34 +51,57 @@ Full checklist: ROADMAP.md Phase 3. Highlights:
   Both were only caught because verification exercised the real UI/DB path
   end-to-end instead of stopping at "the code looks right."
 
-## Now — Phase 4: advanced simulation
+## Phase 4, part 1: probability engine — done
 
-Not started. Bigger and more varied than Phase 3 — trend/correlation/
-probability engines, error injection, timeline replay, lookup tables,
-geographic simulation, user-behavior simulation, API-behavior simulation, log
-generators, security event generator (see ROADMAP.md Phase 4 for the full
-list). Don't default to doing these in list order; some have real design
-questions worth a pass first, the way stateful entities and streaming did:
+- `EntityField.enum_weights`: optional array parallel to `enum_values`.
+  `None` keeps the prior uniform `random.choice`; present, generation uses
+  `random.choices(..., weights=...)` instead. Validated server-side
+  (matching length, non-negative, at least one positive) at both
+  field-create and field-update time.
+- No changes needed anywhere else — formulas/rules/relationships/workflows
+  all consume a field's generated value the same way regardless of how it
+  was picked, so weighting is fully contained in one branch of
+  `_generate_value`. 8 new tests, 69 passed / 3 skipped total, lint clean.
+- Verified end-to-end in a browser against the full docker-compose stack:
+  configured chrome/firefox/edge/other at weights 65/10/5/20, generated 300
+  real rows through the UI, and the actual distribution came back
+  64%/11%/5.3%/20% — matches the configured weights closely, not just "some
+  values appeared."
 
-- **Trend engine** has the same "what does time mean here" question stateful
-  entities had. A `generate` call produces an unordered batch of N rows —
-  does a linear/seasonal/cyclic trend apply *across that batch* (row N's
-  value is a function of its position in the batch) or *across ticks of a
-  live stream* (this connects naturally to the WebSocket work just done —
-  each push is the next point on the trend)? Those are different features
-  wearing the same name. Resolve which one (or both, as separate concepts)
-  before modeling it.
-- **Probability engine** (weighted categorical generation) is the smallest,
-  most self-contained item here — it's an upgrade to the existing `enum`
-  field type (add optional weights) rather than a new subsystem. Reasonable
-  first pick if you want something scoped like the last several rounds
-  rather than opening the trend-engine design question immediately.
-- **Correlation engine** needs the trend engine's "what does a row's position
-  mean" question answered too (correlating two fields/entities implies some
-  shared ordering or shared random state between them).
-- Log/security-event generators are mostly "more Faker-shaped generation
-  content," closer in spirit to Phase 1's field types than to a new engine —
-  likely simpler than they sound once trend/probability exist to build on.
+## Now — Phase 4, part 2: trend engine
+
+Not started. Has a real design question to resolve before modeling it —
+resolve this before writing models/routes, the same way stateful entities,
+streaming, and the plugin-manager shape all got a design pass first rather
+than being squeezed in.
+
+**The open question:** a `generate` call produces an unordered batch of N
+rows — does a linear/seasonal/cyclic/random-walk/exponential/logistic trend
+apply *across that batch* (row N's value is a function of its position in
+the batch, e.g. sorted by an implicit timestamp) or *across ticks of a live
+stream* (each WebSocket push is the next point on the trend, which the
+connection-scoped streaming design from Phase 3 makes natural to hang state
+off of)? Those are different features wearing the same name — a batch trend
+needs no persistent state, a stream trend needs the WebSocket handler to
+remember where it left off between ticks. Decide which one (or model both,
+as genuinely separate concepts with separate names) before writing code.
+
+The **correlation engine** (link fields/entities so one signal drives
+another) needs this same question answered first — correlating two fields
+implies some shared ordering or shared per-row position between them, which
+doesn't exist yet in the flat-batch model.
+
+## Backlog (not started, roughly in order)
+
+- [ ] Generated-field and auto-increment field support (Phase 2)
+- [ ] Cross-entity rules (Phase 2, stretch)
+- [ ] Kafka/MQTT streaming outputs (Phase 3, needs the background-task
+      execution model noted in the Phase 3 summary above)
+- [ ] Error injection, timeline replay, lookup tables, geographic/user-
+      behavior/API-behavior simulation, log + security-event generators
+      (Phase 4, remainder — log/security-event generators are mostly "more
+      Faker-shaped generation content," likely simpler than they sound once
+      trend/probability exist to build on)
 
 ## Backlog (not started, roughly in order)
 

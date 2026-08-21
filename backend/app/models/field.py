@@ -44,6 +44,12 @@ class EntityField(Base):
     regex: Mapped[str | None] = mapped_column(String(255), nullable=True)
     enum_values: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
+    # Optional weights parallel to enum_values (same length, same order) for
+    # weighted-random selection instead of uniform random.choice — the
+    # "probability engine" from the spec. None means uniform, matching prior
+    # behavior; see app.services.generator._generate_value.
+    enum_weights: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     # When set, this field's value is computed from other fields on the same
     # row (see app.services.expressions) instead of being randomly generated.
     # It must only reference fields with a lower `order` on the same entity —

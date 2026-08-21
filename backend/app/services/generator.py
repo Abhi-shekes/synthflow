@@ -74,6 +74,8 @@ def _generate_value(field: EntityField) -> Any:
     if field.field_type == FieldType.ENUM:
         if not field.enum_values:
             raise ValueError(f"Field '{field.name}' is type enum but has no enum_values")
+        if field.enum_weights:
+            return random.choices(field.enum_values, weights=field.enum_weights, k=1)[0]
         return random.choice(field.enum_values)
 
     if field.field_type == FieldType.ARRAY:

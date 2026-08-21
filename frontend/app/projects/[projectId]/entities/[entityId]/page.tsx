@@ -240,7 +240,12 @@ export default function EntityDetailPage() {
                           field.min_value != null && `min ${field.min_value}`,
                           field.max_value != null && `max ${field.max_value}`,
                           field.regex && `regex ${field.regex}`,
-                          field.enum_values && field.enum_values.join(" | "),
+                          field.enum_values &&
+                            (field.enum_weights
+                              ? field.enum_values
+                                  .map((v, i) => `${v} (${field.enum_weights![i]})`)
+                                  .join(" | ")
+                              : field.enum_values.join(" | ")),
                           field.formula && `= ${field.formula}`,
                         ]
                           .filter(Boolean)

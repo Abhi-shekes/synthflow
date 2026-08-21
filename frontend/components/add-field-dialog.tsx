@@ -35,6 +35,7 @@ interface FormValues {
   max_value: string;
   regex: string;
   enum_values: string;
+  enum_weights: string;
   formula: string;
 }
 
@@ -63,6 +64,7 @@ export function AddFieldDialog({
       max_value: "",
       regex: "",
       enum_values: "",
+      enum_weights: "",
       formula: "",
     },
   });
@@ -87,6 +89,13 @@ export function AddFieldDialog({
               .split(",")
               .map((v) => v.trim())
               .filter(Boolean),
+      enum_weights:
+        values.enum_weights.trim() === ""
+          ? null
+          : values.enum_weights
+              .split(",")
+              .map((v) => Number(v.trim()))
+              .filter((n) => !Number.isNaN(n)),
       formula: values.formula === "" ? null : values.formula,
     });
     reset();
@@ -199,6 +208,37 @@ export function AddFieldDialog({
               {errors.enum_values && (
                 <p className="text-sm text-destructive">{errors.enum_values.message}</p>
               )}
+            </div>
+          )}
+
+          {!formula && fieldType === "enum" && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="enum_weights">Weights (optional, comma-separated)</Label>
+              <Input
+                id="enum_weights"
+                placeholder="e.g. 65, 25, 10 — one per value, same order"
+                {...register("enum_weights", {
+                  validate: (value) => {
+                    if (value.trim() === "") return true;
+                    const valueCount = watch("enum_values")
+                      .split(",")
+                      .map((v) => v.trim())
+                      .filter(Boolean).length;
+                    const weightCount = value.split(",").filter((v) => v.trim() !== "").length;
+                    return (
+                      weightCount === valueCount ||
+                      "Must have exactly one weight per value, in the same order"
+                    );
+                  },
+                })}
+              />
+              {errors.enum_weights && (
+                <p className="text-sm text-destructive">{errors.enum_weights.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Leave blank for a uniform random choice. Weights don&apos;t need
+                to add up to 100 — they&apos;re relative.
+              </p>
             </div>
           )}
 

@@ -117,7 +117,14 @@ Goal: data behaves over time, not just at generation time.
 
 - [ ] Trend engine: linear, seasonal, cyclic, random walk, exponential, logistic
 - [ ] Correlation engine: link fields/entities so one signal drives another
-- [ ] Probability engine: weighted categorical generation
+- [x] Probability engine: weighted categorical generation — `EntityField.enum_weights`,
+      an optional array parallel to `enum_values` (`None` keeps the prior
+      uniform `random.choice`; present, it's `random.choices(..., weights=...)`).
+      Validated server-side (matching length, non-negative, at least one
+      positive) both at field-create/update time and reused as-is by the
+      formula/rules/relationships/workflow machinery already built — no
+      changes needed there, since weighting only changes how one value is
+      picked, not the row-building pipeline around it.
 - [ ] Event triggers: threshold-based actions (e.g. `temp > 80 → fire alert`)
 - [ ] Error injection: missing values, duplicate IDs, corrupted payloads, invalid
       formats, delayed/out-of-order events, timeouts, random failures
