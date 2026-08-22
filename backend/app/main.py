@@ -29,6 +29,7 @@ from app.api.routes import (
     profiling,
     projects,
     rabbitmq_outputs,
+    record_stores,
     relationships,
     rest_outputs,
     rule_functions,
@@ -141,6 +142,7 @@ app.include_router(rules.router, prefix=settings.API_V1_PREFIX)
 app.include_router(event_triggers.router, prefix=settings.API_V1_PREFIX)
 app.include_router(workflows.router, prefix=settings.API_V1_PREFIX)
 app.include_router(trends.router, prefix=settings.API_V1_PREFIX)
+app.include_router(record_stores.router, prefix=settings.API_V1_PREFIX)
 app.include_router(error_injections.router, prefix=settings.API_V1_PREFIX)
 app.include_router(lookup_tables.router, prefix=settings.API_V1_PREFIX)
 app.include_router(lookup_attachments.router, prefix=settings.API_V1_PREFIX)

@@ -1,0 +1,436 @@
+"""Phase 13 — persistent record identity and cross-call continuity.
+
+The behaviour under test is what every previous phase deliberately did not
+do: a second generation call that knows about the first.
+"""
+
+
+def _project(client, headers, name="Continuity"):
+    return client.post("/api/v1/projects", json={"name": name}, headers=headers).json()["id"]
+
+
+def _entity(client, headers, project_id, name):
+    return client.post(
+        f"/api/v1/projects/{project_id}/entities", json={"name": name}, headers=headers
+    ).json()["id"]
+
+
+def _field(client, headers, project_id, entity_id, name, field_type="uuid", **extra):
+    payload = {
+        "name": name,
+        "field_type": field_type,
+        "required": True,
+        "nullable": False,
+        **extra,
+    }
+    return client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/fields",
+        json=payload,
+        headers=headers,
+    ).json()["id"]
+
+
+def _store(client, headers, project_id, entity_id, identity_field_id, name="default"):
+    response = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores",
+        json={"name": name, "identity_field_id": identity_field_id},
+        headers=headers,
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+def _generate(client, headers, project_id, entity_id, store_id, count):
+    response = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/generate",
+        json={"count": count},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+# --------------------------------------------------------------------------
+# Persistent identity
+# --------------------------------------------------------------------------
+
+
+def test_records_generated_yesterday_are_still_there_today(client, auth_headers):
+    """The whole point of the phase: two calls accumulate one population
+    rather than producing two unrelated ones."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    first = _generate(client, auth_headers, project_id, entity_id, store_id, 5)
+    second = _generate(client, auth_headers, project_id, entity_id, store_id, 3)
+
+    assert first["total_active"] == 5
+    assert second["total_active"] == 8
+
+    records = client.get(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/records",
+        headers=auth_headers,
+    ).json()
+    assert len(records) == 8
+    # Every identity distinct, and every one of the first call's records
+    # still present after the second.
+    identities = {r["identity"] for r in records}
+    assert len(identities) == 8
+    assert {str(row["customer_id"]) for row in first["rows"]} <= identities
+
+
+def test_a_child_draws_foreign_keys_from_the_parents_stored_population(client, auth_headers):
+    """ "...and can receive new orders." The orders are generated in a
+    separate call from the customers, so a batch-local pool cannot be what
+    they are drawing from."""
+    project_id = _project(client, auth_headers)
+    customer_id = _entity(client, auth_headers, project_id, "Customer")
+    customer_key = _field(client, auth_headers, project_id, customer_id, "customer_id")
+    customer_store = _store(client, auth_headers, project_id, customer_id, customer_key)
+
+    order_id = _entity(client, auth_headers, project_id, "Order")
+    order_key = _field(client, auth_headers, project_id, order_id, "order_id")
+    order_fk = _field(client, auth_headers, project_id, order_id, "customer_id")
+    order_store = _store(client, auth_headers, project_id, order_id, order_key)
+
+    client.post(
+        f"/api/v1/projects/{project_id}/relationships",
+        json={
+            "relationship_type": "one_to_many",
+            "source_entity_id": order_id,
+            "source_field_id": order_fk,
+            "target_entity_id": customer_id,
+            "target_field_id": customer_key,
+        },
+        headers=auth_headers,
+    )
+
+    customers = _generate(client, auth_headers, project_id, customer_id, customer_store, 4)
+    customer_keys = {str(row["customer_id"]) for row in customers["rows"]}
+
+    orders = _generate(client, auth_headers, project_id, order_id, order_store, 12)
+    referenced = {str(row["customer_id"]) for row in orders["rows"]}
+
+    assert referenced <= customer_keys
+    # Not vacuous: with 12 orders over 4 customers, more than one customer
+    # should actually be used.
+    assert len(referenced) > 1
+
+
+def test_a_child_generated_later_still_reaches_the_earlier_customers(client, auth_headers):
+    """A second batch of orders draws from customers stored in a call that
+    finished long before it — including customers the first order batch
+    never touched."""
+    project_id = _project(client, auth_headers)
+    customer_id = _entity(client, auth_headers, project_id, "Customer")
+    customer_key = _field(client, auth_headers, project_id, customer_id, "customer_id")
+    customer_store = _store(client, auth_headers, project_id, customer_id, customer_key)
+
+    order_id = _entity(client, auth_headers, project_id, "Order")
+    order_key = _field(client, auth_headers, project_id, order_id, "order_id")
+    order_fk = _field(client, auth_headers, project_id, order_id, "customer_id")
+    order_store = _store(client, auth_headers, project_id, order_id, order_key)
+
+    client.post(
+        f"/api/v1/projects/{project_id}/relationships",
+        json={
+            "relationship_type": "one_to_many",
+            "source_entity_id": order_id,
+            "source_field_id": order_fk,
+            "target_entity_id": customer_id,
+            "target_field_id": customer_key,
+        },
+        headers=auth_headers,
+    )
+
+    first_customers = _generate(client, auth_headers, project_id, customer_id, customer_store, 3)
+    early_keys = {str(row["customer_id"]) for row in first_customers["rows"]}
+    _generate(client, auth_headers, project_id, order_id, order_store, 5)
+
+    # A later customer batch, then later orders. The orders must be able to
+    # reach both generations of customers.
+    _generate(client, auth_headers, project_id, customer_id, customer_store, 3)
+    later_orders = _generate(client, auth_headers, project_id, order_id, order_store, 40)
+
+    referenced = {str(row["customer_id"]) for row in later_orders["rows"]}
+    assert referenced & early_keys, "later orders never reached the first batch of customers"
+
+
+def test_two_stores_on_one_entity_keep_separate_populations(client, auth_headers):
+    """Two consumers of the same schema are not watching the same
+    population — a demo stream must not consume a nightly feed's state."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    demo = _store(client, auth_headers, project_id, entity_id, identity, name="demo")
+    nightly = _store(client, auth_headers, project_id, entity_id, identity, name="nightly")
+
+    _generate(client, auth_headers, project_id, entity_id, demo, 5)
+    nightly_result = _generate(client, auth_headers, project_id, entity_id, nightly, 2)
+
+    assert nightly_result["total_active"] == 2
+    assert nightly_result["position"] == 2
+
+
+# --------------------------------------------------------------------------
+# Cross-call continuity of position-based features
+# --------------------------------------------------------------------------
+
+
+def test_a_linear_trend_continues_instead_of_replaying_from_its_start(client, auth_headers):
+    """The documented Phase 4 reset, closed. Without a cursor the second
+    batch would repeat the first batch's values exactly."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Reading")
+    identity = _field(client, auth_headers, project_id, entity_id, "reading_id")
+    value_field = _field(client, auth_headers, project_id, entity_id, "value", field_type="float")
+    client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/trends",
+        json={
+            "field_id": value_field,
+            "trend_type": "linear",
+            "params": {"start": 10, "slope": 2},
+        },
+        headers=auth_headers,
+    )
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    first = _generate(client, auth_headers, project_id, entity_id, store_id, 5)
+    second = _generate(client, auth_headers, project_id, entity_id, store_id, 5)
+
+    assert [row["value"] for row in first["rows"]] == [10 + 2 * i for i in range(5)]
+    # Continues at position 5, rather than starting over at 10.
+    assert [row["value"] for row in second["rows"]] == [10 + 2 * i for i in range(5, 10)]
+    assert second["position"] == 10
+
+
+def test_a_random_walk_carries_its_running_value_across_calls(client, auth_headers):
+    """`random_walk` keeps state in a dict the engine used to rebuild every
+    call, snapping the series back to `start`. The store persists it, so the
+    second batch begins within one step of where the first ended."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Reading")
+    identity = _field(client, auth_headers, project_id, entity_id, "reading_id")
+    value_field = _field(client, auth_headers, project_id, entity_id, "value", field_type="float")
+    client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/trends",
+        json={
+            "field_id": value_field,
+            "trend_type": "random_walk",
+            "params": {"start": 100, "step_size": 1},
+        },
+        headers=auth_headers,
+    )
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    first = _generate(client, auth_headers, project_id, entity_id, store_id, 30)
+    second = _generate(client, auth_headers, project_id, entity_id, store_id, 30)
+
+    last_of_first = first["rows"][-1]["value"]
+    first_of_second = second["rows"][0]["value"]
+    # One step of at most step_size. Without persistence this would jump
+    # back to 100, which 30 steps of size 1 will have wandered away from.
+    assert abs(first_of_second - last_of_first) <= 1.01
+
+
+def test_records_come_back_in_the_order_they_were_created(client, auth_headers):
+    """`created_at` cannot order them: every record from one call shares a
+    transaction timestamp, so a batch came back shuffled by whatever the
+    tiebreaker was. A linear trend makes the real order visible — the
+    values must climb monotonically across both calls."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Reading")
+    identity = _field(client, auth_headers, project_id, entity_id, "reading_id")
+    value_field = _field(client, auth_headers, project_id, entity_id, "value", field_type="float")
+    client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/trends",
+        json={
+            "field_id": value_field,
+            "trend_type": "linear",
+            "params": {"start": 100, "slope": 5},
+        },
+        headers=auth_headers,
+    )
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 10)
+    _generate(client, auth_headers, project_id, entity_id, store_id, 10)
+
+    records = client.get(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/records",
+        headers=auth_headers,
+    ).json()
+
+    assert [r["sequence"] for r in records] == list(range(20))
+    assert [r["data"]["value"] for r in records] == [100 + 5 * i for i in range(20)]
+
+
+def test_paging_over_a_store_neither_skips_nor_repeats(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+    _generate(client, auth_headers, project_id, entity_id, store_id, 25)
+
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/records"
+    seen: list[str] = []
+    for offset in (0, 10, 20):
+        page = client.get(f"{base}?limit=10&offset={offset}", headers=auth_headers).json()
+        seen.extend(r["identity"] for r in page)
+
+    assert len(seen) == 25
+    assert len(set(seen)) == 25
+
+
+def test_the_cursor_survives_a_store_being_read_back(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Reading")
+    identity = _field(client, auth_headers, project_id, entity_id, "reading_id")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 7)
+    read_back = client.get(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}",
+        headers=auth_headers,
+    ).json()
+
+    assert read_back["position"] == 7
+    assert read_back["active_records"] == 7
+    assert read_back["deleted_records"] == 0
+
+
+# --------------------------------------------------------------------------
+# Refusals
+# --------------------------------------------------------------------------
+
+
+def test_a_nullable_field_cannot_identify_records(client, auth_headers):
+    """Refused at store creation rather than partway through a generation
+    call that has already stored some records."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    field_id = _field(
+        client,
+        auth_headers,
+        project_id,
+        entity_id,
+        "maybe_id",
+        required=False,
+        nullable=True,
+    )
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores",
+        json={"name": "default", "identity_field_id": field_id},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert "nullable" in response.json()["detail"].lower()
+
+
+def test_an_identity_field_from_another_entity_is_refused(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    first = _entity(client, auth_headers, project_id, "Customer")
+    second = _entity(client, auth_headers, project_id, "Order")
+    other_field = _field(client, auth_headers, project_id, second, "order_id")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/entities/{first}/record-stores",
+        json={"name": "default", "identity_field_id": other_field},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+
+
+def test_two_stores_cannot_share_a_name_on_one_entity(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    _store(client, auth_headers, project_id, entity_id, identity, name="nightly")
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores",
+        json={"name": "nightly", "identity_field_id": identity},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+
+
+def test_an_exhausted_identity_space_fails_loudly(client, auth_headers):
+    """An enum identity with three values cannot supply a fourth distinct
+    record. Better a clear error than a silent short batch or an infinite
+    retry loop."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Region")
+    identity = _field(
+        client,
+        auth_headers,
+        project_id,
+        entity_id,
+        "region",
+        field_type="enum",
+        enum_values=["north", "south", "east"],
+    )
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/generate",
+        json={"count": 10},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert "distinct values" in response.json()["detail"]
+
+    # And the failed call left nothing behind — a partially-filled store
+    # would be worse than none, since the caller cannot tell how far it got.
+    stats = client.get(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}",
+        headers=auth_headers,
+    ).json()
+    assert stats["active_records"] == 0
+    assert stats["position"] == 0
+
+
+def test_a_store_on_another_users_project_is_not_reachable(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    client.post(
+        "/api/v1/auth/signup",
+        json={"email": "intruder@example.com", "password": "testpassword123"},
+    )
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "intruder@example.com", "password": "testpassword123"},
+    ).json()["access_token"]
+    intruder = {"Authorization": f"Bearer {token}"}
+
+    response = client.get(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}",
+        headers=intruder,
+    )
+    assert response.status_code == 404
+
+
+def test_deleting_a_store_takes_its_records_with_it(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+    _generate(client, auth_headers, project_id, entity_id, store_id, 3)
+
+    deleted = client.delete(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}",
+        headers=auth_headers,
+    )
+    assert deleted.status_code == 204
+
+    listed = client.get(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores",
+        headers=auth_headers,
+    ).json()
+    assert listed == []

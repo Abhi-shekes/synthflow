@@ -394,6 +394,8 @@ def iter_rows(
     relationship_lookup: dict[str, dict[Any, dict[str, Any]]] | None = None,
     relationship_entity_name: dict[str, str] | None = None,
     diagnostics: GenerationDiagnostics | None = None,
+    start_position: int = 0,
+    trend_state: dict[str, dict] | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield `count` rows for `fields`, one at a time.
 
@@ -474,7 +476,14 @@ def iter_rows(
     event_triggers = event_triggers or []
     workflows_by_field = {w.field.name: w for w in (workflows or [])}
     trends_by_field = {t.field.name: t for t in (trends or [])}
-    trend_state: dict[str, dict] = {name: {} for name in trends_by_field}
+    # Seeded from the caller when one is passed, and mutated in place, so a
+    # `random_walk` continues from where the last call left it rather than
+    # springing back to `start`. Callers that pass nothing get the old
+    # behaviour exactly: a fresh dict per call.
+    if trend_state is None:
+        trend_state = {}
+    for name in trends_by_field:
+        trend_state.setdefault(name, {})
     error_injections_by_field = {ei.field.name: ei for ei in (error_injections or [])}
     geo_routes_by_field = {g.field.name: g for g in (geo_routes or [])}
     relationship_lookup = relationship_lookup or {}
@@ -494,7 +503,8 @@ def iter_rows(
 
     previous_row: dict[str, Any] | None = None
     injected: set[str] = set()
-    for position in range(count):
+    for offset in range(count):
+        position = start_position + offset
         row = None
         cross_entity_context: dict[str, dict[str, Any]] = {}
         for _attempt in range(MAX_RULE_ATTEMPTS if rules else 1):

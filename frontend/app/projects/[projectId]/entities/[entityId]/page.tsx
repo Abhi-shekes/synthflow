@@ -15,6 +15,7 @@ import { AddTrendDialog } from "@/components/add-trend-dialog";
 import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
 import { AppShell } from "@/components/app-shell";
 import { QualityReportDialog } from "@/components/quality-report-dialog";
+import { RecordStoresCard } from "@/components/record-stores-card";
 import { StreamPreview } from "@/components/stream-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1009,6 +1010,8 @@ export default function EntityDetailPage() {
             )}
           </CardContent>
         </Card>
+
+        {entity && <RecordStoresCard projectId={projectId} entity={entity} />}
 
         <Card>
           <CardHeader>

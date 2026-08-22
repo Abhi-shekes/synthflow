@@ -32,11 +32,21 @@ def generate_geo_point(
     count-1 the last, regardless of how many waypoints the route actually
     has — a 5-waypoint route sampled into 200 rows produces 200 smoothly
     interpolated points along that polyline). A single-waypoint route
-    returns that point for every row."""
+    returns that point for every row.
+
+    A position past the end of the batch **wraps**, so the vehicle drives
+    the route again rather than parking at the last waypoint. That only
+    happens under Phase 13 continuity (`iter_rows(start_position=...)`),
+    where the position keeps climbing across calls; within a single batch
+    position never reaches `count`, so the modulo is a no-op and existing
+    behaviour is unchanged. Clamping instead would have frozen every vehicle
+    on its destination from the second tick onward, which is not what "a
+    vehicle pinging its position along a fixed route" looks like over time.
+    """
     if len(rows) == 1:
         return {"lat": rows[0][lat_column], "lon": rows[0][lon_column]}
 
-    fraction = position / max(count - 1, 1)
+    fraction = (position % count if count else 0) / max(count - 1, 1)
     fraction = min(max(fraction, 0.0), 1.0)
     segment_progress = fraction * (len(rows) - 1)
     segment_index = min(int(segment_progress), len(rows) - 2)

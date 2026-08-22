@@ -792,3 +792,42 @@ export interface ProfileSourceRequest {
   connection_id?: string;
   tables?: string[];
 }
+
+/** Phase 13 — a population of records for one entity that survives between
+ * generation calls. `position` is the cursor trends and geo routes read, so
+ * a curve continues across calls instead of replaying from its start. */
+export interface RecordStore {
+  id: string;
+  entity_id: string;
+  name: string;
+  identity_field_id: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecordStoreStats extends RecordStore {
+  active_records: number;
+  deleted_records: number;
+}
+
+export interface StoredRecord {
+  id: string;
+  identity: string;
+  data: Record<string, unknown>;
+  version: number;
+  status: "active" | "deleted";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecordStoreCreateInput {
+  name: string;
+  identity_field_id: string;
+}
+
+export interface GenerateIntoStoreResponse {
+  rows: Record<string, unknown>[];
+  position: number;
+  total_active: number;
+}

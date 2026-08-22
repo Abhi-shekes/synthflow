@@ -1,3 +1,4 @@
+from app.models.continuity import RecordStatus, RecordStore, StoredRecord
 from app.models.database_connection import DatabaseConnection
 from app.models.entity import Entity
 from app.models.error_injection import ErrorInjection
@@ -25,6 +26,9 @@ from app.models.workflow import Workflow
 
 __all__ = [
     "User",
+    "RecordStore",
+    "StoredRecord",
+    "RecordStatus",
     "Project",
     "Entity",
     "EntityField",

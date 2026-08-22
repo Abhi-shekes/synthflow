@@ -53,6 +53,11 @@ import type {
   WebhookOutput,
   WebhookOutputCreateInput,
   ProfileSourceRequest,
+  RecordStore,
+  RecordStoreStats,
+  RecordStoreCreateInput,
+  StoredRecord,
+  GenerateIntoStoreResponse,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -919,6 +924,77 @@ export const api = {
   deleteStorageTarget: (token: string, projectId: string, targetId: string) =>
     request<void>(
       `/api/v1/projects/${projectId}/storage-targets/${targetId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  // Phase 13 — record stores. A store is scoped to an entity and named, so
+  // two consumers of one schema keep independent populations.
+  listRecordStores: (token: string, projectId: string, entityId: string) =>
+    request<RecordStore[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores`,
+      {},
+      token
+    ),
+
+  createRecordStore: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    input: RecordStoreCreateInput
+  ) =>
+    request<RecordStore>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    ),
+
+  getRecordStore: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    storeId: string
+  ) =>
+    request<RecordStoreStats>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}`,
+      {},
+      token
+    ),
+
+  listStoredRecords: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    storeId: string,
+    limit = 50
+  ) =>
+    request<StoredRecord[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}/records?limit=${limit}`,
+      {},
+      token
+    ),
+
+  generateIntoStore: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    storeId: string,
+    count: number
+  ) =>
+    request<GenerateIntoStoreResponse>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}/generate`,
+      { method: "POST", body: JSON.stringify({ count }) },
+      token
+    ),
+
+  deleteRecordStore: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    storeId: string
+  ) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}`,
       { method: "DELETE" },
       token
     ),
