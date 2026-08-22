@@ -735,3 +735,47 @@ export interface ObjectStorageTestResult {
   ok: boolean;
   detail: string;
 }
+
+/** Phase 12 — publishes to a RabbitMQ exchange. `password` is write-only. */
+export interface RabbitMQOutput {
+  id: string;
+  entity_id: string;
+  host: string;
+  port: number;
+  vhost: string;
+  username: string;
+  exchange: string;
+  routing_key: string;
+  events_per_second: number;
+  batch_size: number;
+  created_at: string;
+}
+
+export interface RabbitMQOutputCreateInput {
+  host: string;
+  port?: number;
+  vhost?: string;
+  username?: string;
+  password?: string;
+  exchange?: string;
+  routing_key: string;
+  events_per_second?: number;
+  batch_size?: number;
+}
+
+/** Phase 12 — POSTs signed batches to a URL. `secret` is write-only. */
+export interface WebhookOutput {
+  id: string;
+  entity_id: string;
+  url: string;
+  events_per_second: number;
+  batch_size: number;
+  created_at: string;
+}
+
+export interface WebhookOutputCreateInput {
+  url: string;
+  secret: string;
+  events_per_second?: number;
+  batch_size?: number;
+}

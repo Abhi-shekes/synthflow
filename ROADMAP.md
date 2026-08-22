@@ -1240,7 +1240,22 @@ Goal: read from and write to the systems people actually run.
       another branch inside the progress-and-cancellation loop. pyarrow is
       157 MB installed, which is exactly why it is an optional extra.
 - [ ] Warehouses: ClickHouse, Snowflake, BigQuery
-- [ ] RabbitMQ, and a generic signed-webhook output
+- [x] RabbitMQ, and a generic signed-webhook output. RabbitMQ is a third
+      broker of the same shape as Kafka and MQTT, with separate credential
+      columns rather than one `amqp://` URL so the password alone can be
+      encrypted and omitted from the read API. The webhook is the opposite
+      direction from `RestOutput`: it pushes, so the receiver cannot rely
+      on a secret URL to know a request is genuine — hence an HMAC-SHA256
+      signature over `timestamp.body`, with the timestamp *inside* the
+      signed value so a captured request cannot be replayed with a fresh
+      one. It needs no optional extra at all; `hmac` and `urllib` are
+      stdlib, making it the only streaming output that works in the
+      smallest possible install.
+      Live testing surfaced a genuine silent failure: RabbitMQ accepts and
+      **discards** messages published to the default exchange when no queue
+      of that routing key exists, so a misconfigured output reports success
+      and delivers nothing. The producer now checks on a throwaway channel
+      and logs exactly that, rather than leaving a user with no signal.
 - [ ] Matching *input* connectors for Phases 7 and 9, so profiling and schema
       import can read from the same places generation writes to
 

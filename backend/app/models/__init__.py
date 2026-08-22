@@ -12,12 +12,14 @@ from app.models.mqtt_output import MQTTOutput
 from app.models.object_storage import ObjectStorageTarget, StorageProvider
 from app.models.plugin_output import PluginOutput
 from app.models.project import Project
+from app.models.rabbitmq_output import RabbitMQOutput
 from app.models.relationship import Relationship
 from app.models.rest_output import RestOutput
 from app.models.rule import Rule
 from app.models.timeline_replay import TimelineReplay
 from app.models.trend import Trend
 from app.models.user import User
+from app.models.webhook_output import WebhookOutput
 from app.models.websocket_stream import WebSocketStream
 from app.models.workflow import Workflow
 
@@ -28,6 +30,7 @@ __all__ = [
     "EntityField",
     "Relationship",
     "Rule",
+    "WebhookOutput",
     "Workflow",
     "DatabaseConnection",
     "RestOutput",
@@ -43,6 +46,7 @@ __all__ = [
     "MQTTOutput",
     "ObjectStorageTarget",
     "PluginOutput",
+    "RabbitMQOutput",
     "StorageProvider",
     "GenerationJob",
     "Schedule",

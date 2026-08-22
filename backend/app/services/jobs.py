@@ -367,16 +367,28 @@ def _producers_to_resume() -> dict[str, list]:
     from app.models.kafka_output import KafkaOutput
     from app.models.mqtt_output import MQTTOutput
     from app.models.plugin_output import PluginOutput
+    from app.models.rabbitmq_output import RabbitMQOutput
+    from app.models.webhook_output import WebhookOutput
     from app.services import install
     from app.services.plugins import available_output_plugins
 
-    found: dict[str, list] = {"kafka": [], "mqtt": [], "plugin": []}
+    found: dict[str, list] = {
+        "kafka": [],
+        "mqtt": [],
+        "rabbitmq": [],
+        "webhook": [],
+        "plugin": [],
+    }
     db = db_session.SessionLocal()
     try:
         if install.is_available("kafka"):
             found["kafka"] = db.query(KafkaOutput).all()
         if install.is_available("mqtt"):
             found["mqtt"] = db.query(MQTTOutput).all()
+        if install.is_available("rabbitmq"):
+            found["rabbitmq"] = db.query(RabbitMQOutput).all()
+        # No availability check: a signed webhook needs only stdlib.
+        found["webhook"] = db.query(WebhookOutput).all()
 
         installed = available_output_plugins()
         for output in db.query(PluginOutput).all():
@@ -409,17 +421,28 @@ async def resume_producers() -> dict[str, int]:
     import asyncio
 
     from app.services.plugin_output_producers import start_plugin_output
-    from app.services.stream_producers import start_kafka_producer, start_mqtt_producer
+    from app.services.stream_producers import (
+        start_kafka_producer,
+        start_mqtt_producer,
+        start_rabbitmq_producer,
+        start_webhook_producer,
+    )
 
     found = await asyncio.to_thread(_producers_to_resume)
 
-    started = {"kafka": 0, "mqtt": 0, "plugin": 0}
+    started = {"kafka": 0, "mqtt": 0, "rabbitmq": 0, "webhook": 0, "plugin": 0}
     for output in found["kafka"]:
         start_kafka_producer(output)
         started["kafka"] += 1
     for output in found["mqtt"]:
         start_mqtt_producer(output)
         started["mqtt"] += 1
+    for output in found["rabbitmq"]:
+        start_rabbitmq_producer(output)
+        started["rabbitmq"] += 1
+    for output in found["webhook"]:
+        start_webhook_producer(output)
+        started["webhook"] += 1
     for output in found["plugin"]:
         start_plugin_output(output)
         started["plugin"] += 1

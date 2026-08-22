@@ -132,6 +132,25 @@ services:
       retries: 20
     profiles: ["mongo"]
 
+  # A RabbitMQ broker to publish into. Management UI on 15673 so you can
+  # watch messages arrive.
+  #   docker compose --profile rabbitmq up
+  rabbitmq:
+    container_name: synthflow-rabbitmq
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: synthflow
+      RABBITMQ_DEFAULT_PASS: synthflow
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+    profiles: ["rabbitmq"]
+
   # An S3-compatible server to push job artifacts into, so the object
   # storage connector can be exercised without an AWS account. MinIO speaks
   # the same API as S3, R2, Spaces and B2 — which is the whole reason the

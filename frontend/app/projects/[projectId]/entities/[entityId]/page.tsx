@@ -383,6 +383,81 @@ export default function EntityDetailPage() {
     onError: (error: Error) => toast.error(error.message || "Could not delete MQTT output"),
   });
 
+  const rabbitOutputsQuery = useQuery({
+    queryKey: ["rabbitmq-outputs", projectId, entityId],
+    queryFn: () => api.listRabbitMQOutputs(accessToken!, projectId, entityId),
+    enabled: !!accessToken,
+  });
+
+  const [rabbitHost, setRabbitHost] = useState("");
+  const [rabbitPort, setRabbitPort] = useState(5672);
+  const [rabbitUser, setRabbitUser] = useState("guest");
+  const [rabbitPassword, setRabbitPassword] = useState("guest");
+  const [rabbitExchange, setRabbitExchange] = useState("");
+  const [rabbitRoutingKey, setRabbitRoutingKey] = useState("");
+  const [rabbitEventsPerSecond, setRabbitEventsPerSecond] = useState(2);
+
+  const addRabbitOutput = useMutation({
+    mutationFn: () =>
+      api.createRabbitMQOutput(accessToken!, projectId, entityId, {
+        host: rabbitHost,
+        port: rabbitPort,
+        username: rabbitUser,
+        password: rabbitPassword,
+        exchange: rabbitExchange,
+        routing_key: rabbitRoutingKey,
+        events_per_second: rabbitEventsPerSecond,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["rabbitmq-outputs", projectId, entityId] });
+      setRabbitRoutingKey("");
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not create RabbitMQ output"),
+  });
+
+  const deleteRabbitOutput = useMutation({
+    mutationFn: (outputId: string) =>
+      api.deleteRabbitMQOutput(accessToken!, projectId, entityId, outputId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["rabbitmq-outputs", projectId, entityId] }),
+    onError: (error: Error) => toast.error(error.message || "Could not delete RabbitMQ output"),
+  });
+
+  const webhookOutputsQuery = useQuery({
+    queryKey: ["webhook-outputs", projectId, entityId],
+    queryFn: () => api.listWebhookOutputs(accessToken!, projectId, entityId),
+    enabled: !!accessToken,
+  });
+
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [webhookEventsPerSecond, setWebhookEventsPerSecond] = useState(1);
+  const [webhookBatchSize, setWebhookBatchSize] = useState(1);
+
+  const addWebhookOutput = useMutation({
+    mutationFn: () =>
+      api.createWebhookOutput(accessToken!, projectId, entityId, {
+        url: webhookUrl,
+        secret: webhookSecret,
+        events_per_second: webhookEventsPerSecond,
+        batch_size: webhookBatchSize,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["webhook-outputs", projectId, entityId] });
+      setWebhookUrl("");
+      setWebhookSecret("");
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not create webhook output"),
+  });
+
+  const deleteWebhookOutput = useMutation({
+    mutationFn: (outputId: string) =>
+      api.deleteWebhookOutput(accessToken!, projectId, entityId, outputId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["webhook-outputs", projectId, entityId] }),
+    onError: (error: Error) => toast.error(error.message || "Could not delete webhook output"),
+  });
+
   const outputPluginsQuery = useQuery({
     queryKey: ["output-plugins"],
     queryFn: () => api.listOutputPlugins(accessToken!),
@@ -1173,6 +1248,113 @@ export default function EntityDetailPage() {
                         Delete
                       </Button>
                     </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">RabbitMQ output</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              A background producer publishing one JSON message per row to a
+              RabbitMQ exchange. Leave the exchange blank to use the default
+              one, where the routing key is the queue name —{" "}
+              <strong>note that RabbitMQ silently discards messages whose
+              queue does not exist yet</strong>, so declare the queue first
+              or the messages go nowhere.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input placeholder="host" value={rabbitHost}
+                onChange={(e) => setRabbitHost(e.target.value)} className="w-36" />
+              <Input type="number" placeholder="port" value={rabbitPort}
+                onChange={(e) => setRabbitPort(Number(e.target.value))} className="w-24" />
+              <Input placeholder="username" value={rabbitUser}
+                onChange={(e) => setRabbitUser(e.target.value)} className="w-32" />
+              <Input type="password" placeholder="password" value={rabbitPassword}
+                onChange={(e) => setRabbitPassword(e.target.value)} className="w-32" />
+              <Input placeholder="exchange (blank = default)" value={rabbitExchange}
+                onChange={(e) => setRabbitExchange(e.target.value)} className="w-48" />
+              <Input placeholder="routing key / queue" value={rabbitRoutingKey}
+                onChange={(e) => setRabbitRoutingKey(e.target.value)} className="w-44" />
+              <Input type="number" placeholder="events/sec" value={rabbitEventsPerSecond}
+                onChange={(e) => setRabbitEventsPerSecond(Number(e.target.value))} className="w-28" />
+              <Button onClick={() => addRabbitOutput.mutate()}
+                disabled={addRabbitOutput.isPending || !rabbitHost || !rabbitRoutingKey}>
+                {addRabbitOutput.isPending ? "Creating…" : "Create output"}
+              </Button>
+            </div>
+            {rabbitOutputsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No RabbitMQ outputs yet.</p>
+            )}
+            {rabbitOutputsQuery.data && rabbitOutputsQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {rabbitOutputsQuery.data.map((output) => (
+                  <li key={output.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                    <span className="font-mono text-xs">
+                      {output.host}:{output.port} {output.exchange || "(default)"} →{" "}
+                      {output.routing_key} @ {output.events_per_second}/s
+                    </span>
+                    <Button variant="ghost" size="sm"
+                      onClick={() => deleteRabbitOutput.mutate(output.id)}>
+                      Delete
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Signed webhook output</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              POSTs a batch of rows to your URL on every tick. Each request
+              carries an <code className="font-mono">X-SynthFlow-Signature</code>{" "}
+              header — an HMAC-SHA256 of the timestamp and the exact body,
+              using the secret below — so the receiver can prove the request
+              came from you rather than trusting a URL nobody else is meant
+              to know. The timestamp is inside the signed value, so a captured
+              request cannot be replayed later.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input placeholder="https://example.com/hook" value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)} className="w-72" />
+              <Input type="password" placeholder="shared secret" value={webhookSecret}
+                onChange={(e) => setWebhookSecret(e.target.value)} className="w-44" />
+              <Input type="number" placeholder="events/sec" value={webhookEventsPerSecond}
+                onChange={(e) => setWebhookEventsPerSecond(Number(e.target.value))} className="w-28" />
+              <Input type="number" placeholder="rows/request" value={webhookBatchSize}
+                onChange={(e) => setWebhookBatchSize(Number(e.target.value))} className="w-28" />
+              <Button onClick={() => addWebhookOutput.mutate()}
+                disabled={addWebhookOutput.isPending || !webhookUrl || !webhookSecret}>
+                {addWebhookOutput.isPending ? "Creating…" : "Create webhook"}
+              </Button>
+            </div>
+            {webhookOutputsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No webhooks yet.</p>
+            )}
+            {webhookOutputsQuery.data && webhookOutputsQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {webhookOutputsQuery.data.map((output) => (
+                  <li key={output.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                    <span className="font-mono text-xs">
+                      POST {output.url} — {output.batch_size} row(s) @{" "}
+                      {output.events_per_second}/s
+                    </span>
+                    <Button variant="ghost" size="sm"
+                      onClick={() => deleteWebhookOutput.mutate(output.id)}>
+                      Delete
+                    </Button>
                   </li>
                 ))}
               </ul>

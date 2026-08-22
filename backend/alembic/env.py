@@ -20,6 +20,7 @@ from app.models import (  # noqa: F401
     ObjectStorageTarget,
     PluginOutput,
     Project,
+    RabbitMQOutput,
     Relationship,
     RestOutput,
     Rule,
@@ -27,6 +28,7 @@ from app.models import (  # noqa: F401
     TimelineReplay,
     Trend,
     User,
+    WebhookOutput,
     WebSocketStream,
     Workflow,
 )

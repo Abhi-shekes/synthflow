@@ -49,6 +49,7 @@ parquet = ["pyarrow>=18.0"]
 avro = ["fastavro>=1.9"]
 # One client for every S3-compatible service (AWS, MinIO, R2, Spaces, B2).
 s3 = ["boto3>=1.35"]
+rabbitmq = ["aio-pika>=9.4"]
 # Everything, for a batteries-included install or local development.
 all = [
     "aiokafka>=0.11",
@@ -58,6 +59,7 @@ all = [
     "pyarrow>=18.0",
     "fastavro>=1.9",
     "boto3>=1.35",
+    "aio-pika>=9.4",
 ]
 dev = [
     "pytest>=8.3",

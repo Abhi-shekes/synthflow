@@ -192,9 +192,16 @@ def test_init_is_idempotent(tmp_path):
 
 
 def test_init_rejects_an_unknown_service(tmp_path):
+    """The name here has to be one that can never become real. This test
+    previously used "rabbitmq" as its example of something unknown, and
+    started failing the moment RabbitMQ shipped — the third time a literal
+    about the registry has broken for a reason that says nothing about the
+    behaviour under test."""
     _env(tmp_path)
+    unknown = "definitely-not-a-service"
+    assert unknown not in {option.key for option in OPTIONS}
     with pytest.raises(SystemExit):
-        init(["--services", "rabbitmq", "--yes", "--path", str(tmp_path)])
+        init(["--services", unknown, "--yes", "--path", str(tmp_path)])
 
 
 def test_init_rejects_conflicting_selection_flags(tmp_path):

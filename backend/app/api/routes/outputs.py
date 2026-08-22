@@ -13,16 +13,28 @@ from app.models.entity import Entity
 from app.models.kafka_output import KafkaOutput
 from app.models.mqtt_output import MQTTOutput
 from app.models.plugin_output import PluginOutput
+from app.models.rabbitmq_output import RabbitMQOutput
 from app.models.rest_output import RestOutput
 from app.models.timeline_replay import TimelineReplay
 from app.models.user import User
+from app.models.webhook_output import WebhookOutput
 from app.models.websocket_stream import WebSocketStream
 
 router = APIRouter(prefix="/projects/{project_id}/outputs", tags=["outputs"])
 
 
 class OutputSummary(BaseModel):
-    type: Literal["database", "rest", "websocket", "timeline_replay", "kafka", "mqtt", "plugin"]
+    type: Literal[
+        "database",
+        "rest",
+        "websocket",
+        "timeline_replay",
+        "kafka",
+        "mqtt",
+        "rabbitmq",
+        "webhook",
+        "plugin",
+    ]
     id: uuid.UUID
     detail: str
 
@@ -125,6 +137,40 @@ def list_outputs(
                 type="mqtt",
                 id=output.id,
                 detail=f"{output.entity.name}: {broker}/{output.topic}",
+            )
+        )
+
+    rabbitmq_outputs = (
+        db.query(RabbitMQOutput)
+        .join(Entity, RabbitMQOutput.entity_id == Entity.id)
+        .filter(Entity.project_id == project_id)
+        .all()
+    )
+    for output in rabbitmq_outputs:
+        broker = f"{output.host}:{output.port}"
+        # An empty exchange is RabbitMQ's default one, where the routing
+        # key is the queue name — say so rather than showing a blank.
+        exchange = output.exchange or "(default)"
+        summaries.append(
+            OutputSummary(
+                type="rabbitmq",
+                id=output.id,
+                detail=f"{output.entity.name}: {broker} {exchange} -> {output.routing_key}",
+            )
+        )
+
+    webhook_outputs = (
+        db.query(WebhookOutput)
+        .join(Entity, WebhookOutput.entity_id == Entity.id)
+        .filter(Entity.project_id == project_id)
+        .all()
+    )
+    for output in webhook_outputs:
+        summaries.append(
+            OutputSummary(
+                type="webhook",
+                id=output.id,
+                detail=f"{output.entity.name}: POST {output.url}",
             )
         )
 

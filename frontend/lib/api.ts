@@ -48,6 +48,10 @@ import type {
   ObjectStorageTarget,
   ObjectStorageTargetCreateInput,
   ObjectStorageTestResult,
+  RabbitMQOutput,
+  RabbitMQOutputCreateInput,
+  WebhookOutput,
+  WebhookOutputCreateInput,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -809,6 +813,68 @@ export const api = {
     if (projectName) form.append("project_name", projectName);
     return requestUpload<ProfileResponse>("/api/v1/profile", form, token);
   },
+
+  listRabbitMQOutputs: (token: string, projectId: string, entityId: string) =>
+    request<RabbitMQOutput[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/rabbitmq-outputs`,
+      {},
+      token
+    ),
+
+  createRabbitMQOutput: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    input: RabbitMQOutputCreateInput
+  ) =>
+    request<RabbitMQOutput>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/rabbitmq-outputs`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    ),
+
+  deleteRabbitMQOutput: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    outputId: string
+  ) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/rabbitmq-outputs/${outputId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  listWebhookOutputs: (token: string, projectId: string, entityId: string) =>
+    request<WebhookOutput[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/webhook-outputs`,
+      {},
+      token
+    ),
+
+  createWebhookOutput: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    input: WebhookOutputCreateInput
+  ) =>
+    request<WebhookOutput>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/webhook-outputs`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    ),
+
+  deleteWebhookOutput: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    outputId: string
+  ) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/webhook-outputs/${outputId}`,
+      { method: "DELETE" },
+      token
+    ),
 
   listStorageTargets: (token: string, projectId: string) =>
     request<ObjectStorageTarget[]>(

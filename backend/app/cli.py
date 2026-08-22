@@ -125,6 +125,13 @@ OPTIONS: tuple[Option, ...] = (
         extra="avro",
     ),
     Option(
+        key="rabbitmq",
+        label="RabbitMQ output",
+        detail="Installs aio-pika and adds a RabbitMQ broker to publish into.",
+        profile="rabbitmq",
+        extra="rabbitmq",
+    ),
+    Option(
         key="s3",
         label="Object storage upload",
         detail=(

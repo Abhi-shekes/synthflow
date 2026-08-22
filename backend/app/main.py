@@ -28,6 +28,7 @@ from app.api.routes import (
     plugin_outputs,
     profiling,
     projects,
+    rabbitmq_outputs,
     relationships,
     rest_outputs,
     rule_functions,
@@ -37,6 +38,7 @@ from app.api.routes import (
     templates,
     timeline_replays,
     trends,
+    webhook_outputs,
     websocket_streams,
     workflows,
 )
@@ -145,6 +147,8 @@ app.include_router(lookup_attachments.router, prefix=settings.API_V1_PREFIX)
 app.include_router(geo_routes.router, prefix=settings.API_V1_PREFIX)
 app.include_router(database_connections.router, prefix=settings.API_V1_PREFIX)
 app.include_router(object_storage.router, prefix=settings.API_V1_PREFIX)
+app.include_router(rabbitmq_outputs.router, prefix=settings.API_V1_PREFIX)
+app.include_router(webhook_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rest_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(websocket_streams.router, prefix=settings.API_V1_PREFIX)
 app.include_router(timeline_replays.router, prefix=settings.API_V1_PREFIX)

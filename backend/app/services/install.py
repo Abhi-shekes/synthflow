@@ -83,6 +83,13 @@ FEATURES: tuple[Feature, ...] = (
         description="Write generation jobs as Avro files.",
     ),
     Feature(
+        key="rabbitmq",
+        module="aio_pika",
+        extra="rabbitmq",
+        label="RabbitMQ output",
+        description="Publish generated rows to a RabbitMQ exchange.",
+    ),
+    Feature(
         key="s3",
         module="boto3",
         extra="s3",
