@@ -39,7 +39,16 @@ services:
     ports:
       - "8001:8000"
     volumes:
+      # The source is bind-mounted and uvicorn runs with --reload (see the
+      # Dockerfile's CMD), so editing a .py file on the host restarts the
+      # app in place. A rebuild is only needed when *dependencies* change:
+      # pyproject.toml, or SYNTHFLOW_EXTRAS, both of which are baked at
+      # build time.
       - ./backend:/app
+      # Keeps the image's installed packages from being hidden if a .venv
+      # ever appears on the host. Dependencies live in the image, not in a
+      # directory the mount could shadow.
+      - /app/.venv
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,10 +58,24 @@ services:
     build: ./frontend
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8001
+      # `next dev` watches through inotify, which works over a bind mount on
+      # Linux. On filesystems where it does not propagate — Docker Desktop's
+      # osxfs/gRPC-FUSE, NFS, some Windows setups — set WATCHPACK_POLLING=true
+      # in .env to fall back to polling. Off by default because polling wakes
+      # the CPU on every interval whether anything changed or not.
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING:-false}
+      CHOKIDAR_USEPOLLING: ${WATCHPACK_POLLING:-false}
     ports:
       - "3000:3000"
     volumes:
+      # Source is bind-mounted and the container runs `next dev`, so a saved
+      # .tsx file is live in the browser in about a second — no rebuild. A
+      # rebuild is needed only when package.json changes.
       - ./frontend:/app
+      # Anonymous volumes, so the container keeps its own. `node_modules` is
+      # installed inside the image from the lockfile and may contain
+      # platform-specific binaries the host's copy does not; `.next` is build
+      # output that must not be shared with a host-side `next build`.
       - /app/node_modules
       - /app/.next
     depends_on:

@@ -1,0 +1,14 @@
+# `node_modules` (593 MB) and `.next` (343 MB) are both rebuilt inside the
+# image — `npm ci` installs the first from the lockfile and `next dev`
+# generates the second — so copying them in only slows the build down, and a
+# host `node_modules` built on a different platform can be actively wrong.
+#
+# Both are also masked by anonymous volumes in docker-compose.yml, so the
+# container's own copies survive the source bind mount.
+node_modules
+.next
+out
+
+.env*.local
+.git
+npm-debug.log*

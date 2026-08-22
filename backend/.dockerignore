@@ -1,0 +1,19 @@
+# The build context is uploaded to the daemon in full before anything runs,
+# so what is excluded here is the difference between a fast rebuild and a
+# slow one. `.venv` alone is 400 MB, and none of it belongs in the image:
+# dependencies are installed inside it from pyproject.toml.
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# A stray local SQLite database. The application uses Postgres in compose;
+# baking a developer's local one into the image would ship their data.
+*.db
+*.sqlite3
+
+.env
+.git
