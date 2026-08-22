@@ -48,6 +48,47 @@ def client():
 
 
 @pytest.fixture()
+def no_background_producers(monkeypatch):
+    """Stop the output routes from launching real producer tasks.
+
+    The hazard is the test database, not the code. conftest binds every
+    session to ONE SQLite in-memory connection via `StaticPool`. A producer
+    loads its batch on a worker thread through its own short-lived session,
+    and that session's `close()` returns the shared connection to the pool
+    — which rolls back whatever transaction is sitting on it. Land that
+    between a DELETE's commit and the next read and the delete is silently
+    undone: a 204, followed by the row still being listed. Production never
+    hits it, because Postgres gives each session its own connection.
+
+    Every route that starts a producer is patched, not just the one that
+    happened to flake first. Four of the five had the same hazard and no
+    protection; `test_create_list_and_delete_mqtt_output` was simply the
+    one whose timing lost the race often enough to be noticed.
+
+    Requested explicitly rather than autouse, because the tests that check
+    a producer *actually delivers* need a real one — and a fixture that
+    silently disabled the thing a test exists to check would be worse than
+    the flake.
+    """
+    from app.api.routes import (
+        kafka_outputs,
+        mqtt_outputs,
+        plugin_outputs,
+        rabbitmq_outputs,
+        webhook_outputs,
+    )
+
+    for module, name in (
+        (mqtt_outputs, "start_mqtt_producer"),
+        (kafka_outputs, "start_kafka_producer"),
+        (rabbitmq_outputs, "start_rabbitmq_producer"),
+        (webhook_outputs, "start_webhook_producer"),
+        (plugin_outputs, "start_plugin_output"),
+    ):
+        monkeypatch.setattr(module, name, lambda output: None)
+
+
+@pytest.fixture()
 def auth_headers(client):
     client.post("/api/v1/auth/signup", json={"email": "user@example.com", "password": "hunter22"})
     resp = client.post(

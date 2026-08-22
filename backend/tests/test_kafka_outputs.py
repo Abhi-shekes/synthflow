@@ -36,7 +36,7 @@ def _create_entity_with_field(client, headers, project_id, name="Reading"):
 
 
 @requires_kafka
-def test_create_list_and_delete_kafka_output(client, auth_headers):
+def test_create_list_and_delete_kafka_output(client, auth_headers, no_background_producers):
     project_id = _create_project(client, auth_headers)
     entity_id = _create_entity_with_field(client, auth_headers, project_id)
     base = f"/api/v1/projects/{project_id}/entities/{entity_id}/kafka-outputs"
@@ -77,7 +77,7 @@ def test_kafka_output_requires_fields(client, auth_headers):
 
 
 @requires_kafka
-def test_kafka_output_appears_in_outputs_aggregate(client, auth_headers):
+def test_kafka_output_appears_in_outputs_aggregate(client, auth_headers, no_background_producers):
     project_id = _create_project(client, auth_headers)
     entity_id = _create_entity_with_field(client, auth_headers, project_id)
     base = f"/api/v1/projects/{project_id}/entities/{entity_id}/kafka-outputs"
