@@ -58,6 +58,9 @@ import type {
   RecordStoreCreateInput,
   StoredRecord,
   GenerateIntoStoreResponse,
+  ChangeEvent,
+  ApplyChangesInput,
+  ApplyChangesResponse,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -984,6 +987,33 @@ export const api = {
     request<GenerateIntoStoreResponse>(
       `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}/generate`,
       { method: "POST", body: JSON.stringify({ count }) },
+      token
+    ),
+
+  applyChanges: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    storeId: string,
+    input: ApplyChangesInput
+  ) =>
+    request<ApplyChangesResponse>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}/changes`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    ),
+
+  readChanges: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    storeId: string,
+    after = -1,
+    limit = 100
+  ) =>
+    request<ChangeEvent[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}/changes?after=${after}&limit=${limit}`,
+      {},
       token
     ),
 

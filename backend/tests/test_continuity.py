@@ -434,3 +434,251 @@ def test_deleting_a_store_takes_its_records_with_it(client, auth_headers):
         headers=auth_headers,
     ).json()
     assert listed == []
+
+
+# --------------------------------------------------------------------------
+# Change data capture
+# --------------------------------------------------------------------------
+
+
+def _changes(client, headers, project_id, entity_id, store_id, **counts):
+    response = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/changes",
+        json=counts,
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_tick_produces_inserts_updates_and_deletes_in_order(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    _field(client, auth_headers, project_id, entity_id, "city", field_type="string")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 10)
+    tick = _changes(
+        client, auth_headers, project_id, entity_id, store_id, inserts=2, updates=3, deletes=1
+    )
+
+    operations = [e["operation"] for e in tick["events"]]
+    # Inserts are logged by the generate step and are not in this call's
+    # returned events; updates and deletes are, in that order.
+    assert operations == ["update"] * 3 + ["delete"]
+    assert tick["total_active"] == 11  # 10 + 2 inserted - 1 deleted
+
+    log = client.get(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/changes"
+        "?limit=1000",
+        headers=auth_headers,
+    ).json()
+    assert [e["sequence"] for e in log] == list(range(len(log)))
+    assert [e["operation"] for e in log[:10]] == ["insert"] * 10
+
+
+def test_an_update_carries_the_row_before_and_after(client, auth_headers):
+    """A consumer must be able to tell which columns actually moved without
+    diffing against state it may not hold — the shape Debezium produces."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    _field(client, auth_headers, project_id, entity_id, "city", field_type="string")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 5)
+    tick = _changes(client, auth_headers, project_id, entity_id, store_id, updates=5)
+
+    for event in tick["events"]:
+        assert event["before"] is not None
+        assert event["after"] is not None
+        # The identity never moves — an update that changed it would be a
+        # delete and an unrelated insert wearing one event's clothing.
+        assert event["before"]["customer_id"] == event["after"]["customer_id"]
+        assert str(event["after"]["customer_id"]) == event["identity"]
+        assert event["version"] == 2
+
+
+def test_a_delete_carries_the_row_it_removed_and_leaves_a_tombstone(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 4)
+    tick = _changes(client, auth_headers, project_id, entity_id, store_id, deletes=2)
+
+    for event in tick["events"]:
+        assert event["operation"] == "delete"
+        assert event["before"] is not None
+        assert event["after"] is None
+
+    stats = client.get(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}",
+        headers=auth_headers,
+    ).json()
+    # The rows are still there as tombstones, not gone. A row that has been
+    # removed cannot tell a consumer it was removed.
+    assert stats["active_records"] == 2
+    assert stats["deleted_records"] == 2
+
+
+def test_a_deleted_record_never_receives_another_change(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    _field(client, auth_headers, project_id, entity_id, "city", field_type="string")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 6)
+    first = _changes(client, auth_headers, project_id, entity_id, store_id, deletes=3)
+    gone = {e["identity"] for e in first["events"]}
+
+    # Churn hard enough that a live-population bug would show.
+    for _ in range(3):
+        tick = _changes(client, auth_headers, project_id, entity_id, store_id, updates=3)
+        assert {e["identity"] for e in tick["events"]}.isdisjoint(gone)
+
+
+def test_one_record_is_not_changed_twice_in_a_single_tick(client, auth_headers):
+    """Two events for one record at the same instant would reach a consumer
+    with no way to order them."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    _field(client, auth_headers, project_id, entity_id, "city", field_type="string")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 10)
+    tick = _changes(client, auth_headers, project_id, entity_id, store_id, updates=5, deletes=5)
+
+    touched = [e["identity"] for e in tick["events"]]
+    assert len(touched) == len(set(touched)) == 10
+
+
+def test_a_consumer_resumes_from_its_cursor_without_gaps_or_repeats(client, auth_headers):
+    """The Kafka-offset contract: pass back the last sequence handled."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    _field(client, auth_headers, project_id, entity_id, "city", field_type="string")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 5)
+    _changes(client, auth_headers, project_id, entity_id, store_id, inserts=2, updates=2)
+    _changes(client, auth_headers, project_id, entity_id, store_id, updates=1, deletes=1)
+
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/changes"
+    cursor = -1
+    seen: list[int] = []
+    while True:
+        page = client.get(f"{base}?after={cursor}&limit=3", headers=auth_headers).json()
+        if not page:
+            break
+        seen.extend(e["sequence"] for e in page)
+        cursor = page[-1]["sequence"]
+
+    assert seen == list(range(len(seen)))
+    assert len(seen) == 5 + 2 + 2 + 1 + 1
+
+
+def test_a_workflow_field_advances_rather_than_restarting(client, auth_headers):
+    """The second documented Phase 4 reset, closed. A record that reached
+    'checkout' must not be sent back to 'signed_up' by an update."""
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    stage = _field(client, auth_headers, project_id, entity_id, "stage", field_type="string")
+    states = ["signed_up", "browsing", "cart", "checkout", "purchased"]
+    created = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/workflows",
+        json={
+            "field_id": stage,
+            "states": states,
+            "initial_states": ["signed_up"],
+            "transitions": [
+                {"source": a, "target": b} for a, b in zip(states, states[1:], strict=False)
+            ],
+        },
+        headers=auth_headers,
+    )
+    assert created.status_code == 201, created.text
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 20)
+
+    order = {name: i for i, name in enumerate(states)}
+    # Every update must move a record forward along the chain or leave it
+    # where it is — never backwards.
+    for _ in range(6):
+        tick = _changes(client, auth_headers, project_id, entity_id, store_id, updates=20)
+        for event in tick["events"]:
+            assert order[event["after"]["stage"]] >= order[event["before"]["stage"]]
+
+    records = client.get(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/records"
+        "?limit=100",
+        headers=auth_headers,
+    ).json()
+    reached = {r["data"]["stage"] for r in records}
+    # After six ticks on a five-state chain, the population should have
+    # spread past its initial state. A restarting walk could not do this.
+    assert reached != {"signed_up"}
+
+
+def test_only_the_named_fields_change(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    _field(client, auth_headers, project_id, entity_id, "city", field_type="string")
+    _field(client, auth_headers, project_id, entity_id, "plan", field_type="string")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 8)
+    tick = _changes(
+        client,
+        auth_headers,
+        project_id,
+        entity_id,
+        store_id,
+        updates=8,
+        update_fields=["plan"],
+    )
+
+    for event in tick["events"]:
+        assert event["before"]["city"] == event["after"]["city"]
+
+
+def test_updating_an_unknown_field_is_refused(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+    _generate(client, auth_headers, project_id, entity_id, store_id, 3)
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/changes",
+        json={"updates": 1, "update_fields": ["customer_id"]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert "customer_id" in response.json()["detail"]
+
+
+def test_trimming_the_log_leaves_later_events_readable(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id = _entity(client, auth_headers, project_id, "Customer")
+    identity = _field(client, auth_headers, project_id, entity_id, "customer_id")
+    _field(client, auth_headers, project_id, entity_id, "city", field_type="string")
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 5)
+    _changes(client, auth_headers, project_id, entity_id, store_id, updates=3)
+
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}/changes"
+    trimmed = client.delete(f"{base}?before=5", headers=auth_headers).json()
+    assert trimmed["removed"] == 5
+
+    remaining = client.get(f"{base}?limit=100", headers=auth_headers).json()
+    assert [e["sequence"] for e in remaining] == [5, 6, 7]

@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
-import type { Entity } from "@/lib/types";
+import type { ChangeEvent, Entity } from "@/lib/types";
 
 /**
  * Record stores for one entity.
@@ -41,6 +41,9 @@ export function RecordStoresCard({
   const [name, setName] = useState("default");
   const [identityFieldId, setIdentityFieldId] = useState("");
   const [count, setCount] = useState(10);
+  const [inserts, setInserts] = useState(2);
+  const [updates, setUpdates] = useState(3);
+  const [deletes, setDeletes] = useState(1);
 
   const storesQuery = useQuery({
     queryKey: ["record-stores", projectId, entity.id],
@@ -82,6 +85,21 @@ export function RecordStoresCard({
         `${result.rows.length} added — ${result.total_active} records in the store now`
       ),
     onError: (error: Error) => toast.error(error.message || "Could not generate into that store"),
+  });
+
+  const churn = useMutation({
+    mutationFn: (storeId: string) =>
+      api.applyChanges(accessToken!, projectId, entity.id, storeId, {
+        inserts,
+        updates,
+        deletes,
+      }),
+    onSuccess: (result) =>
+      toast.success(
+        `${result.events.length} change${result.events.length === 1 ? "" : "s"} — ` +
+          `${result.total_active} records active`
+      ),
+    onError: (error: Error) => toast.error(error.message || "Could not apply changes"),
   });
 
   const remove = useMutation({
@@ -159,7 +177,7 @@ export function RecordStoresCard({
           </p>
         ) : (
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Label htmlFor={`store-count-${entity.id}`} className="text-xs">
                 Records per call
               </Label>
@@ -171,6 +189,31 @@ export function RecordStoresCard({
                 value={count}
                 onChange={(e) => setCount(Math.max(1, Number(e.target.value) || 1))}
               />
+              <span className="ml-4 text-xs text-muted-foreground">Per tick of change:</span>
+              {(
+                [
+                  ["insert", inserts, setInserts],
+                  ["update", updates, setUpdates],
+                  ["delete", deletes, setDeletes],
+                ] as const
+              ).map(([label, value, set]) => (
+                <span key={label} className="flex items-center gap-1">
+                  <Label
+                    htmlFor={`store-${label}-${entity.id}`}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {label}
+                  </Label>
+                  <Input
+                    id={`store-${label}-${entity.id}`}
+                    type="number"
+                    min={0}
+                    className="w-16"
+                    value={value}
+                    onChange={(e) => set(Math.max(0, Number(e.target.value) || 0))}
+                  />
+                </span>
+              ))}
             </div>
             {stores.map((store) => (
               <StoreRow
@@ -180,7 +223,9 @@ export function RecordStoresCard({
                 storeId={store.id}
                 storeName={store.name}
                 pending={generate.isPending}
+                churning={churn.isPending}
                 onGenerate={() => generate.mutate(store.id)}
+                onChurn={() => churn.mutate(store.id)}
                 onDelete={() => remove.mutate(store.id)}
               />
             ))}
@@ -191,15 +236,20 @@ export function RecordStoresCard({
   );
 }
 
-/** One store's row, with its own stats query so the counts refresh after a
- * generate without refetching every other store on the page. */
+/** One store's row: what is in it, and what has been happening to it.
+ *
+ * The change log is collapsed by default. It is the most interesting thing
+ * on the card and also the longest — a store driven for a while has more
+ * events than fit next to a control panel. */
 function StoreRow({
   projectId,
   entityId,
   storeId,
   storeName,
   pending,
+  churning,
   onGenerate,
+  onChurn,
   onDelete,
 }: {
   projectId: string;
@@ -207,35 +257,104 @@ function StoreRow({
   storeId: string;
   storeName: string;
   pending: boolean;
+  churning: boolean;
   onGenerate: () => void;
+  onChurn: () => void;
   onDelete: () => void;
 }) {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const [showLog, setShowLog] = useState(false);
+
   const stats = useQuery({
     queryKey: ["record-store", projectId, entityId, storeId],
     queryFn: () => api.getRecordStore(accessToken!, projectId, entityId, storeId),
     enabled: !!accessToken,
-    // The counts change whenever a generate lands, including one triggered
-    // from somewhere other than this page.
+    // The counts change whenever a generate or a tick lands, including one
+    // triggered from somewhere other than this page.
     refetchInterval: 5000,
   });
 
+  const log = useQuery({
+    queryKey: ["record-store-changes", projectId, entityId, storeId],
+    queryFn: () => api.readChanges(accessToken!, projectId, entityId, storeId, -1, 200),
+    enabled: !!accessToken && showLog,
+    refetchInterval: showLog ? 5000 : false,
+  });
+
+  // Newest first: the last thing that happened is what someone watching a
+  // stream wants to see, and scrolling to the bottom of a growing log to
+  // find it is the wrong way round.
+  const events = [...(log.data ?? [])].reverse();
+
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
-      <span className="font-medium">{storeName}</span>
-      <span className="text-muted-foreground">
-        {stats.data
-          ? `${stats.data.active_records} records · position ${stats.data.position}`
-          : "…"}
-      </span>
-      <div className="ml-auto flex gap-2">
-        <Button size="sm" variant="outline" onClick={onGenerate} disabled={pending}>
-          {pending ? "Generating…" : "Generate"}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onDelete}>
-          Delete
-        </Button>
+    <div className="flex flex-col gap-2 rounded-md border p-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">{storeName}</span>
+        <span className="text-muted-foreground">
+          {stats.data
+            ? `${stats.data.active_records} records · ${stats.data.deleted_records} deleted · position ${stats.data.position}`
+            : "…"}
+        </span>
+        <div className="ml-auto flex gap-2">
+          <Button size="sm" variant="outline" onClick={onGenerate} disabled={pending}>
+            {pending ? "Generating…" : "Generate"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={onChurn} disabled={churning}>
+            {churning ? "Applying…" : "Apply changes"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setShowLog((s) => !s)}>
+            {showLog ? "Hide log" : "Change log"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onDelete}>
+            Delete
+          </Button>
+        </div>
       </div>
+
+      {showLog && (
+        <div className="max-h-64 overflow-y-auto rounded border bg-muted/30 p-2">
+          {events.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Nothing has changed yet. Generate records, then apply a tick of
+              change.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1 font-mono text-xs">
+              {events.map((event) => (
+                <li key={event.sequence} className="flex gap-2">
+                  <span className="w-10 shrink-0 text-muted-foreground">
+                    {event.sequence}
+                  </span>
+                  <span className="w-14 shrink-0 font-medium">{event.operation}</span>
+                  <span className="truncate">{describe(event)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+/** What actually moved, rather than the whole row.
+ *
+ * An update between two twenty-column rows is unreadable printed in full,
+ * and the one thing a reader wants from it is which columns changed —
+ * which is exactly what keeping `before` alongside `after` makes possible. */
+function describe(event: ChangeEvent): string {
+  if (event.operation === "insert") return `${event.identity}`;
+  if (event.operation === "delete") return `${event.identity} (was v${event.version - 1})`;
+
+  const before = event.before ?? {};
+  const after = event.after ?? {};
+  const moved = Object.keys(after).filter(
+    (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key])
+  );
+  if (moved.length === 0) return `${event.identity} — no column changed`;
+  const shown = moved
+    .slice(0, 3)
+    .map((key) => `${key}: ${JSON.stringify(before[key])} → ${JSON.stringify(after[key])}`)
+    .join(", ");
+  return moved.length > 3 ? `${shown}, +${moved.length - 3} more` : shown;
 }

@@ -27,15 +27,22 @@ that boundary matters.
 
 from __future__ import annotations
 
+import random
 import uuid
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.continuity import RecordStatus, RecordStore, StoredRecord
+from app.models.continuity import (
+    ChangeEvent,
+    ChangeOperation,
+    RecordStatus,
+    RecordStore,
+    StoredRecord,
+)
 from app.models.entity import Entity
-from app.services.generator import build_lookup_pools, iter_rows
+from app.services.generator import advance_state, build_lookup_pools, iter_rows
 
 
 class ContinuityError(ValueError):
@@ -165,6 +172,7 @@ def generate_new(
                     status=RecordStatus.ACTIVE,
                 )
             )
+            _log(db, store, ChangeOperation.INSERT, identity, before=None, after=row, version=1)
             if len(kept) == count:
                 break
 
@@ -214,3 +222,235 @@ def pools_with_store(
         if values:
             pools[source_field.name] = values
     return pools
+
+
+# --------------------------------------------------------------------------
+# Change data capture
+# --------------------------------------------------------------------------
+
+
+def _log(
+    db: Session,
+    store: RecordStore,
+    operation: ChangeOperation,
+    identity: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+    version: int,
+) -> ChangeEvent:
+    """Append one event and advance the store's change cursor.
+
+    The cursor lives on the store rather than being derived with
+    `max(sequence) + 1`, so two concurrent calls cannot compute the same
+    next value — the unique constraint would catch it, but only by failing
+    a request that had no reason to fail.
+    """
+    event = ChangeEvent(
+        store_id=store.id,
+        sequence=store.change_sequence,
+        operation=operation,
+        identity=identity,
+        before=before,
+        after=after,
+        version=version,
+    )
+    store.change_sequence += 1
+    db.add(event)
+    return event
+
+
+def _active_records(db: Session, store: RecordStore) -> list[StoredRecord]:
+    return list(
+        db.scalars(
+            select(StoredRecord)
+            .where(StoredRecord.store_id == store.id)
+            .where(StoredRecord.status == RecordStatus.ACTIVE)
+        ).all()
+    )
+
+
+def _updated_row(
+    store: RecordStore,
+    record: StoredRecord,
+    fields_to_change: list[str],
+) -> dict[str, Any]:
+    """The record's next values.
+
+    Three kinds of field behave differently, and the differences are the
+    point rather than special cases:
+
+    * A **workflow** field advances one step from where this record already
+      is (see `generator.advance_state`). Re-randomising it would send a
+      customer who reached checkout back to signed-up, which is the exact
+      reset Phase 13 exists to close.
+    * A **trend** field continues from the store's cursor, so a value that
+      has been climbing keeps climbing.
+    * Everything else is regenerated independently.
+
+    The identity field is never touched. Changing it would not be an update
+    at all — it would be a delete and an unrelated insert wearing one
+    event's clothing.
+    """
+    entity: Entity = store.entity
+    identity_name = store.identity_field.name
+    workflows_by_field = {w.field.name: w for w in entity.workflows}
+    trends_by_field = {t.field.name: t for t in entity.trends}
+    fields_by_name = {f.name: f for f in entity.fields}
+
+    row = dict(record.data)
+    for name in fields_to_change:
+        if name == identity_name or name not in fields_by_name:
+            continue
+        if name in workflows_by_field:
+            current = row.get(name)
+            row[name] = advance_state(workflows_by_field[name], str(current))
+            continue
+        if name in trends_by_field:
+            # One row at the store's current position, so the series
+            # continues rather than jumping.
+            [generated] = list(
+                iter_rows(
+                    [fields_by_name[name]],
+                    1,
+                    trends=[t for t in entity.trends if t.field.name == name],
+                    start_position=store.position,
+                    trend_state=store.trend_state,
+                )
+            )
+            row[name] = generated[name]
+            store.position += 1
+            continue
+        [generated] = list(iter_rows([fields_by_name[name]], 1))
+        row[name] = generated[name]
+    return row
+
+
+def _changeable_field_names(store: RecordStore, requested: list[str] | None) -> list[str]:
+    identity_name = store.identity_field.name
+    available = [f.name for f in store.entity.fields if f.name != identity_name and not f.formula]
+    if requested is None:
+        return available
+    unknown = [name for name in requested if name not in available]
+    if unknown:
+        raise ContinuityError(
+            f"Cannot update {', '.join(unknown)} — not a changeable field on "
+            f"'{store.entity.name}' (the identity field and formula fields are derived)"
+        )
+    return requested
+
+
+def apply_changes(
+    db: Session,
+    store: RecordStore,
+    inserts: int = 0,
+    updates: int = 0,
+    deletes: int = 0,
+    update_fields: list[str] | None = None,
+    fk_pools: dict[str, list[Any]] | None = None,
+) -> list[ChangeEvent]:
+    """Move the population forward one tick and return what changed.
+
+    Inserts, then updates, then deletes, and that order is deliberate: a
+    record inserted by this call is eligible to be updated by it, which is
+    what a busy table actually looks like, while a record deleted by this
+    call cannot then be updated by it — a consumer must never see an update
+    to something already dropped.
+
+    Updates and deletes draw from the live population without replacement,
+    so one record cannot be updated twice in a single tick and reach the
+    consumer as two events at the same instant.
+    """
+    events: list[ChangeEvent] = []
+
+    if inserts:
+        generate_new(db, store, inserts, fk_pools=fk_pools)
+
+    names = _changeable_field_names(store, update_fields)
+
+    live = _active_records(db, store)
+    random.shuffle(live)
+
+    if updates:
+        if not names:
+            raise ContinuityError(
+                f"'{store.entity.name}' has no field an update could change — every "
+                "field is either the identity or derived from a formula"
+            )
+        for record in live[:updates]:
+            before = dict(record.data)
+            after = _updated_row(store, record, names)
+            record.data = after
+            record.version += 1
+            events.append(
+                _log(
+                    db,
+                    store,
+                    ChangeOperation.UPDATE,
+                    record.identity,
+                    before=before,
+                    after=after,
+                    version=record.version,
+                )
+            )
+        live = live[updates:]
+
+    if deletes:
+        for record in live[:deletes]:
+            record.status = RecordStatus.DELETED
+            record.version += 1
+            events.append(
+                _log(
+                    db,
+                    store,
+                    ChangeOperation.DELETE,
+                    record.identity,
+                    before=dict(record.data),
+                    after=None,
+                    version=record.version,
+                )
+            )
+
+    db.flush()
+    return events
+
+
+def read_changes(
+    db: Session, store: RecordStore, after: int = -1, limit: int = 100
+) -> list[ChangeEvent]:
+    """Events after a cursor, oldest first.
+
+    `after` is exclusive and defaults to -1 so the first read starts at
+    sequence 0. A consumer stores the last sequence it handled and passes it
+    back — the same contract as a Kafka offset or a replication slot.
+    """
+    return list(
+        db.scalars(
+            select(ChangeEvent)
+            .where(ChangeEvent.store_id == store.id)
+            .where(ChangeEvent.sequence > after)
+            .order_by(ChangeEvent.sequence)
+            .limit(limit)
+        ).all()
+    )
+
+
+def delete_events_before(db: Session, store: RecordStore, sequence: int) -> int:
+    """Trim the change log up to (not including) `sequence`.
+
+    The log is bounded by churn rather than output volume, but a store
+    driven hard for long enough still accumulates. Trimming is explicit
+    rather than automatic: only the operator knows whether every consumer
+    has caught up, and dropping events a consumer has not read yet turns a
+    replayable stream into a lossy one.
+    """
+    stale = list(
+        db.scalars(
+            select(ChangeEvent)
+            .where(ChangeEvent.store_id == store.id)
+            .where(ChangeEvent.sequence < sequence)
+        ).all()
+    )
+    for event in stale:
+        db.delete(event)
+    db.flush()
+    return len(stale)

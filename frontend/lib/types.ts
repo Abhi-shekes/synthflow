@@ -831,3 +831,32 @@ export interface GenerateIntoStoreResponse {
   position: number;
   total_active: number;
 }
+
+/** Phase 13 — one change to a stored record, in the order it happened.
+ * `before`/`after` follow Debezium's shape: an insert has no `before`, a
+ * delete has no `after`, and an update carries both so a consumer can tell
+ * which columns actually moved. */
+export type ChangeOperation = "insert" | "update" | "delete";
+
+export interface ChangeEvent {
+  sequence: number;
+  operation: ChangeOperation;
+  identity: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  version: number;
+  created_at: string;
+}
+
+export interface ApplyChangesInput {
+  inserts?: number;
+  updates?: number;
+  deletes?: number;
+  update_fields?: string[] | null;
+}
+
+export interface ApplyChangesResponse {
+  events: ChangeEvent[];
+  next_sequence: number;
+  total_active: number;
+}

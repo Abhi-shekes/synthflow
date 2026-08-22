@@ -12,6 +12,9 @@ from app.models.field import EntityField
 from app.models.relationship import Relationship
 from app.models.user import User
 from app.schemas.continuity import (
+    ApplyChangesRequest,
+    ApplyChangesResponse,
+    ChangeEventRead,
     GenerateIntoStoreRequest,
     GenerateIntoStoreResponse,
     RecordStoreCreate,
@@ -44,6 +47,29 @@ def _counts(db: Session, store: RecordStore) -> tuple[int, int]:
         by_status.get(RecordStatus.ACTIVE, 0),
         by_status.get(RecordStatus.DELETED, 0),
     )
+
+
+def _parent_store_pools(db: Session, project_id: uuid.UUID, entity, store: RecordStore) -> dict:
+    """Foreign-key pools drawn from parent entities' same-named stores.
+
+    Matching by name rather than by a configured link keeps two independent
+    populations independent: a "demo" order store draws from the "demo"
+    customers, not from whichever customer store happened to be made first.
+    """
+    relationships = list(
+        db.scalars(
+            select(Relationship).where(
+                Relationship.project_id == project_id,
+                Relationship.source_entity_id == entity.id,
+            )
+        ).all()
+    )
+    stores_by_entity: dict[uuid.UUID, RecordStore] = {}
+    for rel in relationships:
+        parent = continuity.store_for(db, rel.target_entity_id, store.name)
+        if parent is not None:
+            stores_by_entity[rel.target_entity_id] = parent
+    return continuity.pools_with_store(db, entity, stores_by_entity, relationships)
 
 
 @router.get("", response_model=list[RecordStoreRead])
@@ -173,25 +199,7 @@ def generate_into_store(
     entity = _get_owned_entity(project_id, entity_id, current_user, db)
     store = _get_store(store_id, entity_id, db)
 
-    relationships = list(
-        db.scalars(
-            select(Relationship).where(
-                Relationship.project_id == project_id,
-                Relationship.source_entity_id == entity_id,
-            )
-        ).all()
-    )
-    # Same-named stores on the parent entities. Matching by name rather than
-    # by a configured link keeps two independent populations independent:
-    # a "demo" order store draws from the "demo" customers, not whichever
-    # customer store happened to be made first.
-    stores_by_entity: dict[uuid.UUID, RecordStore] = {}
-    for rel in relationships:
-        parent = continuity.store_for(db, rel.target_entity_id, store.name)
-        if parent is not None:
-            stores_by_entity[rel.target_entity_id] = parent
-
-    pools = continuity.pools_with_store(db, entity, stores_by_entity, relationships)
+    pools = _parent_store_pools(db, project_id, entity, store)
 
     try:
         rows = continuity.generate_new(db, store, payload.count, fk_pools=pools)
@@ -206,6 +214,95 @@ def generate_into_store(
     db.refresh(store)
     active, _ = _counts(db, store)
     return GenerateIntoStoreResponse(rows=rows, position=store.position, total_active=active)
+
+
+@router.post("/{store_id}/changes", response_model=ApplyChangesResponse)
+def apply_changes(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    store_id: uuid.UUID,
+    payload: ApplyChangesRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApplyChangesResponse:
+    """Move the population forward one tick: some rows appear, some change,
+    some go away — and every one of those is an event a CDC consumer can
+    read back in order.
+
+    This is what a real table looks like between two glances at it, and it
+    is the thing a series of independent generation calls could never
+    produce: without persistent identity, "the same row, changed" has no
+    meaning.
+    """
+    entity = _get_owned_entity(project_id, entity_id, current_user, db)
+    store = _get_store(store_id, entity_id, db)
+
+    pools = _parent_store_pools(db, project_id, entity, store)
+
+    try:
+        events = continuity.apply_changes(
+            db,
+            store,
+            inserts=payload.inserts,
+            updates=payload.updates,
+            deletes=payload.deletes,
+            update_fields=payload.update_fields,
+            fk_pools=pools,
+        )
+    except (continuity.ContinuityError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    read = [ChangeEventRead.model_validate(e) for e in events]
+    db.commit()
+    db.refresh(store)
+    active, _ = _counts(db, store)
+    return ApplyChangesResponse(
+        events=read, next_sequence=store.change_sequence, total_active=active
+    )
+
+
+@router.get("/{store_id}/changes", response_model=list[ChangeEventRead])
+def read_changes(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    store_id: uuid.UUID,
+    after: int = Query(default=-1, ge=-1),
+    limit: int = Query(default=100, ge=1, le=1000),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list:
+    """Replay the change log from a cursor.
+
+    `after` is exclusive, so a consumer passes back the last sequence it
+    handled — the same contract as a Kafka offset. The default of -1 starts
+    at the beginning.
+    """
+    _get_owned_entity(project_id, entity_id, current_user, db)
+    store = _get_store(store_id, entity_id, db)
+    return continuity.read_changes(db, store, after=after, limit=limit)
+
+
+@router.delete("/{store_id}/changes", status_code=status.HTTP_200_OK)
+def trim_changes(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    store_id: uuid.UUID,
+    before: int = Query(ge=0),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    """Drop events below `before`.
+
+    Explicit rather than automatic: only the operator knows whether every
+    consumer has caught up, and discarding events nobody has read turns a
+    replayable stream into a lossy one.
+    """
+    _get_owned_entity(project_id, entity_id, current_user, db)
+    store = _get_store(store_id, entity_id, db)
+    removed = continuity.delete_events_before(db, store, before)
+    db.commit()
+    return {"removed": removed}
 
 
 @router.delete("/{store_id}", status_code=status.HTTP_204_NO_CONTENT)

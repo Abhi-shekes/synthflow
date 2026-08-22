@@ -230,6 +230,42 @@ def _generate_state_walk(workflow: Workflow) -> list[str]:
     return path
 
 
+def advance_state(workflow: Workflow, current: str) -> str:
+    """One step onward from `current`, for a record seen again later.
+
+    `_generate_state_walk` is right for a *batch*: each row gets its own
+    fresh walk, so a batch catches records at different points in a process,
+    which is what makes a funnel look like a funnel. It is wrong for the
+    *same* record seen twice — a customer who reached "checkout" yesterday
+    has not gone back to "signed up" today. This is the Phase 13 half of
+    that: given where a record actually is, take at most one step.
+
+    The same weights and per-state stop probabilities apply, so a record's
+    progress over many updates traces the same distribution a single walk
+    would have produced in one go. A terminal state, or a roll that stops,
+    returns `current` unchanged — records that have finished stay finished
+    rather than being pushed somewhere they cannot go.
+
+    An unknown `current` (the workflow was edited under a stored record)
+    restarts from an initial state rather than raising: the alternative is a
+    generation call that fails permanently because of a schema edit nobody
+    connects to it.
+    """
+    if current not in workflow.states:
+        return random.choice(workflow.initial_states)
+
+    by_source: dict[str, list[tuple[str, float]]] = {}
+    for t in workflow.transitions:
+        by_source.setdefault(t["source"], []).append((t["target"], t.get("weight", 1.0)))
+
+    options = by_source.get(current, [])
+    stop_probability = (workflow.stop_probabilities or {}).get(current, WORKFLOW_STOP_PROBABILITY)
+    if not options or random.random() < stop_probability:
+        return current
+    targets, weights = zip(*options, strict=True)
+    return random.choices(targets, weights=weights, k=1)[0]
+
+
 def _corrupt_value(
     value: Any,
     field: EntityField,

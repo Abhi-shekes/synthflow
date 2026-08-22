@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.continuity import RecordStatus
+from app.models.continuity import ChangeOperation, RecordStatus
 
 
 class RecordStoreCreate(BaseModel):
@@ -65,4 +65,43 @@ class GenerateIntoStoreResponse(BaseModel):
 
     rows: list[dict[str, Any]]
     position: int
+    total_active: int
+
+
+class ApplyChangesRequest(BaseModel):
+    """One tick of churn against a store's population.
+
+    Counts rather than rates: a caller that wants "3% of rows change per
+    minute" can work that out from the population size it already knows,
+    and a rate would have meant this endpoint owning a clock.
+    """
+
+    inserts: int = Field(default=0, ge=0, le=10_000)
+    updates: int = Field(default=0, ge=0, le=10_000)
+    deletes: int = Field(default=0, ge=0, le=10_000)
+
+    # None means every changeable field. The identity field and formula
+    # fields are never in this set: changing an identity is a delete and an
+    # insert wearing one event's clothing, and a formula field is derived.
+    update_fields: list[str] | None = None
+
+
+class ChangeEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    sequence: int
+    operation: ChangeOperation
+    identity: str
+    before: dict[str, Any] | None
+    after: dict[str, Any] | None
+    version: int
+    created_at: datetime
+
+
+class ApplyChangesResponse(BaseModel):
+    events: list[ChangeEventRead]
+    # Where a consumer should resume from. Returned rather than left to be
+    # derived from the last event, because a call that changed nothing still
+    # has a correct cursor to report.
+    next_sequence: int
     total_active: int

@@ -99,6 +99,12 @@ class RecordStore(Base):
     # type needs no migration.
     trend_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
+    # Next sequence number for this store's change log. Separate from
+    # `position`, which counts *rows generated*: an update and a delete
+    # change nothing about how far a trend has travelled, but both are
+    # events a consumer must see in order.
+    change_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -159,3 +165,68 @@ class StoredRecord(Base):
     )
 
     store: Mapped["RecordStore"] = relationship(back_populates="records")
+
+
+class ChangeOperation(enum.StrEnum):
+    """The three things that happen to a row, in the vocabulary every CDC
+    consumer already speaks — Debezium, Postgres logical replication and
+    MySQL binlog all reduce to these."""
+
+    INSERT = "insert"
+    UPDATE = "update"
+    DELETE = "delete"
+
+
+class ChangeEvent(Base):
+    """One change to a stored record, in the order it happened.
+
+    Phase 13's point is that generation can now produce a *stream of
+    changes* rather than a series of unrelated snapshots. This is that
+    stream: an ETL pipeline or CDC consumer reads events after a cursor it
+    remembers, exactly as it would from a real database's log.
+
+    **`before` and `after` are both kept, and that is what makes the log
+    usable.** An update carries the record as it was and as it now is, so a
+    consumer can tell which columns actually moved rather than diffing
+    against state it may not have. A delete carries `before` only; an insert
+    carries `after` only. That is the shape Debezium produces, and matching
+    it means a consumer written against one works against the other.
+
+    **`sequence` is per store and gapless.** A consumer's cursor is "the
+    last sequence I handled", so ordering has to be total and stable — the
+    same reason `StoredRecord.sequence` exists. It is assigned from a
+    counter on the store rather than from a timestamp, because every event
+    in one call shares a transaction clock.
+
+    **This log grows, and it is bounded by churn, not by output volume.**
+    Emitting a million rows through a job does not write a million events;
+    only changes to the persisted population land here. A store driven hard
+    for a long time will still accumulate, which is a real operational
+    consideration — see `delete_events_before` for the trim.
+    """
+
+    __tablename__ = "change_events"
+    __table_args__ = (
+        UniqueConstraint("store_id", "sequence", name="uq_change_event_store_sequence"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("record_stores.id", ondelete="CASCADE"), index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    operation: Mapped[ChangeOperation] = mapped_column(Enum(ChangeOperation), nullable=False)
+    identity: Mapped[str] = mapped_column(String(512), nullable=False)
+
+    # Null on an insert. The row as it stood before this change.
+    before: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Null on a delete. The row as it stands after this change.
+    after: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # The record's version *after* this change, so a consumer that has seen
+    # version 3 can recognise a replay of it.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    store: Mapped["RecordStore"] = relationship()
