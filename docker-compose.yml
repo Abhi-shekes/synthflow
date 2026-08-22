@@ -30,6 +30,12 @@ services:
       DATABASE_URL: postgresql+psycopg://synthflow:synthflow@postgres:5432/synthflow
       SECRET_KEY: change-me-in-production
       CORS_ORIGINS: '["http://localhost:3000"]'
+      # Single sign-on. Empty by default, which turns SSO off and leaves the
+      # password login as the only way in — the right default for a local
+      # install. Filled in here from .env when the `sso` profile is running.
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
     ports:
       - "8001:8000"
     volumes:
@@ -233,6 +239,22 @@ services:
     depends_on:
       - loki
     profiles: ["monitoring"]
+
+  # A real OpenID Connect provider, so single sign-on is verified against
+  # something that implements the spec rather than a mock that agrees with
+  # us. Behind the `sso` profile: it is a development dependency of one
+  # feature, not part of the stack.
+  dex:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    container_name: synthflow-dex
+    profiles: ["sso"]
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    volumes:
+      - ./dex/config.yaml:/etc/dex/config.yaml:ro
+    ports:
+      # Non-default on the host, like every other test target here, so it
+      # cannot collide with something already running.
+      - "5556:5556"
 
 volumes:
   synthflow_postgres_data:

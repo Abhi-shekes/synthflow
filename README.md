@@ -85,7 +85,7 @@ deployment doesn't pull in Kafka, MongoDB, or MQTT dependencies. See
 
 ## Project status
 
-**Phases 1–5 and 7–13 are live**, backend and frontend, each verified end to
+**Phases 1–5 and 7–14 are live**, backend and frontend, each verified end to
 end rather than only by test suite:
 
 - **1–2** core platform, relationships, rules, formulas, stateful workflows
@@ -129,8 +129,16 @@ end rather than only by test suite:
   generation then continues from. `many_to_many` finally emits a real join
   table.
 
+- **14** teams and governance: **API keys** so CI can call SynthFlow at all
+  (read-only or full, revocable, shown once), **organizations** with a
+  viewer/member/admin/owner role ladder and projects shared into them, an
+  **audit log** of every change and who made it — derived from the request,
+  so nothing can be forgotten — **single sign-on over OIDC**, and **project
+  version history** with a structural diff and a rollback that snapshots
+  what it replaced. SAML is deliberately not implemented; see the roadmap.
+
 Phase 6 (the optional AI layer) is deliberately unstarted — nothing depends
-on it. Phases 14–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
+on it. Phases 15–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
 plan, including the tradeoffs and known limits recorded per item, and
 [TODO.md](TODO.md) for the active task list.
 

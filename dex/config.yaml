@@ -1,0 +1,37 @@
+# A real OIDC provider, for verifying single sign-on against something that
+# actually implements the spec rather than a mock that agrees with us.
+#
+# Behind the `sso` compose profile, so it is off unless asked for: it is a
+# development dependency of one feature, not part of the stack.
+issuer: http://dex:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  # Skip the "do you approve this app" screen. It is a real part of the
+  # flow and a real obstacle to driving it from a script; the code path it
+  # guards is the IdP's, not ours.
+  skipApprovalScreen: true
+
+# Development credentials, and only that. This file exists so the OIDC
+# flow can be run against a real provider on a laptop; nothing here is a
+# secret worth protecting, and nothing here should be copied into a
+# deployment.
+staticClients:
+  - id: synthflow
+    name: SynthFlow
+    secret: synthflow-dev-secret
+    redirectURIs:
+      - http://localhost:8001/api/v1/auth/sso/callback
+
+enablePasswordDB: true
+staticPasswords:
+  # bcrypt of "dexpassword"
+  - email: "sso-user@example.com"
+    hash: "$2b$10$1zKrW4vAWxrvDNh.fSe.8OqvDGc2CDM3hS6FwfsUFSWibDehkCrqe"
+    username: "sso-user"
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"

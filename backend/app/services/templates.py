@@ -14,6 +14,7 @@ partial project behind, since the session is never committed and its
 
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.entity import Entity
@@ -196,10 +197,56 @@ def _resolve_lookup_table(name: str, lookup_tables_by_name: dict[str, LookupTabl
 
 
 def import_project(template: ProjectTemplate, owner_id: uuid.UUID, db: Session) -> Project:
+    """Create a new project from a template."""
     project = Project(name=template.name, description=template.description, owner_id=owner_id)
     db.add(project)
     db.flush()
+    _populate(project, template, db)
+    db.commit()
+    db.refresh(project)
+    return project
 
+
+def restore_project(project: Project, template: ProjectTemplate, db: Session) -> Project:
+    """Replace an existing project's contents with a template's.
+
+    Rollback, in other words. It shares `_populate` with `import_project`
+    rather than reimplementing it, because a rollback that builds a project
+    slightly differently from an import is a rollback that quietly produces
+    something the version never was.
+
+    Everything the template owns is deleted first. That is what makes this a
+    restore rather than a merge: a field removed in the version being rolled
+    back to has to actually disappear, and reconciling two schemas
+    field-by-field is a much harder problem with no obviously right answer
+    for the cases where both sides changed.
+
+    The project row itself survives, so its id, owner, organization, API
+    keys and audit history are untouched — you are rolling back the design,
+    not replacing the project.
+    """
+    for entity in list(project.entities):
+        db.delete(entity)
+    for relationship in db.scalars(
+        select(Relationship).where(Relationship.project_id == project.id)
+    ).all():
+        db.delete(relationship)
+    for table in db.scalars(select(LookupTable).where(LookupTable.project_id == project.id)).all():
+        db.delete(table)
+    # Flushed before repopulating so a name reused between the old and new
+    # shape does not collide with a row that is on its way out.
+    db.flush()
+
+    project.name = template.name
+    project.description = template.description
+    _populate(project, template, db)
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def _populate(project: Project, template: ProjectTemplate, db: Session) -> None:
+    """Build a template's contents inside an existing, empty project row."""
     entities_by_name: dict[str, Entity] = {}
     fields_by_ref: dict[tuple[str, str], EntityField] = {}
     for template_entity in template.entities:
@@ -419,7 +466,3 @@ def import_project(template: ProjectTemplate, owner_id: uuid.UUID, db: Session) 
                 lon_column=template_route.lon_column,
             )
         )
-
-    db.commit()
-    db.refresh(project)
-    return project

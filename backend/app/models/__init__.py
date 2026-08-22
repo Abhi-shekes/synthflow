@@ -24,6 +24,7 @@ from app.models.object_storage import ObjectStorageTarget, StorageProvider
 from app.models.organization import Organization, OrganizationMember, Role
 from app.models.plugin_output import PluginOutput
 from app.models.project import Project
+from app.models.project_version import ProjectVersion
 from app.models.rabbitmq_output import RabbitMQOutput
 from app.models.relationship import Relationship
 from app.models.rest_output import RestOutput
@@ -49,6 +50,7 @@ __all__ = [
     "StoredRecord",
     "RecordStatus",
     "Project",
+    "ProjectVersion",
     "Organization",
     "OrganizationMember",
     "Role",

@@ -976,3 +976,40 @@ export interface OrganizationMember {
   role: Role;
   created_at: string;
 }
+
+/** Phase 14 — a snapshot of a project's design. The payload is a
+ * `ProjectTemplate`, the same serialisation export and import use. */
+export interface ProjectVersion {
+  id: string;
+  version: number;
+  label: string | null;
+  created_by_email: string | null;
+  created_at: string;
+}
+
+export interface VersionDiff {
+  from_version: number;
+  /** 0 means "the project as it stands now". */
+  to_version: number;
+  identical: boolean;
+  name_changed: { before: string; after: string } | null;
+  entities_added: string[];
+  entities_removed: string[];
+  entities_changed: {
+    name: string;
+    fields_added: string[];
+    fields_removed: string[];
+    fields_changed: {
+      name: string;
+      changes: Record<string, { before: unknown; after: unknown }>;
+    }[];
+  }[];
+  counts: Record<string, { before: number; after: number }>;
+}
+
+export interface RollbackResult {
+  restored_from: number;
+  /** The snapshot taken of the pre-rollback state, so a rollback is itself
+   * undoable. */
+  backup_version: number;
+}

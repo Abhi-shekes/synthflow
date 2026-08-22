@@ -787,17 +787,97 @@ boundary, 30 orders referencing 16 of 20 persisted customers and nothing else,
 a gapless change log replayed through a paged cursor, and 38 closed type 2
 intervals none of which run backwards.
 
+## Phase 14 — Teams and Governance — done, five bullets (SAML excluded)
+
+The phase's shape was set by one discovery: **"may I touch this project" was
+two helper functions behind 118 route call sites.** Everything else went in
+behind them without a route changing.
+
+### API keys
+
+- Both credential kinds arrive as a bearer token, so every route, client and
+  test keeps working and a pipeline sets the same header a browser does.
+- **SHA-256, not bcrypt.** A key is 32 random bytes — nothing to guess, so
+  bcrypt's slowness costs every request and buys nothing. A cleartext,
+  indexed prefix makes verification one lookup and one constant-time compare.
+- Read-only is enforced **by request method**, not an endpoint list. A list
+  is a thing you forget to update, and forgetting means a read-only key that
+  can write.
+- A key cannot manage keys: a leaked one that can mint more outlives its own
+  revocation. Revocation is a timestamp, not a deletion.
+- **The bug:** `secrets.token_urlsafe` emits `_`, and splitting on every
+  underscore broke ~half of all keys. Intermittent, so it read as test-order
+  flakiness until 30 real keys showed 22 carrying the character.
+
+### Organisations and roles
+
+- A **ladder, not a matrix**: viewer → member → admin → owner, each
+  containing the one below. A permission matrix is more expressive and is
+  the thing nobody can reason about.
+- `Project.organization_id` is nullable; personal projects are unchanged.
+- Owner always outranks the org on their own project. Only the owner
+  re-shares it. Unseen project = 404, not 403. An admin cannot grant above
+  their own role. The last owner cannot be removed. Dissolving an org
+  **returns** its projects rather than deleting them.
+- **Two bugs.** A contextvar set inside a sync dependency never reached the
+  route handler — FastAPI runs those in a worker thread with its own context
+  copy — so every request read as a GET and **a viewer could write**. And
+  `ON DELETE SET NULL` is not enforced by SQLite, so org dissolution was
+  only correct in production and untested anywhere.
+
+### Audit log
+
+- **Middleware, not calls in routes.** A log assembled by remembering to log
+  has invisible holes.
+- Mutating methods only. **Refusals kept** — and that was the bug: the actor
+  was recorded on the success path, so every 403 arrived with no "who" and
+  was dropped. The log silently lost exactly what it existed for.
+- `user_id` is SET NULL with the email denormalised; `route` is
+  router-relative so a version bump does not split one route's history.
+
+### SSO (OIDC)
+
+- Discovery fetched, state a signed token rather than a row, **nonce
+  checked** — the part that stops a replayed id_token and the part most often
+  skipped because nothing visibly breaks without it.
+- Tokens return in the **fragment**, never the query string, and the frontend
+  clears them from the address bar.
+- No new dependency: PyJWT is already core, HTTP is stdlib `urllib`.
+- **Verified against real Dex**, behind an `sso` compose profile. The stub in
+  the suite exists only for what a real IdP will not do on demand.
+- **SAML deliberately not implemented** — `xmlsec` is a native build burden
+  and there is no IdP here to verify against. Same rule as Phase 12's
+  warehouses.
+
+### Version history
+
+- Built on `ProjectTemplate`, so one table rather than a schema that would
+  drift from the real one.
+- **Explicit snapshots.** Auto-versioning every mutation produces a history
+  nobody can read. Rollback always snapshots first — you cannot ask someone
+  to have predicted their own mistake.
+- **Structural diff**, matched by name. `order` excluded, or inserting a
+  field reports a change to every field below it.
+- Rollback refuses to destroy populated record stores unless told; an empty
+  store does not block it.
+- Version numbers come from a counter, not `max + 1` — deleting the newest
+  snapshot would otherwise recycle a number somebody referred to last week.
+
+**659 passed / 5 skipped**, lint and typecheck clean. Verified against the
+running stack and in a browser: four roles on a shared project, a read-only
+key refused by method, SSO through Dex, and a snapshot–diff–rollback round
+trip.
+
 ## Now
 
-**Phases 1–5 and 7–13 are done** (10, 11 and 12 each with deliberate
-exclusions — Phase 12's warehouse bullet was skipped at the user's request;
-Phase 13 is complete on all six). Phase 6 (AI) stays deliberately unstarted;
-nothing depends on it.
+**Phases 1–5 and 7–14 are done**, several with deliberate exclusions —
+Phase 12's warehouses (skipped at the user's request) and Phase 14's SAML.
+Phase 6 (AI) stays deliberately unstarted; nothing depends on it.
 
-Next is **Phase 14 (Teams and Governance)**. Its **API keys** bullet is the
-smallest and most blocking item left anywhere: authentication today is a
-user-password login producing a short-lived JWT, so there is no supported way
-to call SynthFlow from CI at all.
+Next is **Phase 15 (Developer Experience)**: generated client libraries, a
+full CLI beyond `init`, pytest fixtures, a GitHub Action and a Terraform
+provider. Phase 14's API keys unblocked all of it — until this release there
+was no supported way to call SynthFlow from anything but a browser.
 
 **Worth doing once, not twice:** a per-entity policy column would let both
 Phase 10's k-anonymity thresholds and Phase 11's assertions fail a

@@ -17,6 +17,7 @@ import { AddTimelineReplayDialog } from "@/components/add-timeline-replay-dialog
 import { AppShell } from "@/components/app-shell";
 import { JobsCard } from "@/components/jobs-card";
 import { ShareProjectCard } from "@/components/share-project-card";
+import { VersionHistoryCard } from "@/components/version-history-card";
 import { StreamPreview } from "@/components/stream-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -754,6 +755,8 @@ export default function ProjectDetailPage() {
             isOwner={projectQuery.data.owner_id === currentUser?.id}
           />
         )}
+
+        <VersionHistoryCard projectId={projectId} />
 
         <ActivityCard projectId={projectId} />
 

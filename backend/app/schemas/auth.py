@@ -33,3 +33,15 @@ class RefreshRequest(BaseModel):
 class AccessToken(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class SSOStatus(BaseModel):
+    """Whether single sign-on is available.
+
+    Public, and safe to be: it says an option exists, which the button that
+    uses it would say anyway. The issuer is included so the login page can
+    name the provider rather than offering an anonymous "Sign in with SSO".
+    """
+
+    enabled: bool
+    issuer: str | None

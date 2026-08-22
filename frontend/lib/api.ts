@@ -71,6 +71,9 @@ import type {
   Organization,
   OrganizationMember,
   Role,
+  ProjectVersion,
+  VersionDiff,
+  RollbackResult,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -1135,6 +1138,46 @@ export const api = {
       { method: "PUT", body: JSON.stringify({ organization_id: organizationId }) },
       token
     ),
+
+  listProjectVersions: (token: string, projectId: string) =>
+    request<ProjectVersion[]>(`/api/v1/projects/${projectId}/versions`, {}, token),
+
+  createProjectVersion: (token: string, projectId: string, label: string | null) =>
+    request<ProjectVersion>(
+      `/api/v1/projects/${projectId}/versions`,
+      { method: "POST", body: JSON.stringify({ label }) },
+      token
+    ),
+
+  diffProjectVersion: (token: string, projectId: string, version: number, against?: number) =>
+    request<VersionDiff>(
+      `/api/v1/projects/${projectId}/versions/${version}/diff` +
+        (against !== undefined ? `?against=${against}` : ""),
+      {},
+      token
+    ),
+
+  rollbackProject: (
+    token: string,
+    projectId: string,
+    version: number,
+    discardRecordStores = false
+  ) =>
+    request<RollbackResult>(
+      `/api/v1/projects/${projectId}/versions/${version}/rollback`,
+      { method: "POST", body: JSON.stringify({ discard_record_stores: discardRecordStores }) },
+      token
+    ),
+
+  deleteProjectVersion: (token: string, projectId: string, version: number) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/versions/${version}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  ssoStatus: () =>
+    request<{ enabled: boolean; issuer: string | null }>("/api/v1/auth/sso", {}),
 
   listStarterTemplates: (token: string) =>
     request<StarterTemplateSummary[]>("/api/v1/starter-templates", {}, token),

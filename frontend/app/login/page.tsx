@@ -1,8 +1,9 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -12,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
 interface FormValues {
   email: string;
@@ -26,6 +29,39 @@ export default function LoginPage() {
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>();
+
+  const sso = useQuery({
+    queryKey: ["sso-status"],
+    queryFn: () => api.ssoStatus(),
+    // Unauthenticated by design — it says only that an option exists, which
+    // the button using it would say anyway.
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // The SSO callback lands here with tokens in the URL *fragment*. A
+  // fragment is never sent to a server, so the credential stays out of
+  // access logs, proxy logs and Referer headers — which the query string
+  // would not.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.location.hash) return;
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    if (!accessToken || !refreshToken) return;
+
+    // Cleared immediately so a bookmark, a screenshot or a back-button press
+    // cannot resurrect a working credential from the address bar.
+    window.history.replaceState(null, "", window.location.pathname);
+
+    const tokens = { access_token: accessToken, refresh_token: refreshToken };
+    api
+      .me(accessToken)
+      .then((user) => {
+        setAuth(tokens, user);
+        router.push("/projects");
+      })
+      .catch(() => toast.error("That single sign-on session could not be completed"));
+  }, [router, setAuth]);
 
   const mutation = useMutation({
     mutationFn: async ({ email, password }: FormValues) => {
@@ -80,6 +116,31 @@ export default function LoginPage() {
               {mutation.isPending ? "Signing in…" : "Sign in"}
             </Button>
           </form>
+          {sso.data?.enabled && (
+            <>
+              <div className="my-4 flex items-center gap-3">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted-foreground">or</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  // A full navigation, not fetch: the identity provider
+                  // needs the browser itself, so it can show its own login
+                  // and reuse a session the user may already have there.
+                  // The rule below assumes an internal Next.js route;
+                  // API_URL is the backend, a different origin, and a
+                  // router push cannot leave the app.
+                  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+                  window.location.href = `${API_URL}/api/v1/auth/sso/login`;
+                }}
+              >
+                Sign in with single sign-on
+              </Button>
+            </>
+          )}
           <p className="mt-4 text-center text-sm text-muted-foreground">
             No account?{" "}
             <Link href="/signup" className="underline underline-offset-4">

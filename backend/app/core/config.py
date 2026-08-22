@@ -39,5 +39,19 @@ class Settings(BaseSettings):
     # rather not pay a write per mutation.
     AUDIT_LOG: bool = True
 
+    # Single sign-on over OpenID Connect. All three are required together;
+    # with any of them empty, SSO is simply off and the password login is
+    # the only way in — which is the right default for a local install.
+    OIDC_ISSUER: str = ""
+    OIDC_CLIENT_ID: str = ""
+    OIDC_CLIENT_SECRET: str = ""
+    # `openid` alone would authenticate someone SynthFlow then has no way to
+    # identify: accounts are keyed by email address.
+    OIDC_SCOPES: str = "openid email profile"
+    OIDC_TIMEOUT_SECONDS: float = 10.0
+    # Where the browser lands after a successful sign-in, with tokens in the
+    # fragment. Points at the frontend, which is a separate origin.
+    OIDC_POST_LOGIN_URL: str = "http://localhost:3000/login"
+
 
 settings = Settings()

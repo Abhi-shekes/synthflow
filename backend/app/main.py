@@ -29,6 +29,7 @@ from app.api.routes import (
     outputs,
     plugin_outputs,
     profiling,
+    project_versions,
     projects,
     rabbitmq_outputs,
     record_stores,
@@ -205,6 +206,7 @@ app.include_router(api_keys.router, prefix=settings.API_V1_PREFIX)
 app.include_router(audit_routes.router, prefix=settings.API_V1_PREFIX)
 app.include_router(organizations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
+app.include_router(project_versions.router, prefix=settings.API_V1_PREFIX)
 app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
 app.include_router(generator_plugins.router, prefix=settings.API_V1_PREFIX)
 app.include_router(install_config.router, prefix=settings.API_V1_PREFIX)

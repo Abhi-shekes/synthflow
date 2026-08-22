@@ -1543,16 +1543,201 @@ activity, which is the strict-but-correct rule rather than a clever one.
 
 Goal: more than one person, and more than one machine, using it safely.
 
-- [ ] API keys / service tokens — today the only authentication is a
-      user-password login producing a short-lived JWT, so there is no supported
-      way to call SynthFlow from CI at all. Smallest item here, and the most
-      immediately blocking
-- [ ] Organisations and shared projects, with roles and per-project permissions
-- [ ] An audit log of who changed a schema, ran a generation, or pushed to a
-      database
-- [ ] SSO via OIDC/SAML
-- [ ] Project version history with diff and rollback, building on the
-      `ProjectTemplate` format that already serialises a whole project design
+- [x] API keys / service tokens. Both credential kinds arrive as a bearer
+      token, deliberately: every existing route, client and test keeps
+      working untouched, and a pipeline sets the same header a browser does.
+      A key is recognised by its `sfk_` prefix — which is also what lets a
+      secret scanner spot one in a committed file, the failure mode that
+      actually happens to API keys.
+
+      **The secret is hashed with SHA-256, not bcrypt**, and that departure
+      from how user passwords are stored two files over is the point. bcrypt
+      is slow because a password is low-entropy and its hash must survive an
+      offline guessing attack; an API key is 32 bytes from
+      `secrets.token_urlsafe`, so there is nothing to guess and the slowness
+      would cost every request while buying nothing. A cleartext prefix,
+      unique and indexed, makes verification one lookup plus one
+      constant-time compare instead of hashing against every row.
+
+      Scope is two values, not a permission matrix, and read-only is
+      enforced **by request method** rather than an endpoint list — an
+      endpoint list is a thing you forget to update when you add an
+      endpoint, and forgetting there means a read-only key that can write.
+      A key cannot manage keys: a leaked full-scope key that can mint more
+      outlives its own revocation. Revocation is a timestamp, not a row
+      deletion, so "this key was revoked last Tuesday" stays answerable.
+
+      **The bug worth remembering:** `secrets.token_urlsafe` draws from an
+      alphabet including `_`, so roughly half of all secrets contained one
+      and splitting the presented key on every underscore left those with
+      four parts. They failed to parse, fell through to the JWT path, and
+      401'd — intermittently, which read as test-order flakiness until 30
+      real keys against the running stack showed 22 carrying the character.
+      The suite now asserts the round trip as a property over 25 generated
+      keys rather than one example.
+- [x] Organisations and shared projects, with roles and per-project
+      permissions. "May I touch this project" was `project.owner_id ==
+      user.id`, written out behind two helper functions that **118 route call
+      sites** go through. Those two helpers were the whole extension point:
+      the rule moved into `services/access.py` and not one route changed.
+
+      Roles are a **ladder, not a matrix** — viewer reads, member writes,
+      admin manages membership, owner manages the organisation, each level
+      strictly containing the one below. A matrix of independent permissions
+      is more expressive and, in practice, is the thing nobody can reason
+      about: "can this person delete an entity" becomes a lookup rather than
+      something you know from their title.
+
+      `Project.organization_id` is nullable and every existing project keeps
+      it null, which is the entire compatibility story. The alternative —
+      giving everyone a personal organisation and migrating every project
+      into it — is GitHub's model and it makes a single-user install carry a
+      concept it never needed.
+
+      The rules that took thought: the project's owner is always OWNER on
+      it, whatever the organisation says, or moving a project into a group
+      would be a way to lock its owner out. Only the owner can change which
+      organisation a project belongs to, or an admin could quietly take one
+      over. A project you cannot see is a **404, not a 403** — telling
+      someone a project exists but is not theirs is telling them something
+      they had no right to learn. An admin cannot grant a role above their
+      own, or they could mint an owner through a second account and the
+      ladder is decorative. The last owner cannot be removed or demoted.
+      Dissolving an organisation **returns its projects to their owners**
+      rather than deleting them.
+
+      **Two bugs, both found by tests that existed for them.** Write
+      permission is decided by HTTP method, and the method was first stashed
+      on a context variable inside `get_current_user` — which does not work:
+      a contextvar propagates down into tasks spawned from a context but
+      never back up out of one, and FastAPI runs a sync dependency in a
+      worker thread with its own copy. The route handler saw the default, so
+      every request read as a GET and **a viewer could write**. Setting it in
+      middleware, before `call_next`, puts it in the context every
+      downstream task copies. Separately, dissolving an organisation left
+      its projects pointing at it: the `ON DELETE SET NULL` constraint works
+      on Postgres, but SQLite does not enforce foreign keys unless asked, so
+      the behaviour was only true in production and untested anywhere.
+- [x] An audit log of who changed a schema, ran a generation, or pushed to a
+      database — **derived from the request by middleware**, not written by
+      calls inside the routes. A log assembled by remembering to log is a log
+      with holes in it, and the holes are invisible: the entry that is
+      missing looks exactly like the thing that never happened. Deriving it
+      is also what makes all three of those questions true at once, rather
+      than three separate pieces of bookkeeping.
+
+      What that costs is precision of language: entries say
+      `POST /projects/{id}/entities` rather than "added an entity", and the
+      UI translates the templates it recognises while falling back to the raw
+      method for the rest. A wrong description in an audit log is worse than
+      a terse one.
+
+      Only mutating methods are recorded — logging GETs would turn every
+      read into a write, and "who looked at this" is a different feature with
+      a different cost profile. **Refusals are kept**, and that was the bug:
+      the actor was originally recorded on the success path, after the
+      read-only scope check, so every 403 reached the middleware with no
+      "who" attached and was skipped. The log silently dropped exactly the
+      events it existed for.
+
+      `user_id` is `ON DELETE SET NULL` with the email denormalised beside
+      it: deleting a user must not delete the record of what they did.
+      `route` is the router-relative template, deliberately without the
+      `/api/v1` prefix, so a version bump does not split one route's history
+      in two. A failure to *write* an entry is swallowed and logged — an
+      audit log that can take the API down with it is a worse trade than a
+      gap.
+- [x] **SSO via OIDC.** Discovery is fetched rather than configured; state is
+      a short-lived signed token rather than a database row, so it needs no
+      table, no cleanup job and no shared store between replicas; and the
+      `nonce` is checked, which is the part of OIDC that stops an id_token
+      obtained elsewhere being replayed into this login and the part most
+      often skipped because nothing visibly breaks without it.
+
+      Tokens come back in the URL **fragment**, not the query string. A
+      fragment is never sent to a server, so the credential stays out of
+      access logs, proxy logs and `Referer` headers; the frontend consumes it
+      and clears it from the address bar immediately.
+
+      Accounts are joined on email, and `email_verified` is required when the
+      issuer reports it — an IdP that lets anyone claim an unverified address
+      is an IdP that lets anyone take over an existing account by signing up
+      with its email.
+
+      No new dependency: `PyJWKClient` comes from PyJWT, which is already
+      core because it signs this application's own sessions, and the HTTP
+      calls are stdlib `urllib`. Single sign-on works in the smallest
+      possible install — the same property the signed-webhook output has.
+
+      **Verified against a real identity provider**, not a mock: Dex, added
+      behind an `sso` compose profile. The suite's stub exists for the cases
+      a real IdP will not produce on demand — a signature from the wrong key,
+      a replayed nonce, an unverified email — because a mock otherwise agrees
+      with whatever you wrote.
+
+      **SAML is deliberately not implemented.** It needs `xmlsec`, a native
+      library with a real build burden on every platform this ships to, and
+      an IdP to verify against that cannot be stood up here. The rule that
+      skipped Phase 12's warehouses applies unchanged: an untested SAML
+      implementation handling XML signatures is a worse thing to ship than an
+      honest gap, and OIDC is what a modern identity provider offers anyway.
+- [x] Project version history with diff and rollback, built on the
+      `ProjectTemplate` format that already serialises a whole project
+      design. That reuse is why this needed one table rather than a parallel
+      schema that would have drifted from the real one the first time a field
+      type was added.
+
+      **Snapshots are explicit, not automatic.** Recording a version on every
+      mutation sounds thorough and produces a history nobody can read: fifty
+      entries for one afternoon's editing, forty-nine of them a field
+      half-renamed. The exception is rollback, which always snapshots the
+      state it is about to replace — rolling back is the one moment you most
+      want a way back, and asking someone to have snapshotted beforehand is
+      asking them to have predicted their own mistake.
+
+      The diff is **structural, not textual**. A JSON text diff of two
+      templates answers no question anyone has: it reports a list reordering
+      when nothing changed and buries "the `email` field became nullable" in
+      forty lines of context. Everything is matched by name, not position —
+      so renaming an entity reads as one removed and one added, which is
+      honest, because from the template alone there is genuinely no way to
+      tell a rename from a delete-and-create. `order` is excluded from the
+      attributes compared, since it shifts whenever a field is inserted above
+      another and would otherwise bury the one real edit.
+
+      A rollback rebuilds every entity, and a Phase 13 record store hangs off
+      an entity with `ON DELETE CASCADE` — so populated stores would go with
+      it. That is **refused unless the caller says explicitly that they
+      know**: losing a generated population as a side effect of reverting a
+      schema is not something to discover afterwards. An empty store does not
+      block it; an empty store is a configuration a rollback can cost you, a
+      populated one is data.
+
+      Version numbers come from a counter on the project, not
+      `max(version) + 1`. Deleting the most recent snapshot lowers that
+      maximum, so the next snapshot would reuse a number somebody referred to
+      last week and "roll back to v3" would quietly mean a different design.
+      Caught by a test written for the claim the docstring had already made.
+
+**Phase 14 closed: all five bullets, with SAML deliberately excluded from the
+SSO one.** The phase's shape was set by one discovery: the two access helpers
+behind 118 call sites. Everything else — organisations, roles, per-project
+permissions — went in behind them without a route changing, which is the same
+pattern that made Phases 9 through 13 cheap.
+
+**Two rules were reused rather than reinvented, deliberately.** Read-only API
+keys and viewer roles both decide "is this a write" by HTTP method, from the
+same frozen set, because two definitions of a write would eventually
+disagree. And three separate copies of the project-ownership check — in the
+projects, object-storage and profiling routes — collapsed into one, because
+three copies of an access rule are three places to update and two of them get
+missed.
+
+**659 passed / 5 skipped** at the close of the phase, lint and typecheck
+clean. Verified against the running stack and in a browser: all four roles
+against a shared project, a read-only key refused a POST by method, a key
+refused the key-management routes, a full single sign-on through Dex landing
+with tokens in the fragment, and a snapshot–diff–rollback round trip.
 
 ## Phase 15 — Developer Experience
 

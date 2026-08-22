@@ -24,6 +24,12 @@ export function ActivityCard({ projectId }: { projectId: string }) {
     queryKey: ["audit", projectId],
     queryFn: () => api.listAuditEvents(accessToken!, { projectId, limit: 100 }),
     enabled: !!accessToken,
+    // Polled rather than invalidated from every mutation on the page.
+    // Entries come from middleware over *any* request, including ones made
+    // from another tab, a teammate's session or an API key — so there is no
+    // set of local mutations that invalidating after would cover. An
+    // activity feed is also the one card you expect to move on its own.
+    refetchInterval: 10_000,
   });
 
   const rows = events.data ?? [];
@@ -91,6 +97,11 @@ const PHRASES: Record<string, Record<string, string>> = {
   },
   "/projects/{project_id}/storage-targets": { POST: "added a storage target" },
   "/projects/{project_id}/jobs": { POST: "queued a job" },
+  "/projects/{project_id}/versions": { POST: "saved a version" },
+  "/projects/{project_id}/versions/{version}": { DELETE: "deleted a version" },
+  "/projects/{project_id}/versions/{version}/rollback": { POST: "rolled the project back" },
+  "/projects/{project_id}/organization": { PUT: "changed who the project is shared with" },
+  "/projects/{project_id}/entities/{entity_id}/record-stores": { POST: "added a record store" },
 };
 
 function describe(event: AuditEvent): string {
