@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
+    api_keys,
     auth,
     database_connections,
     entities,
@@ -131,6 +132,7 @@ app.include_router(health.router)
 # Outside /api/v1 and unauthenticated, like /healthz — see its docstring.
 app.include_router(metrics.router)
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
+app.include_router(api_keys.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
 app.include_router(generator_plugins.router, prefix=settings.API_V1_PREFIX)

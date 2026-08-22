@@ -18,6 +18,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           SynthFlow
         </Link>
         <div className="flex items-center gap-4">
+          <Link
+            href="/settings/api-keys"
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            API keys
+          </Link>
           {user && <span className="text-sm text-muted-foreground">{user.email}</span>}
           <Button
             variant="outline"

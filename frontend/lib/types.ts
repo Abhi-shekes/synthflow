@@ -905,3 +905,30 @@ export interface ApplyChangesResponse {
   next_sequence: number;
   total_active: number;
 }
+
+/** Phase 14 — a long-lived credential for machines. The secret is returned
+ * exactly once, by `createApiKey`; everywhere else only the `prefix`
+ * survives, which is what lets a person tell two keys apart in a list. */
+export type ApiKeyScope = "read_only" | "full";
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  prefix: string;
+  scope: ApiKeyScope;
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+/** The one response that carries the secret. */
+export interface ApiKeyCreated extends ApiKey {
+  key: string;
+}
+
+export interface ApiKeyCreateInput {
+  name: string;
+  scope?: ApiKeyScope;
+  expires_at?: string | null;
+}

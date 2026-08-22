@@ -64,6 +64,9 @@ import type {
   RecordVersion,
   BackfillInput,
   BackfillResponse,
+  ApiKey,
+  ApiKeyCreated,
+  ApiKeyCreateInput,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -1060,6 +1063,20 @@ export const api = {
       { method: "DELETE" },
       token
     ),
+
+  // Phase 14 — API keys. These routes refuse an API key by design: a key
+  // that can mint keys outlives its own revocation.
+  listApiKeys: (token: string) => request<ApiKey[]>("/api/v1/api-keys", {}, token),
+
+  createApiKey: (token: string, input: ApiKeyCreateInput) =>
+    request<ApiKeyCreated>(
+      "/api/v1/api-keys",
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    ),
+
+  revokeApiKey: (token: string, keyId: string) =>
+    request<ApiKey>(`/api/v1/api-keys/${keyId}`, { method: "DELETE" }, token),
 
   listStarterTemplates: (token: string) =>
     request<StarterTemplateSummary[]>("/api/v1/starter-templates", {}, token),

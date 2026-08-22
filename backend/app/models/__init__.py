@@ -1,3 +1,4 @@
+from app.models.api_key import ApiKey, ApiKeyScope
 from app.models.continuity import (
     ChangeEvent,
     ChangeOperation,
@@ -34,6 +35,8 @@ from app.models.workflow import Workflow
 
 __all__ = [
     "User",
+    "ApiKey",
+    "ApiKeyScope",
     "RecordStore",
     "ChangeEvent",
     "ChangeOperation",
