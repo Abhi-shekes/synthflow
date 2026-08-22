@@ -37,13 +37,14 @@ import type {
  * synthetic ones" is the tool working, not something that went wrong. */
 const REDACTION_MARKER = "replaced with synthetic values";
 
-type Source = "sql" | "json-schema" | "sample" | "learn";
+type Source = "sql" | "json-schema" | "sample" | "learn" | "url";
 
 const SOURCE_LABELS: Record<Source, string> = {
   sql: "SQL (CREATE TABLE…)",
   "json-schema": "JSON Schema / OpenAPI",
   sample: "Sample data file (schema only)",
   learn: "Sample data file (learn distributions)",
+  url: "URL (learn distributions)",
 };
 
 /**
@@ -61,6 +62,7 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
   const [sql, setSql] = useState("");
   const [dialect, setDialect] = useState("postgres");
   const [jsonText, setJsonText] = useState("");
+  const [urlText, setUrlText] = useState("");
   const [result, setResult] = useState<
     (SchemaImportResponse & { report?: ProfileColumnReport[] }) | null
   >(null);
@@ -70,6 +72,7 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
     setResult(null);
     setSql("");
     setJsonText("");
+    setUrlText("");
     setProjectName("");
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -90,6 +93,22 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
           throw new Error("That isn't valid JSON");
         }
         return api.importSchemaFromJsonSchema(token, document, projectName);
+      }
+      if (source === "url") {
+        const urls = urlText
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+        if (urls.length === 0) throw new Error("Enter at least one URL");
+        const profiled: ProfileResponse = await api.profileFromSource(token, {
+          urls,
+          project_name: projectName || null,
+        });
+        return {
+          template: profiled.template,
+          warnings: profiled.warnings,
+          report: profiled.report,
+        };
       }
       const chosen = Array.from(fileRef.current?.files ?? []);
       if (chosen.length === 0) throw new Error("Choose a file first");
@@ -224,6 +243,27 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
                   value={jsonText}
                   onChange={(e) => setJsonText(e.target.value)}
                 />
+              </div>
+            )}
+
+            {source === "url" && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="import-urls">
+                  CSV, Excel or JSON URLs — one per line
+                </Label>
+                <Textarea
+                  id="import-urls"
+                  className="min-h-24 font-mono text-xs"
+                  placeholder={"https://example.com/customers.csv\nhttps://example.com/orders.csv"}
+                  value={urlText}
+                  onChange={(e) => setUrlText(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  SynthFlow downloads and profiles these the same way as an
+                  upload — fitted distributions, category frequencies,
+                  correlations, and relationships between several files.
+                  Only http and https, and each file is capped at 64 MB.
+                </p>
               </div>
             )}
 

@@ -52,6 +52,7 @@ import type {
   RabbitMQOutputCreateInput,
   WebhookOutput,
   WebhookOutputCreateInput,
+  ProfileSourceRequest,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -813,6 +814,20 @@ export const api = {
     if (projectName) form.append("project_name", projectName);
     return requestUpload<ProfileResponse>("/api/v1/profile", form, token);
   },
+
+  profileFromSource: (token: string, input: ProfileSourceRequest) =>
+    request<ProfileResponse>(
+      "/api/v1/profile/from-source",
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    ),
+
+  listSourceObjects: (token: string, projectId: string, storageTargetId: string) =>
+    request<string[]>(
+      `/api/v1/profile/objects?project_id=${projectId}&storage_target_id=${storageTargetId}`,
+      {},
+      token
+    ),
 
   listRabbitMQOutputs: (token: string, projectId: string, entityId: string) =>
     request<RabbitMQOutput[]>(

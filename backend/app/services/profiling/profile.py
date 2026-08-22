@@ -351,6 +351,7 @@ def profile_file(
     max_rows: int,
     entity_name: str | None = None,
 ) -> tuple[TemplateEntity, list[ColumnProfile], list[str]]:
+    """Profile an uploaded file: parse it, then profile the table."""
     try:
         columns, rows = parse_upload(filename, content, max_rows)
     except ValueError as exc:
@@ -358,9 +359,29 @@ def profile_file(
     if not columns:
         raise ProfileError(f"No columns found in '{filename}'.")
 
-    warnings: list[str] = []
     stem = filename.rsplit("/", 1)[-1].rsplit(".", 1)[0] or "Record"
-    name = sanitize_identifier(entity_name or stem, fallback="Record")
+    return profile_table(entity_name or stem, columns, rows)
+
+
+def profile_table(
+    source_name: str,
+    columns: list[str],
+    rows: list[dict[str, Any]],
+) -> tuple[TemplateEntity, list[ColumnProfile], list[str]]:
+    """Profile rows that are already parsed.
+
+    Split out from `profile_file` so a source that produces real rows —
+    a database table (Phase 12) — can skip the file round-trip entirely.
+    That is not just tidiness: serialising a table to CSV and parsing it
+    back turns DATE and DATETIME columns into strings, so a database would
+    have profiled *worse* than the same data exported by hand. Going
+    straight from rows keeps the driver's native types.
+    """
+    if not columns:
+        raise ProfileError(f"No columns found in '{source_name}'.")
+
+    warnings: list[str] = []
+    name = sanitize_identifier(source_name, fallback="Record")
 
     taken: set[str] = set()
     profiles = [profile_column(c, [r.get(c) for r in rows], taken) for c in columns]
@@ -502,20 +523,49 @@ def profile_files(
     if not files:
         raise ProfileError("No files given.")
 
+    parsed: list[tuple[str, list[str], list[dict[str, Any]]]] = []
+    for filename, content in files:
+        try:
+            columns, rows = parse_upload(filename, content, max_rows)
+        except ValueError as exc:
+            raise ProfileError(str(exc)) from exc
+        stem = filename.rsplit("/", 1)[-1].rsplit(".", 1)[0] or "Record"
+        parsed.append((stem, columns, rows))
+
+    return profile_tables(parsed, project_name=project_name, source_label="sample file")
+
+
+def profile_tables(
+    tables: list[tuple[str, list[str], list[dict[str, Any]]]],
+    *,
+    project_name: str | None = None,
+    source_label: str = "table",
+) -> tuple[ImportResult, dict[str, list[ColumnProfile]]]:
+    """Profile already-parsed tables into a single project.
+
+    The half of `profile_files` that has nothing to do with files, so a
+    database (Phase 12's input connectors) reaches relationship detection
+    and correlation analysis through exactly the same code — including
+    across several tables at once, which is what makes foreign keys
+    detectable.
+    """
+    if not tables:
+        raise ProfileError("Nothing to profile.")
+
     result = ImportResult(
         template=empty_template(
             project_name or "Learned from data",
             description=(
-                f"Learned from {len(files)} sample file"
-                f"{'s' if len(files) != 1 else ''}: distributions and "
+                f"Learned from {len(tables)} {source_label}"
+                f"{'s' if len(tables) != 1 else ''}: distributions and "
                 f"correlations fitted from the observed values."
             ),
         )
     )
 
     profiles_by_entity: dict[str, list[ColumnProfile]] = {}
-    for filename, content in files:
-        entity, profiles, warnings = profile_file(filename, content, max_rows=max_rows)
+    for source_name, columns, rows in tables:
+        entity, profiles, warnings = profile_table(source_name, columns, rows)
         result.template.entities.append(entity)
         profiles_by_entity[entity.name] = profiles
         for warning in warnings:

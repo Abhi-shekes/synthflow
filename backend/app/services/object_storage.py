@@ -85,16 +85,26 @@ def test_connection(target: ObjectStorageTarget) -> tuple[bool, str]:
         return False, _readable(exc)
 
 
-def _readable(exc: Exception) -> str:
+def _readable(exc: Exception, missing: str = "Bucket does not exist") -> str:
     """botocore's ClientError stringifies to a wall of request metadata.
-    Pull out the bit that tells someone what to fix."""
+    Pull out the bit that tells someone what to fix.
+
+    `missing` is what a bare 404 means, and it has to be passed in because
+    the code alone does not say: a 404 from `head_bucket` is a missing
+    bucket, but the identical 404 from `head_object` is a missing *key*.
+    Defaulting to the bucket and reusing it for objects reported "Bucket
+    does not exist" for a mistyped key, sending people to fix a bucket that
+    was fine.
+    """
     response = getattr(exc, "response", None)
     if isinstance(response, dict):
         error = response.get("Error", {})
         code = error.get("Code")
         message = error.get("Message")
-        if code == "404" or code == "NoSuchBucket":
+        if code == "NoSuchBucket":
             return "Bucket does not exist"
+        if code == "404" or code in ("NoSuchKey", "KeyError"):
+            return missing
         if code in ("403", "AccessDenied"):
             return "Access denied — check the key, secret and bucket permissions"
         if code and message:

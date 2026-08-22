@@ -81,6 +81,25 @@ def test_a_missing_bucket_says_so_rather_than_dumping_request_metadata():
     assert object_storage._readable(error) == "Bucket does not exist"
 
 
+def test_a_404_says_what_was_actually_missing():
+    """The same 404 means a missing bucket from `head_bucket` and a missing
+    key from `head_object`, so the caller says which. Reading a bad object
+    key used to report "Bucket does not exist" about a bucket that was
+    fine."""
+    error = Exception()
+    error.response = {"Error": {"Code": "404", "Message": "Not Found"}}
+    assert object_storage._readable(error, "No object 'samples/nope.csv' in that bucket") == (
+        "No object 'samples/nope.csv' in that bucket"
+    )
+
+
+def test_a_missing_bucket_is_still_named_as_the_bucket():
+    """`NoSuchBucket` is unambiguous whatever the caller was doing."""
+    error = Exception()
+    error.response = {"Error": {"Code": "NoSuchBucket", "Message": "Not Found"}}
+    assert object_storage._readable(error, "something else") == "Bucket does not exist"
+
+
 def test_access_denied_points_at_the_credentials():
     error = Exception()
     error.response = {"Error": {"Code": "AccessDenied", "Message": "Forbidden"}}

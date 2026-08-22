@@ -779,3 +779,16 @@ export interface WebhookOutputCreateInput {
   events_per_second?: number;
   batch_size?: number;
 }
+
+/** Phase 12 — learn from data SynthFlow fetches itself. Exactly one of
+ * `urls`, `object_keys` or `tables` is sent. `project_id` is required for
+ * the two that need credentials, and omitted for a public URL. */
+export interface ProfileSourceRequest {
+  project_id?: string;
+  project_name?: string | null;
+  urls?: string[];
+  storage_target_id?: string;
+  object_keys?: string[];
+  connection_id?: string;
+  tables?: string[];
+}

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { AddDatabaseConnectionDialog } from "@/components/add-database-connection-dialog";
 import { AddStorageTargetDialog } from "@/components/add-storage-target-dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { AddLookupTableDialog } from "@/components/add-lookup-table-dialog";
 import { AddRelationshipDialog } from "@/components/add-relationship-dialog";
 import { AddTimelineReplayDialog } from "@/components/add-timeline-replay-dialog";
@@ -73,6 +74,45 @@ export default function ProjectDetailPage() {
     queryKey: ["relationships", projectId],
     queryFn: () => api.listRelationships(accessToken!, projectId),
     enabled: !!accessToken,
+  });
+
+  const [sourceKind, setSourceKind] = useState<"object" | "table">("object");
+  const [sourceTargetId, setSourceTargetId] = useState("");
+  const [sourceConnectionId, setSourceConnectionId] = useState("");
+  const [sourceNames, setSourceNames] = useState("");
+
+  const sourceObjectsQuery = useQuery({
+    queryKey: ["source-objects", projectId, sourceTargetId],
+    queryFn: () => api.listSourceObjects(accessToken!, projectId, sourceTargetId),
+    enabled: !!accessToken && sourceKind === "object" && !!sourceTargetId,
+  });
+
+  const learnFromSource = useMutation({
+    // Profiling and applying are both in the mutation, not an `onSuccess`
+    // chain: a failure to create the project is just as worth reporting as
+    // a failure to read the source, and an error thrown from `onSuccess`
+    // never reaches `onError`.
+    mutationFn: async () => {
+      const names = sourceNames
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (names.length === 0) throw new Error("Name at least one object or table");
+      const profiled = await api.profileFromSource(accessToken!, {
+        project_id: projectId,
+        ...(sourceKind === "object"
+          ? { storage_target_id: sourceTargetId, object_keys: names }
+          : { connection_id: sourceConnectionId, tables: names }),
+      });
+      return api.importProject(accessToken!, profiled.template);
+    },
+    onSuccess: (project) => {
+      toast.success(
+        `Learned "${project.name}" from ${sourceKind === "object" ? "storage" : "the database"}`
+      );
+      setSourceNames("");
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not learn from that source"),
   });
 
   const storageTargetsQuery = useQuery({
@@ -419,6 +459,120 @@ export default function ProjectDetailPage() {
                 ))}
               </ul>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Learn from a connected source</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Profile data that already lives in this project&apos;s storage
+              bucket or database — the same places generation writes to — and
+              turn it into a new project. Reading a database table keeps its
+              real column types, so dates stay dates rather than becoming
+              strings the way a CSV export would.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={sourceKind}
+                onValueChange={(v) => setSourceKind((v ?? "object") as "object" | "table")}
+              >
+                <SelectTrigger className="w-44">
+                  {/* A render function, not a bare `SelectValue`: the
+                   * trigger otherwise shows the raw value — "object", or
+                   * worse, a target's UUID. */}
+                  <SelectValue>
+                    {(v: string) =>
+                      v === "table" ? "Database table" : "Object storage"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="object">Object storage</SelectItem>
+                  <SelectItem value="table">Database table</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {sourceKind === "object" ? (
+                <Select value={sourceTargetId} onValueChange={(v) => setSourceTargetId(v ?? "")}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue>
+                      {(v: string) =>
+                        (storageTargetsQuery.data ?? []).find((t) => t.id === v)
+                          ?.name ?? "storage target"
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(storageTargetsQuery.data ?? []).map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select
+                  value={sourceConnectionId}
+                  onValueChange={(v) => setSourceConnectionId(v ?? "")}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue>
+                      {(v: string) => {
+                        const c = (connectionsQuery.data ?? []).find((x) => x.id === v);
+                        return c ? `${c.name} (${c.dialect})` : "connection";
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(connectionsQuery.data ?? []).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name} ({c.dialect})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              <Button
+                onClick={() => learnFromSource.mutate()}
+                disabled={
+                  learnFromSource.isPending ||
+                  (sourceKind === "object" ? !sourceTargetId : !sourceConnectionId)
+                }
+              >
+                {learnFromSource.isPending ? "Learning…" : "Learn"}
+              </Button>
+            </div>
+
+            <Textarea
+              className="min-h-20 font-mono text-xs"
+              placeholder={
+                sourceKind === "object"
+                  ? "customers.csv\norders.csv"
+                  : "customers\norders"
+              }
+              value={sourceNames}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                setSourceNames(e.target.value)
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              One per line. Naming several related tables or files at once is
+              what lets relationships between them be detected.
+              {sourceKind === "object" &&
+                " Object keys are relative to the target's prefix, so don't repeat it."}
+              {sourceKind === "object" && (sourceObjectsQuery.data?.length ?? 0) > 0 && (
+                <>
+                  {" "}Available:{" "}
+                  <span className="font-mono">
+                    {sourceObjectsQuery.data!.slice(0, 8).join(", ")}
+                  </span>
+                </>
+              )}
+            </p>
           </CardContent>
         </Card>
 
