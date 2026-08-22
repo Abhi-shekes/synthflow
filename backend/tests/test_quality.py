@@ -28,6 +28,7 @@ def field(**overrides):
         required=True,
         nullable=False,
         unique=False,
+        null_probability=None,
         default_value=None,
         order=0,
     )

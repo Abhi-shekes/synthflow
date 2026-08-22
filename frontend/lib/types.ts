@@ -52,6 +52,10 @@ export interface EntityField {
   required: boolean;
   nullable: boolean;
   unique: boolean;
+  /** How often this field generates NULL. `null` means "unspecified" and
+   * takes the engine default (15%) — which is not the same as an explicit
+   * 0, meaning never null. */
+  null_probability: number | null;
   default_value: string | null;
   min_value: number | null;
   max_value: number | null;
@@ -285,6 +289,7 @@ export interface FieldCreateInput {
   required: boolean;
   nullable: boolean;
   unique: boolean;
+  null_probability?: number | null;
   min_value?: number | null;
   max_value?: number | null;
   regex?: string | null;
@@ -524,6 +529,7 @@ export interface ProjectTemplateField {
   required: boolean;
   nullable: boolean;
   unique: boolean;
+  null_probability?: number | null;
   default_value: string | null;
   min_value: number | null;
   max_value: number | null;

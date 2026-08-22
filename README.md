@@ -100,9 +100,9 @@ end rather than only by test suite:
   job queue with progress and cancellation, cron schedules, and background
   producers that survive a restart
 - **9** learn from real data: upload sample files and get fitted distributions,
-  observed category frequencies, correlations between columns and relationships
-  between files — as an ordinary editable project, using statistics rather than
-  a language model
+  observed category frequencies, per-column missing-value rates, correlations
+  between columns and relationships between files — as an ordinary editable
+  project, using statistics rather than a language model
 - **10** privacy: personal data detected and replaced with synthetic
   generators during profiling (so no value from your file reaches the
   project), k-anonymity and l-diversity measured on generated output, and

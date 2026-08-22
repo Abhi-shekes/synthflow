@@ -37,6 +37,11 @@ class TemplateField(BaseModel):
     required: bool = False
     nullable: bool = True
     unique: bool = False
+    # Carried through export, import and version history so a profiled
+    # project's observed null rates survive a round trip. Absent in
+    # templates written before this existed, which read back as None and so
+    # take the engine default — exactly what they did when they were made.
+    null_probability: float | None = None
     default_value: str | None = None
     min_value: float | None = None
     max_value: float | None = None

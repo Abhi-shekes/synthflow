@@ -38,3 +38,22 @@ def validate_preset(field_type: FieldType, preset: str | None, regex: str | None
         )
     if preset not in available_presets():
         raise ValueError(f"Unknown preset '{preset}'")
+
+
+def validate_null_probability(
+    null_probability: float | None, required: bool, nullable: bool
+) -> None:
+    """A field that cannot be null has no null rate to set.
+
+    Refused rather than ignored. The generator would ignore it — a required
+    field is never null whatever the column says — but a value stored and
+    silently disregarded is a setting somebody will one day read back,
+    believe, and be wrong about.
+    """
+    if null_probability is None:
+        return
+    if required or not nullable:
+        raise ValueError(
+            "null_probability cannot be set on a field that is required or not "
+            "nullable — such a field is never null"
+        )

@@ -47,7 +47,29 @@ from app.services.trends import generate_trend_value
 
 faker = Faker()
 
+# The null rate a nullable field gets when it does not specify one. Phase 9
+# can measure a column's real rate and Phase 15 lets a field carry it
+# (`EntityField.null_probability`); this is what a field that has never said
+# anything falls back to.
 NULLABLE_PROBABILITY = 0.15
+
+
+def null_probability_of(field: EntityField) -> float:
+    """How often this field should generate NULL.
+
+    A required field is never null, whatever the column says — the two would
+    otherwise be a contradiction with no obvious winner, and "required" is
+    the stronger statement. `None` means the field never expressed an
+    opinion, which is not the same as an explicit 0.0: one takes the engine
+    default, the other means "never null" and is a real thing to ask for.
+    """
+    if field.required or not field.nullable:
+        return 0.0
+    if field.null_probability is None:
+        return NULLABLE_PROBABILITY
+    return max(0.0, min(1.0, field.null_probability))
+
+
 MAX_UNIQUE_ATTEMPTS = 100
 MAX_RULE_ATTEMPTS = 200
 MAX_WORKFLOW_STEPS = 20
@@ -383,7 +405,7 @@ def _generate_one_row(
             value = generate_geo_point(
                 route.lookup_table.data, route.lat_column, route.lon_column, position, count
             )
-        elif not field.required and field.nullable and random.random() < NULLABLE_PROBABILITY:
+        elif random.random() < null_probability_of(field):
             value = None
         elif field.name in fk_pools:
             if field.unique:

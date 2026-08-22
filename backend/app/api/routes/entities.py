@@ -25,7 +25,11 @@ from app.schemas.entity import (
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
 from app.services import metrics
 from app.services.expressions import ExpressionError, evaluate
-from app.services.field_validation import validate_enum_weights, validate_preset
+from app.services.field_validation import (
+    validate_enum_weights,
+    validate_null_probability,
+    validate_preset,
+)
 from app.services.generator import (
     MAX_UNIQUE_ATTEMPTS,
     build_lookup_pools,
@@ -188,6 +192,7 @@ def add_field(
     try:
         validate_enum_weights(payload.field_type, payload.enum_values, payload.enum_weights)
         validate_preset(payload.field_type, payload.preset, payload.regex)
+        validate_null_probability(payload.null_probability, payload.required, payload.nullable)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -229,6 +234,14 @@ def update_field(
             updates.get("field_type", field.field_type),
             updates.get("preset", field.preset),
             updates.get("regex", field.regex),
+        )
+        # Checked against the field as it *will* be, not as it was: making a
+        # field required is just as much a contradiction with an existing
+        # null rate as setting one on an already-required field.
+        validate_null_probability(
+            updates.get("null_probability", field.null_probability),
+            updates.get("required", field.required),
+            updates.get("nullable", field.nullable),
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

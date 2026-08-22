@@ -36,6 +36,9 @@ interface FormValues {
   required: boolean;
   nullable: boolean;
   unique: boolean;
+  /** A percentage as typed, so an empty box stays "unspecified" rather than
+   * collapsing to 0 — the two mean different things. */
+  null_percent: string;
   min_value: string;
   max_value: string;
   regex: string;
@@ -66,6 +69,7 @@ export function AddFieldDialog({
       required: false,
       nullable: true,
       unique: false,
+      null_percent: "",
       min_value: "",
       max_value: "",
       regex: "",
@@ -108,6 +112,14 @@ export function AddFieldDialog({
       required: values.required,
       nullable: values.nullable,
       unique: values.unique,
+      // Blank means unspecified, which the server reads as "use the engine
+      // default". A required field never sends one at all — the server
+      // refuses the combination rather than storing a value it would then
+      // ignore.
+      null_probability:
+        values.required || !values.nullable || values.null_percent.trim() === ""
+          ? null
+          : Number(values.null_percent) / 100,
       min_value: values.min_value === "" ? null : Number(values.min_value),
       max_value: values.max_value === "" ? null : Number(values.max_value),
       regex: values.regex === "" ? null : values.regex,
@@ -190,6 +202,31 @@ export function AddFieldDialog({
               Unique
             </label>
           </div>
+
+          {watch("nullable") && !watch("required") && !formula && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="null_percent">Missing values (optional)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="null_percent"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  className="w-24"
+                  placeholder="15"
+                  {...register("null_percent")}
+                />
+                <span className="text-sm text-muted-foreground">% of rows are null</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave blank for the default 15%. Learning from a sample file
+                fills this in with the rate that column actually had, so a
+                column that was 3% empty generates 3% nulls. Zero is a real
+                answer and means never null.
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="formula">Formula (optional)</Label>

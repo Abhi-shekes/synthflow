@@ -24,9 +24,11 @@ out to already have homes:
   `gauss`/`lognormal`/`expo`/`triangular` to the expression evaluator
   rather than adding a `distribution` column and an engine to read it
 
-Known limit, reported rather than hidden: SynthFlow applies a fixed 15%
-null probability to nullable fields, so an observed null rate of 3% or
-40% is *not* reproduced. Every profile says so when it sees nulls.
+Missing values are reproduced too: a column that was 3% empty generates
+3% nulls, and one that was 40% empty generates 40%. That used to be the
+one measured thing this could not reproduce — every nullable field got a
+flat 15% — and it is now carried on the field itself as
+`EntityField.null_probability`.
 """
 
 import statistics as st
@@ -47,6 +49,11 @@ from app.services.schema_import.common import (
     make_field,
     sanitize_identifier,
 )
+
+# A column emptier than this generates a column that is almost entirely
+# empty, which is faithful and usually not what anyone wanted — so it is
+# still worth a word, even though the rate itself is now reproduced.
+NEARLY_ALL_NULL = 0.9
 
 # A *text* column with at most this many distinct values is categorical.
 MAX_CATEGORICAL_VALUES = 25
@@ -262,6 +269,15 @@ def _to_field(
         "required": required,
         "nullable": not required,
         "unique": profile.unique,
+        # The observed rate, carried straight through. Every branch below
+        # spreads `common`, so this reaches enum, numeric, redacted and
+        # plain-string fields alike rather than needing five edits — which
+        # is also why a branch added later gets it for free.
+        #
+        # `None` for a required field: a field that is never null has no
+        # null rate to express, and 0.0 would read as an explicit choice
+        # somebody made rather than the absence of one.
+        "null_probability": None if required else profile.null_rate,
     }
 
     # Personal data is handled before anything else on purpose. Every
@@ -401,11 +417,14 @@ def profile_table(
                 f"{p.name}: no candidate distribution matched well (best was "
                 f"{p.fit.kind}); the generated shape will only be indicative"
             )
-        if 0 < p.null_rate:
+        if p.null_rate >= NEARLY_ALL_NULL:
+            # No longer a limitation, but still worth saying: a column this
+            # empty was probably not meant to carry data, and reproducing
+            # 98% nulls faithfully is rarely what someone wants.
             warnings.append(
-                f"{p.name}: {p.null_rate:.0%} of values were missing, but SynthFlow "
-                f"applies a fixed 15% null rate to nullable fields — the exact rate "
-                f"is not reproduced"
+                f"{p.name}: {p.null_rate:.0%} of values were missing, so the generated "
+                f"column will be almost entirely empty too — check that this column is "
+                f"worth keeping"
             )
     if len(rows) < MIN_SAMPLES_FOR_FIT:
         warnings.append(

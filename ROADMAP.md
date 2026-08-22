@@ -1001,13 +1001,17 @@ currently cannot do at all.
       imported fine and then failed with HTTP 400 on generate — relationship
       detection now rejects cycles outright. All three have regression tests.
 
-      **Documented limit.** SynthFlow's field model has a fixed null
-      probability, so an observed 8%-null column will not generate 8% nulls.
-      The profiler measures and reports the real rate rather than pretending;
-      honouring it needs a per-field null-rate column, which is a schema change
-      this phase deliberately didn't make. String pattern inference is limited
-      to what the existing identifier presets and regex generator already
-      express.
+      **The one documented limit here has since been closed.** This phase
+      shipped with a fixed 15% null probability on every nullable field, so
+      an observed 8%-null column did not generate 8% nulls; the profiler
+      measured and reported the real rate rather than pretending, and the fix
+      needed a schema change this phase deliberately did not make. It was
+      made later: `EntityField.null_probability` now carries the observed
+      rate, and a column profiled at 3% or 40% generates 3% or 40%. See the
+      entry under **Closed debt** at the end of this file.
+
+      String pattern inference remains limited to what the existing
+      identifier presets and regex generator already express.
 
       28 new tests, **374 passed / 3 skipped** total, lint and format clean.
       Verified live against the running stack, not just in tests: fitting
@@ -1766,6 +1770,41 @@ Goal: run it somewhere real, not just docker compose on a laptop.
 - [ ] Optional hosted/multi-tenant mode, with per-tenant isolation and quotas
 
 ---
+
+## Closed debt
+
+Items that shipped as documented limits in an earlier phase and were fixed
+later. Recorded here rather than quietly edited out of the phase that
+carried them, because "we knew and did it anyway, then came back" is a
+different and more useful thing to read than "it was always fine".
+
+- **Per-field null rates** (Phase 9's limit, closed after Phase 14). Every
+  nullable field generated nulls at a flat 15%, so profiling could measure a
+  column's real rate — and warned that it could not reproduce it — but not
+  honour it. `EntityField.null_probability` now carries it end to end:
+  profiling writes the observed rate, export/import and version history
+  round-trip it, and generation uses it.
+
+  **NULL means "unspecified", and that is deliberately distinct from an
+  explicit `0.0`.** Unspecified takes the engine default, which is exactly
+  what every field meant before the column existed, so no existing project
+  shifted under anyone. `0.0` means never null, and is a real thing to ask
+  for that no other setting can express.
+
+  Setting a rate on a field that is `required` or not `nullable` is
+  **refused, not ignored**. The generator would ignore it — a required field
+  is never null whatever the column says — but a value stored and silently
+  disregarded is a setting somebody will one day read back, believe, and be
+  wrong about.
+
+  The profiler's warning changed rather than disappearing: it no longer
+  apologises for a rate it cannot reproduce, and instead flags a column that
+  is more than 90% empty, because faithfully generating 95% nulls is rarely
+  what anyone wanted even though it is now what happens.
+
+  Verified against the real stack, not only the suite: a 500-row sample with
+  columns at 2.2% and 37.8% missing produced generated columns at 2.4% and
+  37.5% over 3,000 rows. Both would have been 15% before.
 
 ## Future / not yet scheduled
 

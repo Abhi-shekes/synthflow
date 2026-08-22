@@ -143,12 +143,17 @@ def test_a_correlation_formula_only_points_at_an_earlier_field():
             assert order["age"] < order[f.name]
 
 
-def test_profile_reports_an_unreproducible_null_rate():
-    """SynthFlow uses a fixed 15% null probability, so an observed 40%
-    can't be honoured — that must be said, not silently ignored."""
+def test_profile_reproduces_the_observed_null_rate():
+    """This used to be the one measured thing profiling could not
+    reproduce: every nullable field got a flat 15%, and the profile said so
+    in a warning. The rate now rides on the field, so there is nothing to
+    apologise for."""
     rows = [[i, "" if i % 5 == 0 else i * 2] for i in range(1, 200)]
     result = _profile([("t.csv", _csv(["id", "maybe"], rows))])
-    assert any("not reproduced" in w for w in result.warnings)
+
+    maybe = next(f for f in result.template.entities[0].fields if f.name == "maybe")
+    assert maybe.null_probability == pytest.approx(0.2, abs=0.01)
+    assert not any("not reproduced" in w for w in result.warnings)
 
 
 def test_small_samples_fall_back_to_ranges_and_say_so():

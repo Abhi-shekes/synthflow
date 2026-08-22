@@ -582,6 +582,11 @@ export default function EntityDetailPage() {
                           field.required && "required",
                           field.unique && "unique",
                           !field.nullable && "not null",
+                          // Only when it was actually set. Showing "15% null"
+                          // on every unset field would present the engine
+                          // default as a choice somebody made.
+                          field.null_probability != null &&
+                            `${Math.round(field.null_probability * 100)}% null`,
                           field.min_value != null && `min ${field.min_value}`,
                           field.max_value != null && `max ${field.max_value}`,
                           field.regex && `regex ${field.regex}`,

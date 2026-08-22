@@ -90,6 +90,7 @@ def make_field(
     min_value: float | None = None,
     max_value: float | None = None,
     enum_values: list[str] | None = None,
+    null_probability: float | None = None,
 ) -> TemplateField:
     """TemplateField has a lot of optional columns; importers only ever
     set a handful, so this keeps their call sites readable."""
@@ -103,6 +104,7 @@ def make_field(
         min_value=min_value,
         max_value=max_value,
         enum_values=enum_values,
+        null_probability=null_probability,
     )
 
 

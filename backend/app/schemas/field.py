@@ -1,6 +1,6 @@
 import uuid
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.field import FieldType
 
@@ -19,6 +19,10 @@ class EntityFieldCreate(BaseModel):
     required: bool = False
     nullable: bool = True
     unique: bool = False
+    # How often this field generates NULL. None means "use the engine
+    # default" (15%), which is not the same as an explicit 0.0 — that means
+    # never null, and is a real thing to ask for.
+    null_probability: float | None = Field(default=None, ge=0.0, le=1.0)
     default_value: str | None = None
     min_value: float | None = None
     max_value: float | None = None
@@ -36,6 +40,7 @@ class EntityFieldUpdate(BaseModel):
     required: bool | None = None
     nullable: bool | None = None
     unique: bool | None = None
+    null_probability: float | None = Field(default=None, ge=0.0, le=1.0)
     default_value: str | None = None
     min_value: float | None = None
     max_value: float | None = None
@@ -57,6 +62,7 @@ class EntityFieldRead(BaseModel):
     required: bool
     nullable: bool
     unique: bool
+    null_probability: float | None
     default_value: str | None
     min_value: float | None
     max_value: float | None

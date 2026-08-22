@@ -45,7 +45,11 @@ from app.schemas.template import (
     TemplateWorkflow,
 )
 from app.services.error_injection import validate_error_types
-from app.services.field_validation import validate_enum_weights, validate_preset
+from app.services.field_validation import (
+    validate_enum_weights,
+    validate_null_probability,
+    validate_preset,
+)
 from app.services.trends import validate_params
 
 
@@ -80,6 +84,7 @@ def export_project(project: Project, db: Session) -> ProjectTemplate:
                         required=f.required,
                         nullable=f.nullable,
                         unique=f.unique,
+                        null_probability=f.null_probability,
                         default_value=f.default_value,
                         min_value=f.min_value,
                         max_value=f.max_value,
@@ -260,6 +265,11 @@ def _populate(project: Project, template: ProjectTemplate, db: Session) -> None:
                 field_type, template_field.enum_values, template_field.enum_weights
             )
             validate_preset(field_type, template_field.preset, template_field.regex)
+            validate_null_probability(
+                template_field.null_probability,
+                template_field.required,
+                template_field.nullable,
+            )
 
             field = EntityField(
                 entity_id=entity.id,
@@ -269,6 +279,7 @@ def _populate(project: Project, template: ProjectTemplate, db: Session) -> None:
                 required=template_field.required,
                 nullable=template_field.nullable,
                 unique=template_field.unique,
+                null_probability=template_field.null_probability,
                 default_value=template_field.default_value,
                 min_value=template_field.min_value,
                 max_value=template_field.max_value,

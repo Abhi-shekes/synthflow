@@ -868,6 +868,45 @@ running stack and in a browser: four roles on a shared project, a read-only
 key refused by method, SSO through Dex, and a snapshot–diff–rollback round
 trip.
 
+## Closed debt — per-field null rates
+
+Phase 9 shipped with a documented limit: every nullable field generated
+nulls at a flat 15%, so profiling could *measure* a column's real rate — and
+warned that it could not reproduce it — but not honour it. Closed.
+
+`EntityField.null_probability` now carries the rate end to end: profiling
+writes what it observed, export/import and version history round-trip it,
+and generation uses it.
+
+- **NULL means "unspecified", distinct from an explicit `0.0`.** Unspecified
+  takes the engine default, which is exactly what every field meant before
+  the column existed — no existing project shifted. `0.0` means never null,
+  and is a real thing to ask for that nothing else expresses.
+- **A rate on a `required` field is refused, not ignored.** The generator
+  would ignore it, but a value stored and silently disregarded is a setting
+  somebody will read back, believe, and be wrong about. Checked against the
+  field as it *will* be, so making a field required later is refused too.
+- The profiler's warning changed rather than vanishing: it now flags a
+  column more than 90% empty, because faithfully generating 95% nulls is
+  rarely what anyone wanted even though it is now what happens.
+- One shared `common` dict in `_to_field` feeds every profiling branch, so
+  enum, numeric, redacted and plain-string fields all got it in one edit —
+  and a branch added later gets it for free.
+
+**Two fixture bugs of my own, worth remembering.** An empty value in a
+single-column CSV is a *blank line*, which the reader skips entirely rather
+than reporting as a row with a missing cell — so a one-column fixture
+measures 0% nulls however many blanks it has. And all-distinct sample values
+make the column profile as `unique`, after which generation cannot mint
+enough distinct strings to fill a batch.
+
+**683 passed / 5 skipped**, lint and typecheck clean. Verified against the
+real stack: a 500-row sample with columns at 2.2% and 37.8% missing produced
+generated columns at 2.4% and 37.5% over 3,000 rows. Both would have been
+15% before. Driven in a browser too — the input appears only for a nullable
+field, disappears when Required is ticked, and the field list shows
+"35% null" only when a rate was actually set.
+
 ## Now
 
 **Phases 1–5 and 7–14 are done**, several with deliberate exclusions —

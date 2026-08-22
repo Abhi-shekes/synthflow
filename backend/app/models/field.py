@@ -107,6 +107,19 @@ class EntityField(Base):
     nullable: Mapped[bool] = mapped_column(Boolean, default=True)
     unique: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # How often this field generates NULL, as a fraction of rows. Only
+    # consulted when the field is nullable and not required — a required
+    # field is never null whatever this says.
+    #
+    # `None` means "unspecified, use the engine default", and that is a
+    # different thing from an explicit 0.0. Before this column existed every
+    # nullable field got a flat 15%, so profiling could *measure* a column's
+    # real null rate and then had to warn that it could not reproduce it.
+    # Keeping None distinct from 0.0 means an existing project's fields go
+    # on behaving exactly as they did, while a profiled one carries the rate
+    # it actually observed.
+    null_probability: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     default_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
     min_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_value: Mapped[float | None] = mapped_column(Float, nullable=True)
