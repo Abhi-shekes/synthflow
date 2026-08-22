@@ -14,6 +14,7 @@ import { AddLookupAttachmentDialog } from "@/components/add-lookup-attachment-di
 import { AddTrendDialog } from "@/components/add-trend-dialog";
 import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
 import { AppShell } from "@/components/app-shell";
+import { QualityReportDialog } from "@/components/quality-report-dialog";
 import { StreamPreview } from "@/components/stream-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1392,8 +1393,9 @@ export default function EntityDetailPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">Generate</CardTitle>
+            <QualityReportDialog projectId={projectId} entityId={entityId} />
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex items-center gap-2">

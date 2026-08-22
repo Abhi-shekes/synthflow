@@ -1124,16 +1124,78 @@ Phase 9 opened that hole, not as a box-ticking compliance exercise.
 
 Goal: prove the generated data is good, instead of eyeballing the first ten rows.
 
-- [ ] Post-run profile of generated output: distributions, null rates,
-      uniqueness, correlation matrix
-- [ ] Side-by-side real-vs-generated comparison when the project came from a
-      Phase 9 profile, with a similarity score
-- [ ] Surface what the engine already knows but currently discards: rows
-      rejected by rules, unique-pool exhaustion, how much error injection
-      actually survived rule filtering (a documented interaction today)
-- [ ] User-defined assertions that fail a run — "email must be unique",
-      "at least 60% of orders must reach `paid`"
-- [ ] An exportable quality report, and the same checks available as a CI gate
+- [x] Post-run profile of generated output: distributions, null rates,
+      uniqueness, correlations. Reuses Phase 9's `profile_column` rather than
+      writing a second profiler — which is the point, not a convenience:
+      "what the generated data looks like" is now measured by exactly the
+      same code as "what the source data looked like", so comparing them
+      says something about the data instead of about two implementations
+      disagreeing. Correlations are reported as pairs above a threshold
+      rather than a full N x N matrix, because the matrix is mostly zeroes
+      and what a reader wants is "these two move together".
+- [x] Output checked against its own declaration. A field promises
+      `unique`, `required`, `min_value`/`max_value`, `enum_values`;
+      generation is supposed to honour them, and `violations` reports where
+      it didn't. Kept separate from everything else in the response because
+      a violation is a defect, not a matter of taste.
+- [x] Surface what the engine already knows but discards — the item that
+      made this phase worth doing. `GenerationDiagnostics` records candidates
+      rejected by rules (attributed to the *first* rule that failed, so
+      counts sum to the total rather than double-counting), unique retries
+      per field, and error-injection survival. Collection is opt-in, so the
+      Phase 8 streaming path stays exactly as cheap when nobody is looking.
+- [x] User-defined assertions that fail a run — `email.unique`,
+      `status.share_paid >= 0.6`, `rows >= 100`. **No evaluator changes
+      were needed**, which is the design. The evaluator already resolves one
+      level of attribute access on a dict in `variables` — the mechanism
+      Phase 2 built so an `Order` rule could read `Customer.age` — so
+      assertions just put per-field aggregates under each field's name.
+      They inherit the evaluator's safety properties without anyone
+      re-establishing them, and any installed rule-function plugin works in
+      an assertion too.
+- [x] The same checks as a CI gate: `synthflow check --project … --entity …
+      --assert "email.unique"` prints what it found and exits 1 on failure.
+      The exit code is the point — a report nobody looks at changes nothing,
+      a red build does. HTTP goes through stdlib `urllib` rather than adding
+      a dependency to the core install for one request. `--json` gives the
+      exportable form, and the browser dialog renders the same payload, so
+      what a reviewer reads and what fails a build cannot drift apart.
+- [ ] Side-by-side real-vs-generated comparison with a similarity score.
+      Not built, and it needs a decision this phase deliberately did not
+      make: Phase 9 persists *nothing* about the source data — that was a
+      feature, since a profile becomes an editable project rather than an
+      opaque model. A true side-by-side therefore needs either the original
+      file re-uploaded at compare time, or the source profile stored, which
+      re-introduces the artefact Phase 9 avoided. What exists instead is
+      the honest half of it: the observed fit (`uniform(400, 500)`) sits
+      next to the declared configuration, so drift between what you asked
+      for and what you got is visible without keeping anyone's data.
+
+      **What this actually caught.** Pointing it at a realistic entity — a
+      rule `amount > 400` on a field declared `min 1, max 500` — reported
+      that **79% of candidates were discarded** and that the generated
+      column is `uniform(400, 500)`. Nothing was broken; generation
+      succeeded, returned the requested rows, and the data looked fine. The
+      field configuration simply stopped describing the output, and until
+      now there was no way to find that out. The same mechanism surfaces the
+      error-injection interaction the generator has documented since it was
+      written: corruption is applied *before* rules are checked, so asking
+      for 50% corrupted emails with a rule requiring non-null emails yields
+      **0%**, with no error and no warning.
+
+      **Limits.** Diagnostics cover a single entity's generation; a
+      `generate_project` run across related entities isn't aggregated yet.
+      Assertions are per-request rather than stored on the entity, so a
+      scheduled Phase 8 job can't fail on them — same missing per-entity
+      policy column that Phase 10's thresholds want, and worth adding once
+      rather than twice. `share_` names are sanitised into identifiers, so
+      two categories differing only by punctuation can collide; the report
+      returns every available name so a user can see what they actually got.
+
+      25 new tests, **446 passed / 3 skipped** total, lint, format and
+      typecheck clean. Verified live end to end: the CLI gate exits 0 on a
+      passing run and 1 on a failing one, and the browser dialog shows
+      colour-coded pass/fail/error with zero console errors.
 
 ## Phase 12 — Connector Expansion
 

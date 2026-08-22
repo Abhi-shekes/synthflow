@@ -108,8 +108,13 @@ rather than only by test suite:
   project), k-anonymity and l-diversity measured on generated output, and
   connection passwords encrypted at rest
 
+- **11** data quality: a report on what was actually generated — what the
+  engine discarded, where output contradicts its own field definitions, and
+  your own assertions — in the browser and as `synthflow check`, which exits
+  non-zero so it works as a CI gate
+
 Phase 6 (the optional AI layer) is deliberately unstarted — nothing depends
-on it. Phases 11–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
+on it. Phases 12–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
 plan, including the tradeoffs and known limits recorded per item, and
 [TODO.md](TODO.md) for the active task list.
 

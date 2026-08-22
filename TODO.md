@@ -581,16 +581,67 @@ plaintext passwords in the running Postgres; the report endpoint gave
 k=231 for a coarse quasi-identifier over 1,000 rows and k=1 (68% of rows
 below threshold) for a fine one over 60.
 
+## Phase 11 — Data Quality and Validation — mostly done
+
+`POST /projects/{id}/entities/{id}/quality-report`, a browser dialog, and
+`synthflow check` as a CI gate — all rendering the same payload, so what a
+reviewer reads and what fails a build cannot drift apart.
+
+Three parts, deliberately separate because they carry different authority:
+
+- **diagnostics** — what the engine saw while generating, and the only
+  place a *silent* failure shows up. Candidates discarded by rules
+  (attributed to the first failing rule, so counts sum rather than
+  double-count), unique retries per field, error-injection survival.
+  Opt-in, so Phase 8's streaming path stays exactly as cheap.
+- **observation** — what the rows contain, via Phase 9's `profile_column`
+  rather than a second profiler, plus `violations` where output
+  contradicts the field's own declaration. A violation is a defect.
+- **assertions** — the user's bar. `email.unique`,
+  `status.share_paid >= 0.6`.
+
+**No evaluator changes were needed for assertions**, which is the design
+win. The evaluator already resolves one level of attribute access on a
+dict in `variables` (the Phase 2 `Customer.age` mechanism), so assertions
+just put per-field aggregates under each field's name — inheriting the
+sandbox and the installed rule-function plugins for free.
+
+**What it caught immediately:** a rule `amount > 400` on a field declared
+`min 1, max 500` discards **79% of candidates** and produces
+`uniform(400, 500)`. Nothing errored, the requested rows came back, the
+data looked fine — the field config had just stopped describing the
+output. Same mechanism surfaces the long-documented error-injection
+interaction: corruption runs before rules, so 50% corrupted emails plus a
+non-null rule yields **0%**, silently.
+
+**Not built:** real-vs-generated side-by-side with a similarity score. It
+needs a decision this phase didn't make — Phase 9 persists nothing about
+the source on purpose, so a true comparison needs the original file
+re-uploaded or the source profile stored, re-introducing the artefact
+Phase 9 avoided. The honest half exists: observed fit sits next to
+declared config, so drift is visible without keeping anyone's data.
+
+**Known limits:** diagnostics cover one entity, not a `generate_project`
+run. Assertions are per-request, so a scheduled job can't fail on them —
+the same per-entity policy column Phase 10's thresholds want, worth adding
+once rather than twice. `share_` names are sanitised, so two categories
+differing only by punctuation can collide; every available name is
+returned so a user can see what they got.
+
+25 new tests, 446 passed / 3 skipped. CLI gate verified live (exit 0 / exit
+1); browser dialog verified with zero console errors.
+
 ## Now
 
-**Phases 1–5 and 7–10 are done** (Phase 10 with the three deliberate
-exclusions above). Phase 6 (AI) stays deliberately unstarted. Next by the
-plan is **Phase 11 (Data Quality and Validation)** — profile the
-*generated* output and compare it against the source it was learned from.
-Phase 9 and 10 both leave obvious groundwork: the profiler already
-measures distributions and the anonymity module already walks generated
-rows, so "real vs generated, side by side" is mostly assembling parts
-that exist.
+**Phases 1–5 and 7–11 are done** (10 and 11 each with deliberate
+exclusions, recorded above). Phase 6 (AI) stays deliberately unstarted.
+Next by the plan is **Phase 12 (Connector Expansion)** — MySQL and MongoDB
+push are both already modelled and merely rejected at runtime, so that is
+the cheapest real win left.
+
+**Worth doing once, not twice:** a per-entity policy column would let both
+Phase 10's k-anonymity thresholds and Phase 11's assertions fail a
+scheduled Phase 8 job. Two phases have now wanted it.
 
 Two quick wins still available anywhere: **API keys** (Phase 14 — there's
 still no machine authentication, which blocks CI use) and **MySQL/MongoDB

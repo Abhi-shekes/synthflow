@@ -42,6 +42,7 @@ from app.services.expressions import ExpressionError, evaluate
 from app.services.geo_routes import generate_geo_point
 from app.services.lookup_tables import coerce_numeric
 from app.services.plugins import generate_preset_value
+from app.services.quality.diagnostics import GenerationDiagnostics
 from app.services.trends import generate_trend_value
 
 faker = Faker()
@@ -107,12 +108,19 @@ def _generate_value(field: EntityField) -> Any:
     raise ValueError(f"Unsupported field type: {field.field_type}")
 
 
-def _generate_unique_value(field: EntityField, seen: set) -> Any:
-    for _ in range(MAX_UNIQUE_ATTEMPTS):
+def _generate_unique_value(
+    field: EntityField, seen: set, diagnostics: GenerationDiagnostics | None = None
+) -> Any:
+    for attempt in range(MAX_UNIQUE_ATTEMPTS):
         value = _generate_value(field)
         key = str(value)
         if key not in seen:
             seen.add(key)
+            # `attempt` is how many *collisions* preceded this value. Rising
+            # towards MAX_UNIQUE_ATTEMPTS is the only warning available that
+            # the pool is nearly exhausted before it fails outright.
+            if diagnostics is not None:
+                diagnostics.unique_retry(field.name, attempt)
             return value
     raise ValueError(
         f"Could not generate a unique value for field '{field.name}' "
@@ -150,17 +158,25 @@ def _evaluate_formula(field: EntityField, row_so_far: dict[str, Any]) -> Any:
         raise ValueError(f"Formula for field '{field.name}' failed: {exc}") from exc
 
 
-def _row_satisfies_rules(
+def _first_failing_rule(
     row: dict[str, Any], rules: list[Rule], cross_entity_context: dict[str, dict[str, Any]]
-) -> bool:
+) -> Rule | None:
+    """The first rule this row fails, or None if it satisfies all of them.
+
+    Returns the rule rather than a bool so a discarded candidate can be
+    attributed to what rejected it — "rule X threw away 95% of candidates"
+    is actionable in a way that "5% of rows survived" is not. Stopping at
+    the first failure keeps the counts summing to the discard total instead
+    of double-counting a candidate that several rules would have rejected.
+    """
     variables = {**row, **cross_entity_context} if cross_entity_context else row
     for rule in rules:
         try:
             if not evaluate(rule.condition, variables):
-                return False
+                return rule
         except ExpressionError as exc:
             raise ValueError(f"Rule '{rule.condition}' failed to evaluate: {exc}") from exc
-    return True
+    return None
 
 
 def _evaluate_event_triggers(
@@ -282,6 +298,8 @@ def _generate_one_row(
     previous_row: dict[str, Any] | None,
     position: int,
     count: int,
+    injected_fields: set[str] | None = None,
+    diagnostics: "GenerationDiagnostics | None" = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     row: dict[str, Any] = {}
     cross_entity_context: dict[str, dict[str, Any]] = {}
@@ -343,13 +361,19 @@ def _generate_one_row(
             else:
                 value = random.choice(fk_pools[field.name])
         elif field.unique:
-            value = _generate_unique_value(field, seen_per_field[field.name])
+            value = _generate_unique_value(field, seen_per_field[field.name], diagnostics)
         else:
             value = _generate_value(field)
 
         injection = error_injections.get(field.name)
         if injection is not None and random.random() < injection.rate:
             value = _corrupt_value(value, field, injection.error_types, previous_row)
+            # Recorded per *candidate*, not per row. The caller only counts
+            # it as surviving if this candidate goes on to pass the rules —
+            # which is the whole point, since corruption runs before rule
+            # checking and a rule on the same field silently undoes it.
+            if injected_fields is not None:
+                injected_fields.add(field.name)
 
         row[field.name] = value
         if workflow_path is not None:
@@ -369,6 +393,7 @@ def iter_rows(
     geo_routes: list[GeoRoute] | None = None,
     relationship_lookup: dict[str, dict[Any, dict[str, Any]]] | None = None,
     relationship_entity_name: dict[str, str] | None = None,
+    diagnostics: GenerationDiagnostics | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield `count` rows for `fields`, one at a time.
 
@@ -464,11 +489,16 @@ def iter_rows(
             random.shuffle(queue)
             unique_fk_queues[field.name] = queue
 
+    if diagnostics is not None:
+        diagnostics.rows_requested = count
+
     previous_row: dict[str, Any] | None = None
+    injected: set[str] = set()
     for position in range(count):
         row = None
         cross_entity_context: dict[str, dict[str, Any]] = {}
         for _attempt in range(MAX_RULE_ATTEMPTS if rules else 1):
+            injected.clear()
             candidate, candidate_context = _generate_one_row(
                 fields,
                 fk_pools,
@@ -484,11 +514,20 @@ def iter_rows(
                 previous_row,
                 position,
                 count,
+                injected_fields=injected if diagnostics is not None else None,
+                diagnostics=diagnostics,
             )
-            if _row_satisfies_rules(candidate, rules, candidate_context):
+            if diagnostics is not None:
+                diagnostics.candidate(injected)
+            failing = _first_failing_rule(candidate, rules, candidate_context)
+            if failing is None:
+                if diagnostics is not None:
+                    diagnostics.accepted(injected)
                 row = candidate
                 cross_entity_context = candidate_context
                 break
+            if diagnostics is not None:
+                diagnostics.rule_rejected(failing.condition)
         if row is None:
             raise ValueError(
                 f"Could not generate a row satisfying all rules after {MAX_RULE_ATTEMPTS} "

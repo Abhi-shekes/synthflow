@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.error_injection import ErrorInjectionRead
 from app.schemas.event_trigger import EventTriggerRead
@@ -57,3 +57,15 @@ class PrivacyReportRequest(BaseModel):
     sensitive_field: str | None = None
     k_threshold: int = 5
     l_threshold: int = 2
+
+
+class QualityReportRequest(BaseModel):
+    """Generate rows, then say whether they are any good.
+
+    `assertions` are boolean expressions in the same language as rules and
+    formulas, evaluated against per-field aggregates — see
+    app.services.quality.assertions for the namespace they can reference.
+    """
+
+    count: int = 1000
+    assertions: list[str] = Field(default_factory=list)

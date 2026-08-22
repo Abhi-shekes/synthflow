@@ -640,3 +640,54 @@ export interface ProjectTemplate {
   lookup_attachments: ProjectTemplateLookupAttachment[];
   geo_routes: ProjectTemplateGeoRoute[];
 }
+
+/**
+ * Phase 11. Three parts kept separate because they carry different
+ * authority: `diagnostics` is what the engine saw while generating (the
+ * only place a silent failure shows up), `violations` are the output
+ * contradicting the field's own declaration (a defect, not an opinion),
+ * and `assertions` are the user's own bar.
+ */
+export interface QualityReport {
+  rows: number;
+  passes: boolean;
+  diagnostics: {
+    rows_requested: number;
+    rows_yielded: number;
+    candidates_generated: number;
+    candidates_discarded: number;
+    discard_share: number;
+    discards_by_rule: Record<string, number>;
+    unique_retries: Record<string, number>;
+    injections_applied: Record<string, number>;
+    injections_surviving: Record<string, number>;
+    injection_survival_share: Record<string, number>;
+    findings: string[];
+  };
+  observation: {
+    rows: number;
+    columns: QualityColumn[];
+    violations: { field: string; kind: string; detail: string }[];
+    correlations: { between: string[]; correlation: number }[];
+  };
+  assertions: { expression: string; passed: boolean; error: string | null }[];
+  available_names: string[];
+}
+
+export interface QualityColumn {
+  name: string;
+  declared_type: string;
+  observed_type: string;
+  rows: number;
+  nulls: number;
+  null_share: number;
+  distinct: number;
+  is_unique: boolean;
+  min: number | null;
+  max: number | null;
+  mean: number | null;
+  stddev: number | null;
+  fitted: string | null;
+  fit_quality: string | null;
+  categories: Record<string, number>;
+}

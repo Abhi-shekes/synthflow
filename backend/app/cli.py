@@ -1,4 +1,12 @@
-"""`synthflow init` — the modular-installation wizard.
+"""`synthflow` — the command line.
+
+Two commands:
+
+  init   the modular-installation wizard (below)
+  check  run an entity's quality report and exit non-zero if it fails,
+         which is what makes the Phase 11 checks usable as a CI gate
+
+`synthflow init` — the modular-installation wizard.
 
 Picks which optional pieces a deployment wants and writes a single `.env`
 next to docker-compose.yml. It deliberately does NOT generate a bespoke
@@ -23,10 +31,27 @@ Run it interactively, or non-interactively for scripting/CI:
     synthflow init
     synthflow init --services kafka,monitoring --yes
     synthflow init --all --yes
+
+`synthflow check` — the quality gate.
+
+Generates rows through a running SynthFlow, applies the same checks the
+`quality-report` endpoint does, prints what it found and exits 1 if
+anything failed. That exit code is the whole point: a report nobody looks
+at changes nothing, whereas a red build does.
+
+    synthflow check --project ID --entity ID --token $TOKEN \
+        --assert "email.unique" --assert "status.share_paid >= 0.6"
+
+HTTP goes through urllib rather than httpx on purpose — the CLI ships in
+the core install, and a gate that drags in a dependency to make one
+request is a poor trade.
 """
 
 import argparse
+import json
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -215,14 +240,84 @@ def init(argv: list[str] | None = None) -> int:
     return 0
 
 
+def check(argv: list[str] | None = None) -> int:
+    """Run an entity's quality report and return a process exit code."""
+    parser = argparse.ArgumentParser(
+        prog="synthflow check",
+        description="Generate rows, check them, and exit non-zero if the checks fail.",
+    )
+    parser.add_argument("--url", default="http://localhost:8001", help="SynthFlow base URL")
+    parser.add_argument("--token", required=True, help="access token")
+    parser.add_argument("--project", required=True, help="project id")
+    parser.add_argument("--entity", required=True, help="entity id")
+    parser.add_argument("--count", type=int, default=1000, help="rows to generate")
+    parser.add_argument(
+        "--assert",
+        dest="assertions",
+        action="append",
+        default=[],
+        metavar="EXPR",
+        help="a boolean expression that must hold; repeatable",
+    )
+    parser.add_argument("--json", action="store_true", help="print the raw report instead")
+    args = parser.parse_args(argv)
+
+    endpoint = (
+        f"{args.url.rstrip('/')}/api/v1/projects/{args.project}"
+        f"/entities/{args.entity}/quality-report"
+    )
+    body = json.dumps({"count": args.count, "assertions": args.assertions}).encode()
+    request = urllib.request.Request(endpoint, data=body, method="POST")
+    request.add_header("Content-Type", "application/json")
+    request.add_header("Authorization", f"Bearer {args.token}")
+
+    try:
+        with urllib.request.urlopen(request) as response:
+            report = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        print(f"quality report failed: HTTP {exc.code} {detail}", file=sys.stderr)
+        return 2
+    except urllib.error.URLError as exc:
+        print(f"could not reach {args.url}: {exc.reason}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0 if report["passes"] else 1
+
+    print(f"{report['rows']} rows generated")
+
+    for finding in report["diagnostics"]["findings"]:
+        print(f"  ! {finding}")
+
+    for violation in report["observation"]["violations"]:
+        print(f"  VIOLATION {violation['field']}: {violation['detail']}")
+
+    for result in report["assertions"]:
+        if result["error"]:
+            print(f"  ERROR  {result['expression']}  <- {result['error']}")
+        else:
+            print(f"  {'PASS' if result['passed'] else 'FAIL'}   {result['expression']}")
+
+    if report["passes"]:
+        print("PASS")
+        return 0
+    print("FAIL")
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "init":
         return init(argv[1:])
+    if argv and argv[0] == "check":
+        return check(argv[1:])
     if argv and argv[0] in ("-h", "--help"):
         print(__doc__)
         return 0
     print("usage: synthflow init [--services ...] [--all] [--none] [--yes]")
+    print("       synthflow check --project ID --entity ID --token TOKEN [--assert EXPR]")
     return 1 if argv else 0
 
 

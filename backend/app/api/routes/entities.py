@@ -20,13 +20,24 @@ from app.schemas.entity import (
     EntityUpdate,
     GenerateRequest,
     PrivacyReportRequest,
+    QualityReportRequest,
 )
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
 from app.services import metrics
 from app.services.expressions import ExpressionError, evaluate
 from app.services.field_validation import validate_enum_weights, validate_preset
-from app.services.generator import build_lookup_pools, generate_rows, rows_to_csv, rows_to_excel
+from app.services.generator import (
+    MAX_UNIQUE_ATTEMPTS,
+    build_lookup_pools,
+    generate_rows,
+    iter_rows,
+    rows_to_csv,
+    rows_to_excel,
+)
 from app.services.privacy import anonymity
+from app.services.quality.assertions import available_names, check_all
+from app.services.quality.diagnostics import GenerationDiagnostics
+from app.services.quality.observe import observe_rows
 
 router = APIRouter(prefix="/projects/{project_id}/entities", tags=["entities"])
 
@@ -379,4 +390,80 @@ def privacy_report(
         "unique_row_share": round(report.unique_row_share, 4),
         "smallest_groups": report.smallest_groups,
         "summary": report.summary(),
+    }
+
+
+@router.post("/{entity_id}/quality-report")
+def quality_report(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    payload: QualityReportRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Generate rows and report on their quality.
+
+    Three independent things, deliberately kept apart because they answer
+    different questions and have different authority:
+
+    * **diagnostics** — what the engine observed while generating, which is
+      the only place a silent failure shows up. A run that discarded 95% of
+      its candidates, or whose error injection was entirely undone by a
+      rule, succeeds and looks fine.
+    * **observation** — what the rows actually contain, plus `violations`
+      where the output contradicts the field's own declaration. A violation
+      is a defect, not an opinion.
+    * **assertions** — the user's own bar, which only they can define.
+
+    `passes` is the conjunction: no violations, and every assertion true.
+    An assertion that could not be evaluated counts as not passing, since
+    "we could not check" must never read as "we checked and it was fine".
+    """
+    entity = _get_owned_entity(project_id, entity_id, current_user, db)
+    if not entity.fields:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Entity has no fields to generate"
+        )
+    if payload.count < 1 or payload.count > settings.MAX_GENERATE_ROWS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"count must be between 1 and {settings.MAX_GENERATE_ROWS}",
+        )
+
+    diagnostics = GenerationDiagnostics()
+    try:
+        rows = list(
+            iter_rows(
+                entity.fields,
+                payload.count,
+                fk_pools=build_lookup_pools(entity.lookup_attachments),
+                rules=entity.rules,
+                workflows=entity.workflows,
+                trends=entity.trends,
+                error_injections=entity.error_injections,
+                event_triggers=entity.event_triggers,
+                geo_routes=entity.geo_routes,
+                diagnostics=diagnostics,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    observation = observe_rows(entity.fields, rows)
+    results, context = check_all(payload.assertions, entity.fields, rows)
+
+    return {
+        "rows": len(rows),
+        "passes": not observation.violations and all(r.passed for r in results),
+        "diagnostics": diagnostics.as_dict(MAX_UNIQUE_ATTEMPTS),
+        "observation": observation.as_dict(),
+        "assertions": [
+            {
+                "expression": r.expression,
+                "passed": r.passed,
+                "error": r.error,
+            }
+            for r in results
+        ],
+        "available_names": available_names(context),
     }

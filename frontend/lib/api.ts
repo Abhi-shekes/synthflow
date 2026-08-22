@@ -44,6 +44,7 @@ import type {
   WebSocketStream,
   Workflow,
   WorkflowCreateInput,
+  QualityReport,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -201,6 +202,19 @@ export const api = {
     request<Record<string, unknown>[]>(
       `/api/v1/projects/${projectId}/entities/${entityId}/generate`,
       { method: "POST", body: JSON.stringify({ count }) },
+      token
+    ),
+
+  qualityReport: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    count: number,
+    assertions: string[]
+  ) =>
+    request<QualityReport>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/quality-report`,
+      { method: "POST", body: JSON.stringify({ count, assertions }) },
       token
     ),
 
