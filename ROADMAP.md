@@ -1239,7 +1239,13 @@ Goal: read from and write to the systems people actually run.
       behind a small interface first, so a format is a class rather than
       another branch inside the progress-and-cancellation loop. pyarrow is
       157 MB installed, which is exactly why it is an optional extra.
-- [ ] Warehouses: ClickHouse, Snowflake, BigQuery
+- [ ] Warehouses: ClickHouse, Snowflake, BigQuery — **deliberately skipped at
+      the user's request**, not forgotten and not attempted and abandoned. Two
+      of the three cannot be verified against anything real here: Snowflake and
+      BigQuery need paid cloud accounts, and this project's rule is that a
+      connector nobody has run against its actual service does not get ticked
+      off. ClickHouse alone would have been reachable locally, but shipping one
+      third of a bullet is a worse record than an honest empty box.
 - [x] RabbitMQ, and a generic signed-webhook output. RabbitMQ is a third
       broker of the same shape as Kafka and MQTT, with separate credential
       columns rather than one `amqp://` URL so the password alone can be
@@ -1256,60 +1262,109 @@ Goal: read from and write to the systems people actually run.
       of that routing key exists, so a misconfigured output reports success
       and delivers nothing. The producer now checks on a throwaway channel
       and logs exactly that, rather than leaving a user with no signal.
-- [ ] Matching *input* connectors for Phases 7 and 9, so profiling and schema
-      import can read from the same places generation writes to
+- [x] Matching *input* connectors for Phases 7 and 9, so profiling and schema
+      import can read from the same places generation writes to: a URL, an
+      object-storage key, or a database table or collection. Phases 7 and 9
+      could only learn from a file someone uploaded through the browser, while
+      the rest of this phase taught SynthFlow to *write* to buckets and three
+      databases — this closes that asymmetry in the obvious direction.
 
-      Mostly mechanical: the `synthflow.outputs` plugin contract from Phase 5
-      already defines how a delivery target plugs in, and the modular-install
-      work means each connector's dependencies can ship as its own extra rather
-      than bloating the core image.
+      Three sources, and one difference between them that is the whole point.
+      URLs and objects produce **bytes**, so they go through the existing
+      upload-parsing path; they are files, and a second CSV parser would be a
+      liability rather than a feature. A database produces **rows**, and
+      `profile_table()` / `profile_tables()` split out of `profile_file()` /
+      `profile_files()` so it can reach profiling without a CSV round-trip.
+      That is not tidiness: a table serialised to CSV and parsed back loses
+      its DATE and DATETIME columns to strings, so routing a database through
+      the file path would have profiled it **worse** than the same data
+      exported by hand. Read from a real MySQL table, `issued_on` comes back as
+      a `date` and `settled_at` as a `datetime`; the same data as CSV yields
+      two strings.
 
-      **Scope, stated plainly: only the first bullet is done.** It was the one
-      the list itself called cheapest, and finishing it properly — drivers,
-      extras, a migration, real servers to test against, the UI — turned out
-      to be a phase's worth of work rather than an afternoon's. The remaining
-      five are each a comparable chunk, and doing five of them shallowly would
-      have produced five connectors nobody had run against a real endpoint.
-      They stay open rather than being quietly marked done.
+      **The bug this found is the argument for testing against real servers.**
+      A SQL `DECIMAL` arrives as `decimal.Decimal`, which is neither an `int`
+      nor a `float`, so the profiler classified money columns — the single most
+      likely thing to be a DECIMAL — as *strings*. `ingest._normalise` converts
+      it, narrowly: normalising everything unknown would quietly paper over the
+      next type that needs real thought.
 
-      **Design decisions worth keeping.** MongoDB reuses `DatabaseConnection`
-      rather than getting its own model: the credentials, the encrypted
-      password, the ownership checks and the entire UI are identical, and the
-      only thing that differs is how rows get written. That is one dispatch in
-      `push_rows` against a duplicated model, API and frontend. Where the two
-      genuinely differ, they differ deliberately — the SQL path serialises a
-      list to a JSON string because a column cannot hold one, while MongoDB
-      keeps it as a real array, since flattening structure is the one thing a
-      document store exists to avoid. A DATE is stored as an ISO string rather
-      than a BSON datetime, because BSON has no date-only type and promoting
-      `2024-03-05` to a midnight timestamp invents a time zone question nobody
-      asked. Documents are restricted to the declared fields, matching the SQL
-      path: being schemaless is not a reason to be shapeless.
+      **`project_id` is optional, and only for URLs.** Object keys and tables
+      need credentials that belong to a project; a public URL needs none, and
+      requiring a project would mean you could not learn from a URL until you
+      had already made a project to learn into.
 
-      **Known limits.** MongoDB authenticates against `admin`
-      (`db_output.MONGO_AUTH_SOURCE`), which is what the official image and
-      Atlas both expect; a deployment whose user was created *inside* the
-      target database needs a per-connection auth-source setting, and that is
-      a schema change. The dialect migration is **irreversible** — Postgres
-      has no `ALTER TYPE ... DROP VALUE`, and recreating the type under a
-      table that may hold live connections is worse than leaving an unused
-      enum value behind, so `downgrade` is a documented no-op.
+      **URL fetching allows only `http` and `https`.** `urllib` supports
+      `file://` and `ftp://` by default, which would turn "profile from a URL"
+      into a way to read the server's own disk. Every source is bounded before
+      it reaches memory — a profiling request that happily downloads a 40 GB
+      object is a way to take the server down, not a feature.
 
-      14 new tests, **459 passed / 4 skipped** total, lint, format and
-      typecheck clean. Verified against real servers rather than mocks: 50
-      rows into MySQL 8.4 (correct column types inferred — `int`,
-      `varchar(255)`, `float`, `date`, `text`) and 50 documents into MongoDB
-      7, then the whole path again through the HTTP API, where Phase 10's
-      encrypted password round-tripped and authenticated successfully while
-      never appearing in a response.
+      A second, smaller lie got fixed on the way: `object_storage._readable()`
+      was written for `head_bucket`, where a bare 404 does mean a missing
+      bucket. Reusing it for `head_object` meant a mistyped **key** reported
+      "Bucket does not exist" about a bucket that was fine, so the caller now
+      passes in what a 404 actually means.
 
-      One environment issue worth recording for anyone else who hits it: MySQL
-      would not start on the development host, failing with
-      `io_setup() EAGAIN` — InnoDB grabs kernel AIO contexts at startup and
-      the host's `fs.aio-max-nr` was already exhausted by other containers.
-      The compose service runs with `--innodb-use-native-aio=0`, which is the
-      right fix for a throwaway push target and avoids asking anyone to retune
-      their kernel to try SynthFlow.
+**Phase 12 closed: five of six bullets done, one deliberately skipped.**
+Input and output are now symmetric — every place a generation job can write
+to is a place profiling can read from — and every connector ships as its own
+optional extra, so a core install carries none of their drivers.
+
+**Design decisions worth keeping.** MongoDB reuses `DatabaseConnection`
+rather than getting its own model: the credentials, the encrypted
+password, the ownership checks and the entire UI are identical, and the
+only thing that differs is how rows get written. That is one dispatch in
+`push_rows` against a duplicated model, API and frontend. Where the two
+genuinely differ, they differ deliberately — the SQL path serialises a
+list to a JSON string because a column cannot hold one, while MongoDB
+keeps it as a real array, since flattening structure is the one thing a
+document store exists to avoid. A DATE is stored as an ISO string rather
+than a BSON datetime, because BSON has no date-only type and promoting
+`2024-03-05` to a midnight timestamp invents a time zone question nobody
+asked. Documents are restricted to the declared fields, matching the SQL
+path: being schemaless is not a reason to be shapeless.
+
+**Known limits.** MongoDB authenticates against `admin`
+(`db_output.MONGO_AUTH_SOURCE`), which is what the official image and
+Atlas both expect; a deployment whose user was created *inside* the
+target database needs a per-connection auth-source setting, and that is
+a schema change. The dialect migration is **irreversible** — Postgres
+has no `ALTER TYPE ... DROP VALUE`, and recreating the type under a
+table that may hold live connections is worse than leaving an unused
+enum value behind, so `downgrade` is a documented no-op.
+
+**537 passed / 5 skipped** at the close of the phase, lint, format and
+typecheck clean. Nothing here was ticked off against a mock. Every
+connector was run against a real server: MySQL 8.4 and MongoDB 7 for push
+(correct column types inferred — `int`, `varchar(255)`, `float`, `date`,
+`text` — and Phase 10's encrypted password round-tripping through the
+HTTP API without ever appearing in a response), MinIO for object storage,
+RabbitMQ for the broker, and a real HTTP server for the webhook; then all
+four again in the opposite direction for input.
+
+That rule paid for itself repeatedly. Live testing is what caught ORC
+writing an unopenable zero-row file, RabbitMQ silently **discarding**
+messages published to a routing key with no queue, a DECIMAL column
+profiling as a string, and a missing object key blaming the bucket. Every
+one of them passed the unit suite first.
+
+The browser earned its place too. The "Learn from a connected source" card
+typechecked and still shipped two defects a screenshot caught in seconds:
+a select rendering the raw value `object` rather than "Object storage",
+and a placeholder telling people to repeat a prefix the backend already
+applies. A third came from reading the code around them — the
+project-creation call sat in an `onSuccess` chain, where a failure could
+never reach `onError`, so a failed import would have shown the user
+nothing at all.
+
+One environment issue worth recording for anyone else who hits it: MySQL
+would not start on the development host, failing with
+`io_setup() EAGAIN` — InnoDB grabs kernel AIO contexts at startup and
+the host's `fs.aio-max-nr` was already exhausted by other containers.
+The compose service runs with `--innodb-use-native-aio=0`, which is the
+right fix for a throwaway push target and avoids asking anyone to retune
+their kernel to try SynthFlow.
 
 ## Phase 13 — Temporal Continuity and Change Simulation
 

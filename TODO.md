@@ -631,14 +631,19 @@ returned so a user can see what they got.
 25 new tests, 446 passed / 3 skipped. CLI gate verified live (exit 0 / exit
 1); browser dialog verified with zero console errors.
 
-## Phase 12 — Connector Expansion — first bullet done
+## Phase 12 — Connector Expansion — done, five of six bullets
 
-MySQL and MongoDB push both work, against real servers. Everything else on
-the Phase 12 list is still open, and that is stated rather than glossed:
-finishing this one bullet properly — drivers, extras, a migration, compose
-services to test against, the UI — was a phase's worth of work, and doing
-the other five shallowly would have produced five connectors nobody had
-run against a real endpoint.
+Input and output are now symmetric: every place a generation job can write
+to is a place profiling can read from. MySQL and MongoDB push, S3-compatible
+object storage, Parquet/ORC/Avro job formats, RabbitMQ and a signed webhook,
+and matching *input* connectors for URLs, buckets and database tables.
+
+**Warehouses (ClickHouse, Snowflake, BigQuery) were skipped at the user's
+request** — deliberately, not forgotten. Two of the three need paid cloud
+accounts that can't be verified against anything real here, and a connector
+nobody has run against its actual service doesn't get ticked off.
+
+### Push connectors (MySQL, MongoDB)
 
 - Both ship as **optional extras** (`pymysql`, `pymongo`) in the same
   `install.FEATURES` registry Kafka and MQTT use, so a core install carries
@@ -664,10 +669,10 @@ needs a per-connection auth-source setting, which is a schema change. The
 dialect migration is **irreversible** — Postgres has no
 `ALTER TYPE ... DROP VALUE`, so `downgrade` is a documented no-op.
 
-14 new tests, 459 passed / 4 skipped. Verified against real servers: 50
-rows into MySQL 8.4 with correct inferred column types, 50 documents into
-MongoDB 7, then the whole path again through the HTTP API where Phase 10's
-encrypted password authenticated without ever appearing in a response.
+Verified against real servers: 50 rows into MySQL 8.4 with correct inferred
+column types, 50 documents into MongoDB 7, then the whole path again through
+the HTTP API where Phase 10's encrypted password authenticated without ever
+appearing in a response.
 
 **Environment note:** MySQL wouldn't start here — `io_setup() EAGAIN`,
 because InnoDB grabs kernel AIO contexts at startup and the host's
@@ -675,14 +680,58 @@ because InnoDB grabs kernel AIO contexts at startup and the host's
 `--innodb-use-native-aio=0` rather than asking anyone to retune their
 kernel.
 
+### Input connectors — learn from a URL, a bucket or a table
+
+Phases 7 and 9 could only learn from a file uploaded through the browser.
+Now the same bucket a job uploads to, and the same database a push writes
+into, can be read back as a sample.
+
+- **URLs and objects produce bytes**, so they reuse the upload-parsing path.
+  They *are* files; a second CSV parser would be a liability.
+- **A database produces rows**, and `profile_table()` / `profile_tables()`
+  split out of the file versions so it reaches profiling without a CSV
+  round-trip. That's the whole point: a table serialised to CSV and read
+  back loses DATE and DATETIME to strings, so the file path would have
+  profiled a database **worse** than the same data exported by hand. Read
+  from real MySQL, `issued_on` is a `date` and `settled_at` a `datetime`;
+  as CSV, both are strings.
+- **`DECIMAL` was the bug this found.** SQL money columns arrive as
+  `decimal.Decimal` — neither `int` nor `float` — so the profiler classified
+  them as *strings*. `ingest._normalise` converts it, narrowly; normalising
+  everything unknown would paper over the next type that needs thought.
+- **`project_id` is optional, and only for URLs.** Keys and tables need
+  credentials that belong to a project; a public URL needs none, and
+  demanding one would mean you couldn't learn from a URL until you'd already
+  made a project to learn into.
+- **Only `http` and `https`.** `urllib` supports `file://` and `ftp://` by
+  default, which would turn "profile from a URL" into a way to read the
+  server's own disk. Every source is size-bounded before it reaches memory.
+- A 404 that lied got fixed on the way: `object_storage._readable()` was
+  written for `head_bucket`, so reusing it for `head_object` made a mistyped
+  **key** report "Bucket does not exist" about a bucket that was fine.
+
+**The screenshot habit caught two more.** The UI typechecked and still
+shipped a select rendering the raw value `object` instead of "Object
+storage", and a placeholder telling people to repeat a prefix the backend
+already applies. A third came from reading the code: the project-creation
+call sat in an `onSuccess` chain where a failure could never reach
+`onError`, so a failed import would have shown the user nothing.
+
+**537 passed / 5 skipped** at the close of the phase, lint, format and
+typecheck clean. All three input paths driven in a real browser against
+MinIO, MySQL and a real HTTP server — including the error path, which now
+names what was actually missing.
+
 ## Now
 
-**Phases 1–5 and 7–11 are done** (10 and 11 each with deliberate
-exclusions). **Phase 12 is one bullet in of six.** Phase 6 (AI) stays
-deliberately unstarted.
+**Phases 1–5 and 7–12 are done** (10, 11 and 12 each with deliberate
+exclusions — Phase 12's warehouse bullet was skipped at the user's request).
+Phase 6 (AI) stays deliberately unstarted; nothing depends on it.
 
-Next is either finishing Phase 12 — object storage and Parquet are the two
-most-asked-for of the remaining five — or **Phase 13 (Temporal Continuity)**.
+Next is **Phase 13 (Temporal Continuity)**, the deepest change on the
+roadmap: it revisits the generation engine's assumption that each call is
+independent, which nearly every Phase 4 feature was built on top of. Phase
+8's job model now exists to run the long backfills it implies.
 
 **Worth doing once, not twice:** a per-entity policy column would let both
 Phase 10's k-anonymity thresholds and Phase 11's assertions fail a
@@ -705,9 +754,9 @@ legitimately changed (`{"kafka", "mqtt"}`, `11 + 6` presets). Each said
 nothing about whether the mechanism worked. Derive the expectation from the
 registry being tested.
 
-Two quick wins still available anywhere: **API keys** (Phase 14 — there's
-still no machine authentication, which blocks CI use) and **MySQL/MongoDB
-push** (Phase 12 — both already modelled and merely rejected at runtime).
+The quick win still available anywhere: **API keys** (Phase 14 — there's
+still no machine authentication, which blocks CI use). The other item that
+sat here, MySQL/MongoDB push, shipped in Phase 12.
 
 ## Backlog (not started, roughly in order)
 

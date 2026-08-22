@@ -85,8 +85,8 @@ deployment doesn't pull in Kafka, MongoDB, or MQTT dependencies. See
 
 ## Project status
 
-**Phases 1–5 and 7–11 are live**, backend and frontend, each verified end to
-end rather than only by test suite — plus the first of Phase 12:
+**Phases 1–5 and 7–12 are live**, backend and frontend, each verified end to
+end rather than only by test suite:
 
 - **1–2** core platform, relationships, rules, formulas, stateful workflows
 - **3** outputs: CSV/JSON/Excel, PostgreSQL push, REST, WebSocket, Kafka, MQTT
@@ -111,10 +111,14 @@ end rather than only by test suite — plus the first of Phase 12:
   engine discarded, where output contradicts its own field definitions, and
   your own assertions — in the browser and as `synthflow check`, which exits
   non-zero so it works as a CI gate
-- **12** MySQL and MongoDB push, alongside PostgreSQL — each an optional
-  extra, so an install only carries the drivers it uses. The rest of Phase
-  12's connector list (object storage, columnar formats, warehouses) is
-  still open.
+- **12** connectors, in both directions: MySQL and MongoDB push alongside
+  PostgreSQL, S3-compatible object storage (AWS S3, MinIO, R2, Spaces, B2),
+  Parquet/ORC/Avro job formats, RabbitMQ and a signed webhook — and matching
+  *input* connectors, so profiling can learn from a URL, a bucket object, or
+  a database table. Each is an optional extra, so an install only carries the
+  drivers it uses. Reading a table keeps its real column types, which a CSV
+  export would flatten to strings. Warehouses (ClickHouse, Snowflake,
+  BigQuery) are the one bullet not done.
 
 Phase 6 (the optional AI layer) is deliberately unstarted — nothing depends
 on it. Phases 13–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
