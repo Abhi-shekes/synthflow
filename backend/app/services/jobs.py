@@ -37,8 +37,10 @@ from app.core.config import settings
 from app.db import session as db_session
 from app.models.entity import Entity
 from app.models.job import GenerationJob, JobFormat, JobStatus, Schedule
+from app.models.object_storage import ObjectStorageTarget
 from app.services import cron
 from app.services.generator import build_lookup_pools, iter_rows
+from app.services.object_storage import object_key, upload_file
 from app.services.row_writers import open_writer, suffix_for
 
 logger = logging.getLogger(__name__)
@@ -215,11 +217,25 @@ def run_job(db: Session, job: GenerationJob) -> None:
 
         artifacts: dict[str, Any] = {}
         total = 0
+        written_paths: list[tuple[str, Path]] = []
         for entity in entities:
             path = directory / f"{entity.name}.{suffix}"
             written = _write_entity(db, job, entity, path, total)
             total += written
             artifacts[entity.name] = {"file": path.name, "rows": written}
+            written_paths.append((entity.name, path))
+
+        # Upload only after every file is written, and only ever *in
+        # addition* to the local artifact. A failed upload therefore leaves
+        # the generated data on disk to retry rather than losing a run that
+        # already did all the expensive work.
+        if job.storage_target_id is not None:
+            target = db.get(ObjectStorageTarget, job.storage_target_id)
+            if target is None:
+                raise ValueError("The configured storage target no longer exists")
+            for entity_name, path in written_paths:
+                key = object_key(target, str(job.id), path.name)
+                artifacts[entity_name]["uri"] = upload_file(target, path, key)
 
         job.rows_written = total
         job.artifacts = artifacts
@@ -420,12 +436,14 @@ def create_job(
     entity_id: uuid.UUID | None,
     requested_rows: int,
     job_format: JobFormat,
+    storage_target_id: uuid.UUID | None = None,
 ) -> GenerationJob:
     job = GenerationJob(
         project_id=project_id,
         entity_id=entity_id,
         requested_rows=requested_rows,
         format=job_format,
+        storage_target_id=storage_target_id,
     )
     db.add(job)
     db.commit()

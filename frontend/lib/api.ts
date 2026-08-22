@@ -45,6 +45,9 @@ import type {
   Workflow,
   WorkflowCreateInput,
   QualityReport,
+  ObjectStorageTarget,
+  ObjectStorageTargetCreateInput,
+  ObjectStorageTestResult,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -743,7 +746,12 @@ export const api = {
   createJob: (
     token: string,
     projectId: string,
-    data: { entity_id?: string | null; rows: number; format: JobFormat }
+    data: {
+      entity_id?: string | null;
+      rows: number;
+      format: JobFormat;
+      storage_target_id?: string | null;
+    }
   ) =>
     request<GenerationJob>(
       `/api/v1/projects/${projectId}/jobs`,
@@ -801,6 +809,38 @@ export const api = {
     if (projectName) form.append("project_name", projectName);
     return requestUpload<ProfileResponse>("/api/v1/profile", form, token);
   },
+
+  listStorageTargets: (token: string, projectId: string) =>
+    request<ObjectStorageTarget[]>(
+      `/api/v1/projects/${projectId}/storage-targets`,
+      {},
+      token
+    ),
+
+  createStorageTarget: (
+    token: string,
+    projectId: string,
+    input: ObjectStorageTargetCreateInput
+  ) =>
+    request<ObjectStorageTarget>(
+      `/api/v1/projects/${projectId}/storage-targets`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    ),
+
+  testStorageTarget: (token: string, projectId: string, targetId: string) =>
+    request<ObjectStorageTestResult>(
+      `/api/v1/projects/${projectId}/storage-targets/${targetId}/test`,
+      { method: "POST", body: "{}" },
+      token
+    ),
+
+  deleteStorageTarget: (token: string, projectId: string, targetId: string) =>
+    request<void>(
+      `/api/v1/projects/${projectId}/storage-targets/${targetId}`,
+      { method: "DELETE" },
+      token
+    ),
 
   listStarterTemplates: (token: string) =>
     request<StarterTemplateSummary[]>("/api/v1/starter-templates", {}, token),

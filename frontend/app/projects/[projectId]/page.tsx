@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { AddDatabaseConnectionDialog } from "@/components/add-database-connection-dialog";
+import { AddStorageTargetDialog } from "@/components/add-storage-target-dialog";
 import { AddLookupTableDialog } from "@/components/add-lookup-table-dialog";
 import { AddRelationshipDialog } from "@/components/add-relationship-dialog";
 import { AddTimelineReplayDialog } from "@/components/add-timeline-replay-dialog";
@@ -72,6 +73,30 @@ export default function ProjectDetailPage() {
     queryKey: ["relationships", projectId],
     queryFn: () => api.listRelationships(accessToken!, projectId),
     enabled: !!accessToken,
+  });
+
+  const storageTargetsQuery = useQuery({
+    queryKey: ["storage-targets", projectId],
+    queryFn: () => api.listStorageTargets(accessToken!, projectId),
+    enabled: !!accessToken,
+  });
+
+  const testStorageTarget = useMutation({
+    mutationFn: (targetId: string) =>
+      api.testStorageTarget(accessToken!, projectId, targetId),
+    onSuccess: (result) =>
+      result.ok ? toast.success(result.detail) : toast.error(result.detail),
+    onError: (error: Error) => toast.error(error.message || "Could not reach the bucket"),
+  });
+
+  const deleteStorageTarget = useMutation({
+    mutationFn: (targetId: string) =>
+      api.deleteStorageTarget(accessToken!, projectId, targetId),
+    onSuccess: () => {
+      toast.success("Storage target removed");
+      queryClient.invalidateQueries({ queryKey: ["storage-targets", projectId] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not remove the target"),
   });
 
   const connectionsQuery = useQuery({
@@ -399,6 +424,65 @@ export default function ProjectDetailPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Object storage</CardTitle>
+            <AddStorageTargetDialog
+              projectId={projectId}
+              onCreated={() =>
+                queryClient.invalidateQueries({ queryKey: ["storage-targets", projectId] })
+              }
+            />
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Upload a generation job&apos;s file to a bucket when it finishes.
+              Works with AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces and
+              Backblaze B2 — pick a target when you queue a job. The local
+              artifact is kept either way, so a failed upload never loses a run.
+            </p>
+            {storageTargetsQuery.data?.length === 0 && (
+              <p className="text-sm text-muted-foreground">No storage targets yet.</p>
+            )}
+            {storageTargetsQuery.data && storageTargetsQuery.data.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {storageTargetsQuery.data.map((target) => (
+                  <li
+                    key={target.id}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">{target.name}</span>{" "}
+                      <Badge variant="secondary">{target.provider}</Badge>{" "}
+                      <span className="font-mono text-xs text-muted-foreground">
+                        s3://{target.bucket}
+                        {target.prefix ? `/${target.prefix}` : ""}
+                      </span>
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => testStorageTarget.mutate(target.id)}
+                        disabled={testStorageTarget.isPending}
+                      >
+                        Test
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteStorageTarget.mutate(target.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Database connections</CardTitle>
             <AddDatabaseConnectionDialog
               onSubmit={(v) => createConnection.mutate(v)}
@@ -408,7 +492,7 @@ export default function ProjectDetailPage() {
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
               Write generated rows straight into an external database instead
-              of just downloading them. PostgreSQL only for now.
+              of just downloading them. PostgreSQL, MySQL and MongoDB.
             </p>
             {connectionsQuery.data?.length === 0 && (
               <p className="text-sm text-muted-foreground">No connections yet.</p>

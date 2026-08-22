@@ -34,6 +34,7 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
 
   const [rows, setRows] = useState(100000);
   const [format, setFormat] = useState<JobFormat>("csv");
+  const [storageTargetId, setStorageTargetId] = useState<string>("");
   const [entityId, setEntityId] = useState<string>("");
   const [scheduleName, setScheduleName] = useState("");
   const [cronExpr, setCronExpr] = useState("0 2 * * *");
@@ -55,12 +56,20 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
   const invalidateJobs = () =>
     queryClient.invalidateQueries({ queryKey: ["jobs", projectId] });
 
+  const storageTargetsQuery = useQuery({
+    queryKey: ["storage-targets", projectId],
+    queryFn: () => api.listStorageTargets(accessToken!, projectId),
+    enabled: !!accessToken,
+  });
+
   const createJob = useMutation({
     mutationFn: () =>
       api.createJob(accessToken!, projectId, {
         entity_id: entityId || null,
         rows,
         format,
+        // "" is the "keep it local" choice, which stays the default.
+        storage_target_id: storageTargetId || null,
       }),
     onSuccess: invalidateJobs,
     onError: (e: Error) => toast.error(e.message || "Could not queue the job"),
@@ -160,6 +169,24 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
               ))}
             </SelectContent>
           </Select>
+          {(storageTargetsQuery.data?.length ?? 0) > 0 && (
+            <Select
+              value={storageTargetId}
+              onValueChange={(v) => setStorageTargetId(v ?? "")}
+            >
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Keep local" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Keep local</SelectItem>
+                {storageTargetsQuery.data!.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    upload to {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button
             onClick={() => createJob.mutate()}
             disabled={createJob.isPending || entities.length === 0}

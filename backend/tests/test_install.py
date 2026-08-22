@@ -159,9 +159,12 @@ def test_init_all_selects_everything(tmp_path):
     assert init(["--all", "--yes", "--path", str(tmp_path)]) == 0
 
     written = env_path.read_text()
-    # Every option's profile, and every option that carries a Python extra —
-    # again from the registry, so adding a connector doesn't fail this.
-    expected_profiles = ",".join(o.profile for o in OPTIONS)
+    # Every option that carries a compose profile, and every option that
+    # carries a Python extra — from the registry, so adding a connector
+    # doesn't fail this. The two lists genuinely differ: `monitoring` has a
+    # profile and no extra, while `parquet` and `avro` have an extra and no
+    # service to start.
+    expected_profiles = ",".join(o.profile for o in OPTIONS if o.profile)
     expected_extras = ",".join(o.extra for o in OPTIONS if o.extra)
     assert f"COMPOSE_PROFILES={expected_profiles}" in written
     assert f"SYNTHFLOW_EXTRAS={expected_extras}" in written

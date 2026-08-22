@@ -22,6 +22,7 @@ from app.api.routes import (
     lookup_tables,
     metrics,
     mqtt_outputs,
+    object_storage,
     output_plugins,
     outputs,
     plugin_outputs,
@@ -143,6 +144,7 @@ app.include_router(lookup_tables.router, prefix=settings.API_V1_PREFIX)
 app.include_router(lookup_attachments.router, prefix=settings.API_V1_PREFIX)
 app.include_router(geo_routes.router, prefix=settings.API_V1_PREFIX)
 app.include_router(database_connections.router, prefix=settings.API_V1_PREFIX)
+app.include_router(object_storage.router, prefix=settings.API_V1_PREFIX)
 app.include_router(rest_outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(websocket_streams.router, prefix=settings.API_V1_PREFIX)
 app.include_router(timeline_replays.router, prefix=settings.API_V1_PREFIX)

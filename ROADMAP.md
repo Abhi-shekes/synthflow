@@ -1210,7 +1210,24 @@ Goal: read from and write to the systems people actually run.
       Both also gained real compose services under `mysql`/`mongo` profiles,
       because a connector nobody has run against a real server is a
       connector nobody has tested.
-- [ ] Object storage: S3, GCS, Azure Blob
+- [x] Object storage — **one** connector for AWS S3, MinIO, Cloudflare R2,
+      DigitalOcean Spaces and Backblaze B2, because they all speak the S3
+      API and differ only in `endpoint_url`. Five vendor connectors wrapping
+      the same client would have been five things to keep working. A
+      finished generation job uploads its file and records the `s3://` URI
+      in its artifacts; the local file is kept either way, so a failed
+      upload leaves the run on disk to retry rather than losing work that
+      was already done. Credentials come from the target row and never from
+      ambient environment variables — picking up whatever the host happens
+      to have is convenient right until a misconfigured target silently
+      writes into the wrong account. The secret reuses Phase 10's
+      `EncryptedString`, so it is encrypted at rest and never returned by
+      the API.
+      **GCS and Azure Blob are not done.** Each needs its own SDK and cloud
+      credentials that cannot be verified against anything real here, and a
+      connector nobody has run against its actual service is not something
+      to tick off. GCS is reachable today through its S3-interoperability
+      endpoint; Azure genuinely is not.
 - [x] Columnar formats: Parquet, Avro and ORC, as generation-job formats
       alongside CSV and JSONL. Phase 8's rule was that a job format must
       *stream*, since a job exists precisely for output too large to hold in

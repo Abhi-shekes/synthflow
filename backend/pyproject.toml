@@ -47,6 +47,8 @@ mongo = ["pymongo>=4.9"]
 # precisely why it is an extra and never core.
 parquet = ["pyarrow>=18.0"]
 avro = ["fastavro>=1.9"]
+# One client for every S3-compatible service (AWS, MinIO, R2, Spaces, B2).
+s3 = ["boto3>=1.35"]
 # Everything, for a batteries-included install or local development.
 all = [
     "aiokafka>=0.11",
@@ -55,6 +57,7 @@ all = [
     "pymongo>=4.9",
     "pyarrow>=18.0",
     "fastavro>=1.9",
+    "boto3>=1.35",
 ]
 dev = [
     "pytest>=8.3",

@@ -82,6 +82,13 @@ FEATURES: tuple[Feature, ...] = (
         label="Avro output",
         description="Write generation jobs as Avro files.",
     ),
+    Feature(
+        key="s3",
+        module="boto3",
+        extra="s3",
+        label="Object storage upload",
+        description="Upload generated files to S3, MinIO, R2, Spaces or B2.",
+    ),
 )
 
 _FEATURES_BY_KEY = {feature.key: feature for feature in FEATURES}

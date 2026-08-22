@@ -23,6 +23,9 @@ class JobCreate(BaseModel):
     entity_id: uuid.UUID | None = None
     rows: int = Field(gt=0)
     format: JobFormat = JobFormat.CSV
+    # Optional upload destination. Null keeps the artifact on disk only,
+    # which stays the default — see app.services.object_storage.
+    storage_target_id: uuid.UUID | None = None
 
 
 class JobRead(BaseModel):
@@ -125,6 +128,7 @@ def create_job(
         entity_id=payload.entity_id,
         requested_rows=payload.rows,
         job_format=payload.format,
+        storage_target_id=payload.storage_target_id,
     )
 
 

@@ -125,6 +125,16 @@ OPTIONS: tuple[Option, ...] = (
         extra="avro",
     ),
     Option(
+        key="s3",
+        label="Object storage upload",
+        detail=(
+            "Installs boto3 so job artifacts can be uploaded to S3, MinIO, "
+            "R2, Spaces or B2, and adds a MinIO server to try it against."
+        ),
+        profile="s3",
+        extra="s3",
+    ),
+    Option(
         key="monitoring",
         label="Monitoring dashboard",
         detail="Adds Prometheus, Grafana and Loki. No extra Python deps.",

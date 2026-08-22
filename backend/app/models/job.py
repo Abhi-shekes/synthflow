@@ -93,6 +93,12 @@ class GenerationJob(Base):
     rows_written: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     artifacts: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Optional upload destination. Null means "leave the file on disk",
+    # which stays the default so nothing changes for anyone not using
+    # object storage — see app.services.object_storage.
+    storage_target_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("object_storage_targets.id", ondelete="SET NULL"), nullable=True
+    )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Set when a worker claims the job; the pair is what makes a stale

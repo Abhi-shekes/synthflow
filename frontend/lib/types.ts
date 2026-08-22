@@ -705,3 +705,33 @@ export interface QualityColumn {
   fit_quality: string | null;
   categories: Record<string, number>;
 }
+
+/** Phase 12 — an S3-compatible bucket job artifacts can be uploaded to.
+ * `secret_access_key` is never returned by the API, only sent. */
+export interface ObjectStorageTarget {
+  id: string;
+  project_id: string;
+  name: string;
+  provider: "s3";
+  bucket: string;
+  prefix: string;
+  region: string;
+  endpoint_url: string;
+  access_key_id: string;
+  created_at: string;
+}
+
+export interface ObjectStorageTargetCreateInput {
+  name: string;
+  bucket: string;
+  prefix?: string;
+  region?: string;
+  endpoint_url?: string;
+  access_key_id: string;
+  secret_access_key: string;
+}
+
+export interface ObjectStorageTestResult {
+  ok: boolean;
+  detail: string;
+}
