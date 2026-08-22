@@ -108,6 +108,23 @@ OPTIONS: tuple[Option, ...] = (
         extra="mongo",
     ),
     Option(
+        key="parquet",
+        label="Parquet and ORC output",
+        detail=(
+            "Installs pyarrow (~157 MB) so generation jobs can be written "
+            "as Parquet or ORC. No extra service."
+        ),
+        profile=None,
+        extra="parquet",
+    ),
+    Option(
+        key="avro",
+        label="Avro output",
+        detail="Installs fastavro so generation jobs can be written as Avro. No extra service.",
+        profile=None,
+        extra="avro",
+    ),
+    Option(
         key="monitoring",
         label="Monitoring dashboard",
         detail="Adds Prometheus, Grafana and Loki. No extra Python deps.",

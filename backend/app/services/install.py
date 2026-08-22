@@ -68,6 +68,20 @@ FEATURES: tuple[Feature, ...] = (
         label="MongoDB push",
         description="Write generated rows into a MongoDB collection.",
     ),
+    Feature(
+        key="parquet",
+        module="pyarrow",
+        extra="parquet",
+        label="Parquet and ORC output",
+        description="Write generation jobs as Parquet or ORC files.",
+    ),
+    Feature(
+        key="avro",
+        module="fastavro",
+        extra="avro",
+        label="Avro output",
+        description="Write generation jobs as Avro files.",
+    ),
 )
 
 _FEATURES_BY_KEY = {feature.key: feature for feature in FEATURES}

@@ -43,8 +43,19 @@ mqtt = ["aiomqtt>=2.1"]
 # compiler or MySQL client headers. SQLAlchemy drives it either way.
 mysql = ["pymysql>=1.1"]
 mongo = ["pymongo>=4.9"]
+# pyarrow is ~157 MB installed and covers both Parquet and ORC, which is
+# precisely why it is an extra and never core.
+parquet = ["pyarrow>=18.0"]
+avro = ["fastavro>=1.9"]
 # Everything, for a batteries-included install or local development.
-all = ["aiokafka>=0.11", "aiomqtt>=2.1", "pymysql>=1.1", "pymongo>=4.9"]
+all = [
+    "aiokafka>=0.11",
+    "aiomqtt>=2.1",
+    "pymysql>=1.1",
+    "pymongo>=4.9",
+    "pyarrow>=18.0",
+    "fastavro>=1.9",
+]
 dev = [
     "pytest>=8.3",
     "httpx>=0.27",

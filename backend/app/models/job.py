@@ -22,13 +22,24 @@ class JobStatus(enum.StrEnum):
 
 
 class JobFormat(enum.StrEnum):
-    """How a job's rows are written. Both are streaming formats on
-    purpose: a job exists precisely for output too large to hold in
-    memory, so anything requiring the whole result before the first byte
-    (a JSON array, an Excel workbook) would defeat the point."""
+    """How a job's rows are written.
+
+    Every one of these streams, which is the rule rather than a
+    coincidence: a job exists precisely for output too large to hold in
+    memory, so a format needing the whole result before the first byte (a
+    JSON array, an Excel workbook) is deliberately absent. Parquet and ORC
+    qualify because they are built from row groups and
+    app.services.row_writers emits one per chunk; Avro is
+    block-structured and behaves the same way.
+
+    The columnar three need optional extras — see
+    app.services.row_writers.REQUIRED_EXTRA."""
 
     CSV = "csv"
     JSONL = "jsonl"
+    PARQUET = "parquet"
+    ORC = "orc"
+    AVRO = "avro"
 
 
 class GenerationJob(Base):

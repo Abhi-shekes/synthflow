@@ -1211,7 +1211,17 @@ Goal: read from and write to the systems people actually run.
       because a connector nobody has run against a real server is a
       connector nobody has tested.
 - [ ] Object storage: S3, GCS, Azure Blob
-- [ ] Columnar formats: Parquet, Avro, ORC
+- [x] Columnar formats: Parquet, Avro and ORC, as generation-job formats
+      alongside CSV and JSONL. Phase 8's rule was that a job format must
+      *stream*, since a job exists precisely for output too large to hold in
+      memory — these qualify because Parquet and ORC are built from row
+      groups and Avro from blocks, and `app.services.row_writers` emits one
+      per chunk rather than buffering the run. Verified rather than assumed:
+      a real 25,000-row Parquet job produced **50 row groups**, one per
+      500-row chunk. The writing logic moved out of `jobs._write_entity`
+      behind a small interface first, so a format is a class rather than
+      another branch inside the progress-and-cancellation loop. pyarrow is
+      157 MB installed, which is exactly why it is an optional extra.
 - [ ] Warehouses: ClickHouse, Snowflake, BigQuery
 - [ ] RabbitMQ, and a generic signed-webhook output
 - [ ] Matching *input* connectors for Phases 7 and 9, so profiling and schema

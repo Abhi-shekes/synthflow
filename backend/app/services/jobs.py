@@ -21,8 +21,6 @@ Rows are written through `generator.iter_rows`, so peak memory is one row
 no matter how many were asked for — the whole reason jobs exist.
 """
 
-import csv
-import json
 import logging
 import os
 import socket
@@ -41,6 +39,7 @@ from app.models.entity import Entity
 from app.models.job import GenerationJob, JobFormat, JobStatus, Schedule
 from app.services import cron
 from app.services.generator import build_lookup_pools, iter_rows
+from app.services.row_writers import open_writer, suffix_for
 
 logger = logging.getLogger(__name__)
 
@@ -164,34 +163,38 @@ def _write_entity(
     path: Path,
     written_so_far: int,
 ) -> int:
-    """Stream one entity's rows to `path`, updating progress as it goes."""
-    field_names = [f.name for f in entity.fields]
+    """Stream one entity's rows to `path`, updating progress as it goes.
+
+    The per-format details live in app.services.row_writers; this loop only
+    knows "write a row" and "we are on a boundary", which is what let
+    Parquet, ORC and Avro be added without touching the progress and
+    cancellation logic.
+    """
     written = 0
+    writer = open_writer(job.format, path, entity.fields)
 
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = None
-        if job.format == JobFormat.CSV:
-            writer = csv.DictWriter(handle, fieldnames=field_names, extrasaction="ignore")
-            writer.writeheader()
-
+    try:
         for row in _row_stream(entity, job.requested_rows):
-            if job.format == JobFormat.CSV:
-                writer.writerow(row)
-            else:
-                handle.write(json.dumps(row, default=str) + "\n")
+            writer.write(row)
             written += 1
 
             if written % CHUNK_ROWS == 0:
-                # Flush so a reader (or a crash) sees real rows, then
-                # publish progress and honour a cancel request. Both only
-                # happen on a chunk boundary: stopping mid-row would
-                # leave a malformed file.
-                handle.flush()
+                # Checkpoint so a reader (or a crash) sees real rows, then
+                # publish progress and honour a cancel request. All three
+                # only happen on a chunk boundary: stopping mid-row would
+                # leave a malformed file, and for the columnar formats a
+                # half-written row group is unreadable rather than merely
+                # truncated.
+                writer.checkpoint()
                 job.rows_written = written_so_far + written
                 db.commit()
                 db.refresh(job)
                 if job.cancel_requested:
                     raise _Cancelled()
+    finally:
+        # Closed even on cancel: Parquet and ORC keep their footer until
+        # close(), and a file without one cannot be opened at all.
+        writer.close()
 
     return written
 
@@ -200,7 +203,7 @@ def run_job(db: Session, job: GenerationJob) -> None:
     """Execute a claimed job to completion, failure or cancellation."""
     directory = artifact_dir() / str(job.id)
     directory.mkdir(parents=True, exist_ok=True)
-    suffix = "csv" if job.format == JobFormat.CSV else "jsonl"
+    suffix = suffix_for(job.format)
 
     try:
         entities = _entity_sources(db, job)

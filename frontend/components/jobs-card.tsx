@@ -17,7 +17,7 @@ import {
 import { api } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { useAuthStore } from "@/lib/store";
-import type { Entity, JobFormat } from "@/lib/types";
+import { JOB_FORMATS, type Entity, type JobFormat } from "@/lib/types";
 
 const ACTIVE = new Set(["queued", "running"]);
 
@@ -80,7 +80,7 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
         args.jobId,
         args.name
       );
-      downloadBlob(blob, `${args.name}.${args.format === "csv" ? "csv" : "jsonl"}`);
+      downloadBlob(blob, `${args.name}.${args.format}`);
     },
     onError: (e: Error) => toast.error(e.message || "Could not download"),
   });
@@ -153,8 +153,11 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="csv">csv</SelectItem>
-              <SelectItem value="jsonl">jsonl</SelectItem>
+              {JOB_FORMATS.map((f) => (
+                <SelectItem key={f} value={f}>
+                  {f}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Button

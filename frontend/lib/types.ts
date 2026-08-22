@@ -456,7 +456,13 @@ export interface InstallFeature {
 // streams rows to a file via a worker, so it isn't bounded by the
 // interactive row cap — see the backend's app/services/jobs.py.
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
-export type JobFormat = "csv" | "jsonl";
+export type JobFormat = "csv" | "jsonl" | "parquet" | "orc" | "avro";
+
+// Every one of these streams — see backend app/services/row_writers.py.
+// The columnar three need an optional backend extra installed; the picker
+// shows them regardless and the backend returns a clear error naming the
+// extra, which is the same pattern the Kafka and MQTT outputs use.
+export const JOB_FORMATS: JobFormat[] = ["csv", "jsonl", "parquet", "orc", "avro"];
 
 export interface GenerationJob {
   id: string;
