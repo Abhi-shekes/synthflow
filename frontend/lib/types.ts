@@ -589,6 +589,28 @@ export interface StarterTemplateSummary {
 // could not carry across — it never creates a project, so applying the
 // result is a separate call to importProject(). See the backend's
 // app/services/schema_import/common.py for why that split is structural.
+// Phase 9: learning distributions and correlations from real data. Same
+// two-step shape as schema import — a template plus what it couldn't
+// carry across — with a per-column report of what was measured.
+export interface ProfileColumnReport {
+  entity: string;
+  column: string;
+  field: string;
+  type: string;
+  rows: number;
+  missing: number;
+  distinct: number;
+  distribution: string | null;
+  fit_quality: string | null;
+  categories: number | null;
+}
+
+export interface ProfileResponse {
+  template: ProjectTemplate;
+  warnings: string[];
+  report: ProfileColumnReport[];
+}
+
 export interface SchemaImportResponse {
   template: ProjectTemplate;
   warnings: string[];

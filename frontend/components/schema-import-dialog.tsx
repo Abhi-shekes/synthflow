@@ -25,14 +25,15 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
-import type { ProjectTemplate, SchemaImportResponse } from "@/lib/types";
+import type { ProfileResponse, ProjectTemplate, SchemaImportResponse } from "@/lib/types";
 
-type Source = "sql" | "json-schema" | "sample";
+type Source = "sql" | "json-schema" | "sample" | "learn";
 
 const SOURCE_LABELS: Record<Source, string> = {
   sql: "SQL (CREATE TABLE…)",
   "json-schema": "JSON Schema / OpenAPI",
-  sample: "Sample data file",
+  sample: "Sample data file (schema only)",
+  learn: "Sample data file (learn distributions)",
 };
 
 /**
@@ -76,9 +77,17 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
         }
         return api.importSchemaFromJsonSchema(token, document, projectName);
       }
-      const file = fileRef.current?.files?.[0];
-      if (!file) throw new Error("Choose a file first");
-      return api.importSchemaFromSample(token, file, projectName);
+      const chosen = Array.from(fileRef.current?.files ?? []);
+      if (chosen.length === 0) throw new Error("Choose a file first");
+      if (source === "learn") {
+        const profiled: ProfileResponse = await api.profileSample(
+          token,
+          chosen,
+          projectName
+        );
+        return { template: profiled.template, warnings: profiled.warnings };
+      }
+      return api.importSchemaFromSample(token, chosen[0], projectName);
     },
     onSuccess: setResult,
     onError: (error: Error) => toast.error(error.message || "Could not read that schema"),
@@ -191,14 +200,41 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
               </div>
             )}
 
-            {source === "sample" && (
+            {(source === "sample" || source === "learn") && (
               <div className="flex flex-col gap-2">
-                <Label htmlFor="import-file">CSV, Excel or JSON file</Label>
-                <Input id="import-file" ref={fileRef} type="file" accept=".csv,.json,.xlsx,.xls" />
+                <Label htmlFor="import-file">
+                  {source === "learn"
+                    ? "CSV, Excel or JSON files — upload related files together"
+                    : "CSV, Excel or JSON file"}
+                </Label>
+                <Input
+                  id="import-file"
+                  ref={fileRef}
+                  type="file"
+                  multiple={source === "learn"}
+                  accept=".csv,.json,.xlsx,.xls"
+                />
                 <p className="text-xs text-muted-foreground">
-                  Field types are inferred from the rows in the file. Ranges and
-                  enum values reflect only what appears in the sample — this
-                  isn&apos;t distribution fitting.
+                  {source === "learn" ? (
+                    <>
+                      Fits a real distribution to each numeric column
+                      (<code className="font-mono">gauss</code>,{" "}
+                      <code className="font-mono">lognormal</code>,{" "}
+                      <code className="font-mono">expo</code>), measures
+                      category frequencies, and detects correlations between
+                      columns — so generated data has the shape of the
+                      original, not just its schema. Upload several related
+                      files at once and relationships between them are
+                      detected too.
+                    </>
+                  ) : (
+                    <>
+                      Field types are inferred from the rows in the file. Ranges
+                      and enum values reflect only what appears in the sample —
+                      this isn&apos;t distribution fitting; pick the option
+                      above for that.
+                    </>
+                  )}
                 </p>
               </div>
             )}
@@ -246,6 +282,9 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
                         {field.name}
                         <span className="opacity-60">:{field.field_type}</span>
                         {field.required && <span className="opacity-60">*</span>}
+                        {field.formula && (
+                          <span className="opacity-60"> = {field.formula}</span>
+                        )}
                       </span>
                     ))}
                   </div>

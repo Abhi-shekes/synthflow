@@ -487,14 +487,58 @@ schedule fired on its own; SKIP LOCKED gave 40 unique claims across 8
 concurrent threads with zero doubles; and a real container restart left
 the Kafka producer resuming on its own (+44 messages).
 
+## Phase 9 — Learn From Real Data — done
+
+Upload real sample files, get a project whose generated data has the
+*shape* of the original rather than just its schema. `POST /profile`
+(multi-file), plus a "Sample data file (learn distributions)" option in
+the existing import dialog, reusing Phase 7's review-then-apply flow.
+
+- Numeric columns are fitted to normal/lognormal/exponential/uniform by
+  decile comparison, and **prefer uniform unless something fits clearly
+  better** — a confidently-wrong shape is worse than an honest shrug.
+  Every fit reports `close`/`approximate`/`rough`.
+- Correlations become fitted formulas with residual noise
+  (`total = 0.26 + 19.98 * qty + noise(3.93)`), only ever pointing
+  backwards through column order so they can't cycle.
+- Cross-file relationships are detected, which is the whole reason the
+  endpoint takes several files at once.
+
+**No new models, no migration** — the win of this phase, and it came
+straight from the "Notes for future me" entry below. Categorical
+frequencies were already `enum_weights`, correlation was already the
+formula engine, and distributions became four functions in
+`expressions.py` (`gauss`, `lognormal`, `expo`, `triangular`). Only the
+profiler itself was new. Stdlib `statistics` throughout — no numpy/scipy.
+
+Three bugs found only by profiling real multi-file data, all now with
+regression tests: value containment alone linked `orders.qty` (1–13) to
+`customers.cid` (1–900) because small ints are always "contained" in a
+big id column; a 13-distinct quantity column was bucketed as categorical,
+silently dropping it from correlation detection and reducing `total` to a
+meaningless `gauss(120, 41)`; and the bogus reciprocal links formed an
+entity cycle that imported fine then failed with HTTP 400 on generate.
+
+**Known limit:** fields have a fixed null probability, so an observed
+8%-null column won't generate 8% nulls. The profiler measures and reports
+the real rate instead of pretending — honouring it needs a per-field
+null-rate column, which is a schema change this phase chose not to make.
+
+374 passed / 3 skipped, lint and format clean. Verified live: 900
+customers + 2,000 orders recovered `age → round(gauss(44.44, 11.59))`,
+`income → lognormal(10.52, 0.56)`, `total → 0.26 + 19.98 * qty +
+noise(3.93)` against a true `19.99 * qty + gauss(0, 4)`, with only the
+real FK kept. Generated-vs-source: age mean 44.32 → 44.61, `free` 67.6%
+→ 66.9%. Browser-verified, zero console errors.
+
 ## Now
 
-**Phases 1–5, 7 and 8 are done.** Phase 6 (AI) stays deliberately
-unstarted. Next by the plan is **Phase 9 (Learn From Real Data)** —
-profile a real sample and generate statistically similar rows, using
-statistics rather than an LLM so it stays independent of Phase 6. Phase 8
-laid useful groundwork for it: profiling a large file is exactly the kind
-of long-running work the job model now handles.
+**Phases 1–5 and 7–9 are done.** Phase 6 (AI) stays deliberately
+unstarted. Next by the plan is **Phase 10 (Privacy and Compliance)** —
+PII detection and masking, k-anonymity checks, and encrypting the
+`DatabaseConnection` password that is still stored in plaintext. Phase 9
+makes this more urgent than it was: SynthFlow now ingests real data, so
+"we only ever handled synthetic rows" has stopped being true.
 
 Two quick wins still available anywhere: **API keys** (Phase 14 — there's
 still no machine authentication, which blocks CI use) and **MySQL/MongoDB
@@ -518,6 +562,15 @@ push** (Phase 12 — both already modelled and merely rejected at runtime).
   "engine" as its own model/table, check whether it's actually just a formula or
   rule with a missing capability (like `noise()`/`uniform()` turned out to be for
   correlation) — cheaper to extend the evaluator than to add a new concept.
+  Phase 9 is the strongest evidence so far: following this note is what let an
+  entire phase ship with zero new models and zero migrations.
+- Anything that infers structure *across* inputs (Phase 9's relationship
+  detection, and Phase 12's schema diffing when it arrives) needs testing on
+  real multi-file data, not fixtures. All three Phase 9 bugs needed the
+  *combination* of two real files to appear, and every one of them passed the
+  unit suite. Heuristics that look obviously right on one table — "these values
+  are all contained in that column, so it's a foreign key" — are routinely
+  wrong on two.
 - When verifying Select/dropdown UI by browser automation, screenshot the
   *closed* control after selecting, not just the open dropdown or the
   eventual result — that's the gap that let the UUID-label bug ship.

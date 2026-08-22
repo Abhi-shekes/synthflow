@@ -99,9 +99,13 @@ rather than only by test suite:
 - **8** scale: streaming generation with no memory ceiling, a Postgres-backed
   job queue with progress and cancellation, cron schedules, and background
   producers that survive a restart
+- **9** learn from real data: upload sample files and get fitted distributions,
+  observed category frequencies, correlations between columns and relationships
+  between files — as an ordinary editable project, using statistics rather than
+  a language model
 
 Phase 6 (the optional AI layer) is deliberately unstarted — nothing depends
-on it. Phases 9–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
+on it. Phases 10–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
 plan, including the tradeoffs and known limits recorded per item, and
 [TODO.md](TODO.md) for the active task list.
 

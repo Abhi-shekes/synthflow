@@ -72,6 +72,17 @@ _FUNCTIONS: dict[str, Any] = {
     "len": len,
     "noise": lambda stddev: random.gauss(0, stddev),
     "uniform": random.uniform,
+    # Distribution samplers (Phase 9). Real data is rarely uniform, and
+    # SynthFlow's numeric fields were: min/max and nothing between. Rather
+    # than add a `distribution` column and a matching engine, these live
+    # here so a fitted distribution is an ordinary formula the user can
+    # read, edit and version-control — `age = round(gauss(41, 12))` says
+    # exactly what it does. That follows the same route noise()/uniform()
+    # took for correlation: extend the evaluator, don't add a concept.
+    "gauss": random.gauss,
+    "lognormal": random.lognormvariate,
+    "expo": lambda lambd: random.expovariate(lambd),
+    "triangular": random.triangular,
 }
 
 BUILTIN_FUNCTIONS = sorted(_FUNCTIONS)

@@ -944,22 +944,81 @@ Goal: given a real sample, produce statistically similar synthetic data —
 the second major mode of synthetic data generation, and the one SynthFlow
 currently cannot do at all.
 
-- [ ] Profile an uploaded dataset: per-column type, distribution shape, null
+- [x] Profile an uploaded dataset: per-column type, distribution shape, null
       rate, cardinality, min/max, and recurring string patterns
-- [ ] Fit and sample from distributions (normal, lognormal, exponential,
-      categorical with observed frequencies) instead of uniform randomness
-- [ ] Preserve relationships *between* columns — a copula or equivalent — so
-      generated rows keep the correlations the real data had, not just correct
-      per-column histograms
-- [ ] Infer referential structure across multiple related files, producing
-      relationships rather than isolated entities
-- [ ] Turn the profile into an ordinary, editable project rather than an opaque
+- [x] Fit and sample from distributions (normal, lognormal, exponential,
+      uniform, categorical with observed frequencies) instead of uniform
+      randomness. Fitting compares deciles against each candidate and picks the
+      closest, but **prefers uniform when nothing fits meaningfully better** —
+      uniform is the honest answer for data with no clear shape, and a
+      confidently-wrong lognormal is worse than an admitted shrug. Each fit
+      carries a quality of `close`/`approximate`/`rough` rather than implying
+      precision it doesn't have.
+- [x] Preserve relationships *between* columns — as a fitted linear formula
+      plus residual noise, not a copula. A copula would model the full joint
+      distribution more faithfully; a formula is inspectable and editable,
+      which for this tool matters more. Correlations only ever point backwards
+      through column order, so they can't form a cycle the generator would
+      choke on.
+- [x] Infer referential structure across multiple related files, producing
+      relationships rather than isolated entities — which is why the endpoint
+      takes many files at once instead of one at a time.
+- [x] Turn the profile into an ordinary, editable project rather than an opaque
       model, so the inferred distributions can be inspected, corrected and
-      version-controlled like anything else
+      version-controlled like anything else. `age = round(gauss(41, 12))` is a
+      formula you can read, argue with and edit — not a serialized model.
 
       Deliberately statistics, not language models. Keeping this out of Phase 6
       means it still works in an air-gapped install with no LLM provider
-      configured, and means the two can be developed independently.
+      configured, and means the two can be developed independently. Everything
+      here is stdlib `statistics` — `NormalDist.inv_cdf`, `correlation`,
+      `linear_regression` — so no numpy or scipy entered the dependency tree.
+
+      **Architecture note.** This phase added **no new models and no
+      migration**, which was not the original expectation. TODO.md's own note
+      to self said to check whether a proposed feature is really "a formula or
+      rule with a missing capability", because extending the evaluator is
+      cheaper than adding a concept. Following it, three of the four hard parts
+      already had homes: categorical frequencies are the existing
+      `enum_weights`, correlations are the existing formula engine plus
+      `noise()`, and distributions became four new functions in the restricted
+      evaluator (`gauss`, `lognormal`, `expo`, `triangular`). Only the profiler
+      itself was new. The alternative — a `distribution` column and a matching
+      engine — would have added a parallel way to describe a field and a second
+      code path to keep correct forever.
+
+      Three bugs surfaced only by profiling real multi-file data, none of which
+      the unit tests would have caught, because each needed the *combination*
+      of two real files. Value containment alone linked `orders.qty` (1–13) to
+      `customers.cid` (1–900) purely because small integers are always
+      "contained" in a large id column — now gated on distinct-count ratio and
+      name similarity. A 13-distinct-value quantity column was bucketed as
+      categorical, which silently excluded it from correlation detection and
+      turned `total` into a meaningless marginal `gauss(120, 41)` instead of
+      `19.99 * qty + noise(...)` — numeric columns now face a much tighter
+      categorical bar than text ones. And the resulting bogus reciprocal links
+      formed an entity cycle with no valid generation order, so the project
+      imported fine and then failed with HTTP 400 on generate — relationship
+      detection now rejects cycles outright. All three have regression tests.
+
+      **Documented limit.** SynthFlow's field model has a fixed null
+      probability, so an observed 8%-null column will not generate 8% nulls.
+      The profiler measures and reports the real rate rather than pretending;
+      honouring it needs a per-field null-rate column, which is a schema change
+      this phase deliberately didn't make. String pattern inference is limited
+      to what the existing identifier presets and regex generator already
+      express.
+
+      28 new tests, **374 passed / 3 skipped** total, lint and format clean.
+      Verified live against the running stack, not just in tests: fitting
+      recovers the right family and parameters from data alone, and profiling
+      900 customers + 2,000 orders produced `age → round(gauss(44.44, 11.59))`,
+      `income → lognormal(10.52, 0.56)`, `tier → weights [0.68, 0.27, 0.06]`
+      and `total → 0.26 + 19.98 * qty + noise(3.93)` against a true
+      `19.99 * qty + gauss(0, 4)` — with `orders.cid → customers.cid` detected
+      and the coincidental links rejected. Generated output was then compared
+      back to the source: age mean 44.32 → 44.61, stdev 12.63 → 12.95, `free`
+      67.6% → 66.9%. Browser-verified end to end with zero console errors.
 
 ## Phase 10 — Privacy and Compliance
 

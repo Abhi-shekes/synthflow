@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # their ceiling is about disk and patience, not RAM — hence far higher
     # than MAX_GENERATE_ROWS, which caps a single interactive response.
     MAX_JOB_ROWS: int = 50_000_000
+    # How many rows of an uploaded sample to profile. Distribution fitting
+    # converges well before this; reading more mostly costs memory.
+    MAX_PROFILE_ROWS: int = 100_000
     JOB_ARTIFACT_DIR: str = "/tmp/synthflow-jobs"
     # How long the in-process worker waits when there was nothing to do.
     WORKER_POLL_SECONDS: float = 2.0

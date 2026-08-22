@@ -26,6 +26,7 @@ import type {
   OutputSummary,
   PluginOutput,
   PluginOutputCreateInput,
+  ProfileResponse,
   Project,
   ProjectTemplate,
   Relationship,
@@ -779,6 +780,13 @@ export const api = {
       { method: "DELETE" },
       token
     ),
+
+  profileSample: (token: string, files: File[], projectName?: string) => {
+    const form = new FormData();
+    for (const file of files) form.append("files", file);
+    if (projectName) form.append("project_name", projectName);
+    return requestUpload<ProfileResponse>("/api/v1/profile", form, token);
+  },
 
   listStarterTemplates: (token: string) =>
     request<StarterTemplateSummary[]>("/api/v1/starter-templates", {}, token),

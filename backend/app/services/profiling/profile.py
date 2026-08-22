@@ -1,0 +1,461 @@
+"""Learn a project from real sample data.
+
+Phase 7's sample import is deliberately shallow — types, observed ranges,
+enums. This is the deep version: it fits an actual distribution per
+numeric column, measures categorical frequencies, and detects
+correlations between columns, so generated data has the *shape* of the
+original rather than merely its schema.
+
+The design decision that shapes everything here: **nothing new is
+persisted.** A profile becomes an ordinary `ProjectTemplate` whose fields
+carry formulas like `round(gauss(41.2, 12.1))` and enum weights like
+`[0.62, 0.31, 0.07]`. There is no learned-model table, no opaque blob —
+the inferred distribution is a formula the user can read, edit, diff and
+version-control like anything else, and it runs on the generation engine
+that already exists.
+
+That was possible because three of this phase's four hard parts turned
+out to already have homes:
+
+- categorical frequencies → `enum_values` + `enum_weights` (Phase 4)
+- correlation → a formula referencing another field plus `noise()`
+  (Phase 4's correlation work said exactly this)
+- continuous distributions → the one genuine gap, closed by adding
+  `gauss`/`lognormal`/`expo`/`triangular` to the expression evaluator
+  rather than adding a `distribution` column and an engine to read it
+
+Known limit, reported rather than hidden: SynthFlow applies a fixed 15%
+null probability to nullable fields, so an observed null rate of 3% or
+40% is *not* reproduced. Every profile says so when it sees nulls.
+"""
+
+import statistics as st
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
+from datetime import date, datetime
+from typing import Any
+
+from app.schemas.template import TemplateEntity, TemplateField, TemplateRelationship
+from app.services.lookup_tables import parse_upload
+from app.services.profiling.distributions import MIN_SAMPLES_FOR_FIT, Fit, fit_best
+from app.services.schema_import.common import (
+    ImportResult,
+    dedupe,
+    empty_template,
+    make_field,
+    sanitize_identifier,
+)
+
+# A *text* column with at most this many distinct values is categorical.
+MAX_CATEGORICAL_VALUES = 25
+# Numbers get a far tighter bar. A 1-5 rating or a status code is
+# genuinely categorical; a quantity with 13 distinct values is not, and
+# treating it as one both loses its shape and — because correlation
+# detection only considers fitted numeric columns — silently destroys any
+# relationship it had with another column. Found by profiling real
+# multi-file data, where `total`'s dependency on `qty` vanished.
+MAX_NUMERIC_CATEGORICAL_VALUES = 10
+# Two numeric columns this correlated get expressed as a formula.
+MIN_CORRELATION = 0.6
+# A foreign-key candidate must have at least this share of its values
+# present in the referenced column.
+MIN_FK_COVERAGE = 0.95
+# ...but coverage alone is a trap: *any* small-range integer column is
+# "contained" in a large id column, which linked `orders.qty` to
+# `customers.cid` and `customers.age` to `orders.oid` the first time this
+# ran on real data. So a candidate must ALSO either share a name with the
+# target column or reference a substantial share of its distinct keys.
+MIN_FK_DISTINCT_RATIO = 0.5
+# Below this many distinct values a column is a flag or a small code, not
+# a foreign key, whatever its values happen to coincide with.
+MIN_FK_DISTINCT = 8
+
+
+class ProfileError(ValueError):
+    pass
+
+
+@dataclass
+class ColumnProfile:
+    name: str
+    field_name: str
+    inferred_type: str
+    total: int
+    missing: int
+    distinct: int
+    numeric_values: list[float] = dataclass_field(default_factory=list)
+    text_values: list[str] = dataclass_field(default_factory=list)
+    fit: Fit | None = None
+    categories: list[str] | None = None
+    weights: list[float] | None = None
+    unique: bool = False
+
+    @property
+    def null_rate(self) -> float:
+        return self.missing / self.total if self.total else 0.0
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _classify(values: list[Any]) -> str:
+    present = [v for v in values if v is not None and v != ""]
+    if not present:
+        return "string"
+    if all(isinstance(v, bool) for v in present):
+        return "boolean"
+    if all(_is_number(v) and float(v).is_integer() for v in present):
+        return "integer"
+    if all(_is_number(v) for v in present):
+        return "float"
+    if all(isinstance(v, (date, datetime)) for v in present):
+        return "datetime" if any(isinstance(v, datetime) for v in present) else "date"
+    return "string"
+
+
+def profile_column(name: str, values: list[Any], taken: set[str]) -> ColumnProfile:
+    present = [v for v in values if v is not None and v != ""]
+    inferred = _classify(values)
+    field_name = dedupe(sanitize_identifier(name, fallback="column"), taken)
+
+    profile = ColumnProfile(
+        name=name,
+        field_name=field_name,
+        inferred_type=inferred,
+        total=len(values),
+        missing=len(values) - len(present),
+        distinct=len({str(v) for v in present}),
+    )
+    profile.unique = len(present) > 1 and profile.distinct == len(present)
+
+    if inferred in ("integer", "float"):
+        profile.numeric_values = [float(v) for v in present]
+        # A numeric column with few distinct values (a rating, a status
+        # code) is really categorical — fitting a bell curve to it would
+        # be worse than counting its frequencies.
+        if (
+            profile.distinct <= MAX_NUMERIC_CATEGORICAL_VALUES
+            and profile.distinct < len(present) / 4
+        ):
+            profile.categories, profile.weights = _frequencies([str(v) for v in present])
+        else:
+            profile.fit = fit_best(profile.numeric_values)
+    else:
+        profile.text_values = [str(v) for v in present]
+        if 1 < profile.distinct <= MAX_CATEGORICAL_VALUES and not profile.unique:
+            profile.categories, profile.weights = _frequencies(profile.text_values)
+
+    return profile
+
+
+def _frequencies(values: list[str]) -> tuple[list[str], list[float]]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    total = len(values)
+    return (
+        [name for name, _ in ordered],
+        [round(count / total, 4) for _, count in ordered],
+    )
+
+
+def _correlations(profiles: list[ColumnProfile]) -> dict[str, tuple[str, float, float, float]]:
+    """Find, per column, the earlier column it correlates with most.
+
+    Returns dependent -> (driver, slope, intercept, residual stddev).
+    Only ever points *backwards* through the column order, which
+    guarantees no cycles and satisfies the formula engine's rule that a
+    formula may only reference earlier-ordered fields.
+    """
+    numeric = [
+        p for p in profiles if p.fit is not None and len(p.numeric_values) >= MIN_SAMPLES_FOR_FIT
+    ]
+    found: dict[str, tuple[str, float, float, float]] = {}
+
+    for index, dependent in enumerate(numeric):
+        best: tuple[str, float, float, float] | None = None
+        best_r = MIN_CORRELATION
+        for driver in numeric[:index]:
+            if len(driver.numeric_values) != len(dependent.numeric_values):
+                # Different row counts mean missing values knocked them
+                # out of alignment; comparing them would be meaningless.
+                continue
+            try:
+                r = st.correlation(driver.numeric_values, dependent.numeric_values)
+            except st.StatisticsError:
+                continue
+            if abs(r) > abs(best_r):
+                regression = st.linear_regression(driver.numeric_values, dependent.numeric_values)
+                predicted = [
+                    regression.intercept + regression.slope * x for x in driver.numeric_values
+                ]
+                residuals = [
+                    actual - fitted
+                    for actual, fitted in zip(dependent.numeric_values, predicted, strict=True)
+                ]
+                residual_sd = st.stdev(residuals) if len(residuals) > 1 else 0.0
+                best_r = r
+                best = (
+                    driver.field_name,
+                    round(regression.slope, 4),
+                    round(regression.intercept, 4),
+                    round(residual_sd, 4),
+                )
+        if best is not None:
+            found[dependent.field_name] = best
+    return found
+
+
+def _to_field(
+    profile: ColumnProfile, order: int, correlation, result: ImportResult
+) -> TemplateField:
+    required = profile.missing == 0
+    common = {
+        "order": order,
+        "required": required,
+        "nullable": not required,
+        "unique": profile.unique,
+    }
+
+    if profile.categories:
+        return make_field(
+            profile.field_name,
+            "enum",
+            enum_values=profile.categories,
+            **common,
+        )
+
+    if profile.inferred_type in ("integer", "float"):
+        rounding = "round(%s)" if profile.inferred_type == "integer" else "%s"
+
+        if correlation is not None:
+            driver, slope, intercept, residual = correlation
+            body = f"{intercept} + {slope} * {driver}"
+            if residual > 0:
+                body += f" + noise({residual})"
+            result.warn(
+                f"{profile.name}: correlated with '{driver}' — expressed as a formula so "
+                f"the relationship survives generation, not just the marginal shape"
+            )
+            return _formula_field(
+                profile.field_name, profile.inferred_type, rounding % f"({body})", common
+            )
+
+        if profile.fit is not None:
+            return _formula_field(
+                profile.field_name,
+                profile.inferred_type,
+                rounding % profile.fit.expression,
+                common,
+            )
+
+        # Not enough data to justify a shape — fall back to the observed
+        # range, which is what Phase 7's shallow import would have done.
+        values = profile.numeric_values
+        return make_field(
+            profile.field_name,
+            profile.inferred_type,
+            min_value=min(values) if values else None,
+            max_value=max(values) if values else None,
+            **common,
+        )
+
+    return make_field(profile.field_name, profile.inferred_type, **common)
+
+
+def _formula_field(name: str, field_type: str, formula: str, common: dict) -> TemplateField:
+    field = make_field(name, field_type, **common)
+    field.formula = formula
+    # A computed field can't also be drawn from a unique pool.
+    field.unique = False
+    return field
+
+
+def profile_file(
+    filename: str,
+    content: bytes,
+    *,
+    max_rows: int,
+    entity_name: str | None = None,
+) -> tuple[TemplateEntity, list[ColumnProfile], list[str]]:
+    try:
+        columns, rows = parse_upload(filename, content, max_rows)
+    except ValueError as exc:
+        raise ProfileError(str(exc)) from exc
+    if not columns:
+        raise ProfileError(f"No columns found in '{filename}'.")
+
+    warnings: list[str] = []
+    stem = filename.rsplit("/", 1)[-1].rsplit(".", 1)[0] or "Record"
+    name = sanitize_identifier(entity_name or stem, fallback="Record")
+
+    taken: set[str] = set()
+    profiles = [profile_column(c, [r.get(c) for r in rows], taken) for c in columns]
+
+    scratch = ImportResult(template=empty_template("scratch"))
+    correlations = _correlations(profiles)
+    fields = [
+        _to_field(p, i, correlations.get(p.field_name), scratch) for i, p in enumerate(profiles)
+    ]
+    warnings.extend(scratch.warnings)
+
+    for p in profiles:
+        if p.field_name != p.name:
+            warnings.append(f"Column '{p.name}': renamed to '{p.field_name}'")
+        if p.fit is not None and p.fit.quality == "rough":
+            warnings.append(
+                f"{p.name}: no candidate distribution matched well (best was "
+                f"{p.fit.kind}); the generated shape will only be indicative"
+            )
+        if 0 < p.null_rate:
+            warnings.append(
+                f"{p.name}: {p.null_rate:.0%} of values were missing, but SynthFlow "
+                f"applies a fixed 15% null rate to nullable fields — the exact rate "
+                f"is not reproduced"
+            )
+    if len(rows) < MIN_SAMPLES_FOR_FIT:
+        warnings.append(
+            f"Only {len(rows)} rows were sampled — too few to fit distributions, so "
+            f"numeric columns fell back to their observed ranges."
+        )
+
+    return TemplateEntity(name=name, fields=fields), profiles, warnings
+
+
+def _names_related(source_field: str, target_entity: str, target_field: str) -> bool:
+    """Whether the column names suggest a reference, e.g. `cid` -> `cid`,
+    `customer_id` -> `customers.id`, `user_ref` -> `users.ref`."""
+    a, b = source_field.lower(), target_field.lower()
+    if a == b:
+        return True
+    entity = target_entity.lower().rstrip("s")
+    return a.startswith(entity) and (a.endswith(b) or b in a)
+
+
+def _detect_foreign_keys(
+    entities: list[TemplateEntity],
+    profiles_by_entity: dict[str, list[ColumnProfile]],
+    result: ImportResult,
+) -> None:
+    """Link entities when one column's values are a subset of another's
+    unique column *and* the pairing is otherwise plausible.
+
+    Value coverage is the necessary condition but nowhere near
+    sufficient — see MIN_FK_DISTINCT_RATIO. Links that would create a
+    cycle between two entities are also rejected, because
+    `generate_project` orders entities by dependency and a cycle has no
+    valid order.
+    """
+    unique_columns: list[tuple[str, str, set[str]]] = []
+    for entity in entities:
+        for profile in profiles_by_entity[entity.name]:
+            if profile.unique and profile.distinct > 1:
+                values = {str(v) for v in (profile.numeric_values or profile.text_values)}
+                unique_columns.append((entity.name, profile.field_name, values))
+
+    # source entity -> target entities it already points at, so a
+    # reciprocal link can be refused.
+    edges: dict[str, set[str]] = {}
+
+    for entity in entities:
+        for profile in profiles_by_entity[entity.name]:
+            if profile.unique or profile.distinct < MIN_FK_DISTINCT:
+                continue
+            candidate = {str(v) for v in (profile.numeric_values or profile.text_values)}
+            if not candidate:
+                continue
+
+            for target_entity, target_field, target_values in unique_columns:
+                if target_entity == entity.name or not target_values:
+                    continue
+                if target_entity in edges.get(entity.name, set()):
+                    continue
+                # Would completing this link close a cycle?
+                if entity.name in edges.get(target_entity, set()):
+                    result.warn(
+                        f"{entity.name}.{profile.field_name}: not linked to "
+                        f"{target_entity}.{target_field} — it would make the two "
+                        f"entities reference each other, which has no generation order"
+                    )
+                    continue
+
+                covered = len(candidate & target_values) / len(candidate)
+                if covered < MIN_FK_COVERAGE:
+                    continue
+
+                distinct_ratio = len(candidate) / len(target_values)
+                if not (
+                    _names_related(profile.field_name, target_entity, target_field)
+                    or distinct_ratio >= MIN_FK_DISTINCT_RATIO
+                ):
+                    # Contained, but almost certainly a coincidence.
+                    continue
+
+                result.template.relationships.append(
+                    TemplateRelationship(
+                        relationship_type="one_to_many",
+                        source_entity=entity.name,
+                        source_field=profile.field_name,
+                        target_entity=target_entity,
+                        target_field=target_field,
+                    )
+                )
+                edges.setdefault(entity.name, set()).add(target_entity)
+                result.warn(
+                    f"{entity.name}.{profile.field_name}: {covered:.0%} of its values "
+                    f"appear in {target_entity}.{target_field}, so it was linked as a "
+                    f"relationship — remove it if that's a coincidence"
+                )
+                break
+
+
+def profile_files(
+    files: list[tuple[str, bytes]],
+    *,
+    max_rows: int,
+    project_name: str | None = None,
+) -> tuple[ImportResult, dict[str, list[ColumnProfile]]]:
+    """Profile one or more related files into a single project.
+
+    Returns the template alongside the per-column profiles, so a caller
+    can show *why* a field looks the way it does — the observed row
+    count, null count and cardinality behind each fitted formula — rather
+    than only the formula itself.
+    """
+    if not files:
+        raise ProfileError("No files given.")
+
+    result = ImportResult(
+        template=empty_template(
+            project_name or "Learned from data",
+            description=(
+                f"Learned from {len(files)} sample file"
+                f"{'s' if len(files) != 1 else ''}: distributions and "
+                f"correlations fitted from the observed values."
+            ),
+        )
+    )
+
+    profiles_by_entity: dict[str, list[ColumnProfile]] = {}
+    for filename, content in files:
+        entity, profiles, warnings = profile_file(filename, content, max_rows=max_rows)
+        result.template.entities.append(entity)
+        profiles_by_entity[entity.name] = profiles
+        for warning in warnings:
+            result.warn(warning)
+
+    # Weights live on the template's fields; apply them after the fields
+    # exist so enum_values and enum_weights stay aligned.
+    for entity in result.template.entities:
+        by_name = {p.field_name: p for p in profiles_by_entity[entity.name]}
+        for field in entity.fields:
+            profile = by_name.get(field.name)
+            if profile is not None and profile.weights and field.enum_values:
+                field.enum_weights = profile.weights
+
+    if len(result.template.entities) > 1:
+        _detect_foreign_keys(result.template.entities, profiles_by_entity, result)
+
+    return result, profiles_by_entity

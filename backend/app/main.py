@@ -25,6 +25,7 @@ from app.api.routes import (
     output_plugins,
     outputs,
     plugin_outputs,
+    profiling,
     projects,
     relationships,
     rest_outputs,
@@ -153,6 +154,7 @@ app.include_router(outputs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(templates.router, prefix=settings.API_V1_PREFIX)
 app.include_router(starter_templates.router, prefix=settings.API_V1_PREFIX)
 app.include_router(schema_import.router, prefix=settings.API_V1_PREFIX)
+app.include_router(profiling.router, prefix=settings.API_V1_PREFIX)
 
 # Deliberately outside /api/v1 and unauthenticated — see RestOutput's and
 # WebSocketStream's docstrings.
