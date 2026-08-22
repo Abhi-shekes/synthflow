@@ -9,6 +9,9 @@ background asyncio.Task is cancelled promptly.
 
 import time
 
+import pytest
+
+from app.api.routes import plugin_outputs as plugin_outputs_route
 from app.services import plugins
 
 
@@ -36,6 +39,31 @@ def _fake_entry_points_for_outputs(fake_points):
     return _fake_entry_points
 
 
+@pytest.fixture
+def no_background_producer(monkeypatch):
+    """Stop `POST /plugin-outputs` from launching a real producer task.
+
+    These tests cover CRUD, not delivery. Letting the producer run makes
+    them intermittently fail, and the reason is the test database rather
+    than the code: conftest binds every session to ONE SQLite in-memory
+    connection via StaticPool. The producer loads its batch on a worker
+    thread through its own short-lived session, and that session's
+    `close()` returns the shared connection to the pool — which rolls back
+    whatever transaction is on it. Land that between a DELETE's commit and
+    the next read and the delete is silently undone, which is exactly how
+    this surfaced: a 204 followed by the row still being listed.
+
+    Requested explicitly rather than autouse, because
+    `test_background_task_actually_delivers_real_generated_rows` needs a
+    real producer — and a fixture that silently disabled the thing one
+    test exists to check would be worse than the flake.
+
+    Production never hits this; Postgres gives each session its own
+    connection.
+    """
+    monkeypatch.setattr(plugin_outputs_route, "start_plugin_output", lambda output: None)
+
+
 def _create_project(client, headers, name="PluginOutputs"):
     return client.post("/api/v1/projects", json={"name": name}, headers=headers).json()["id"]
 
@@ -52,7 +80,9 @@ def _create_entity_with_field(client, headers, project_id, name="Reading"):
     return entity["id"]
 
 
-def test_create_list_and_delete_plugin_output(client, auth_headers, monkeypatch):
+def test_create_list_and_delete_plugin_output(
+    client, auth_headers, monkeypatch, no_background_producer
+):
     fake_point = _FakeEntryPoint("noop", lambda config, rows: None)
     monkeypatch.setattr(plugins, "entry_points", _fake_entry_points_for_outputs([fake_point]))
 
@@ -109,7 +139,9 @@ def test_plugin_output_requires_fields(client, auth_headers, monkeypatch):
     assert resp.status_code == 400
 
 
-def test_plugin_output_appears_in_outputs_aggregate(client, auth_headers, monkeypatch):
+def test_plugin_output_appears_in_outputs_aggregate(
+    client, auth_headers, monkeypatch, no_background_producer
+):
     fake_point = _FakeEntryPoint("noop", lambda config, rows: None)
     monkeypatch.setattr(plugins, "entry_points", _fake_entry_points_for_outputs([fake_point]))
 

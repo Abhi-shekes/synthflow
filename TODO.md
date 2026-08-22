@@ -688,6 +688,17 @@ most-asked-for of the remaining five — or **Phase 13 (Temporal Continuity)**.
 Phase 10's k-anonymity thresholds and Phase 11's assertions fail a
 scheduled Phase 8 job. Two phases have now wanted it.
 
+**Test-database race, fixed but worth remembering:** conftest binds every
+session to ONE SQLite in-memory connection (`StaticPool`,
+`check_same_thread: False`). Any background producer that opens its own
+short-lived session on a worker thread shares that connection, and its
+`close()` returns it to the pool — rolling back whatever transaction is on
+it. That intermittently undid a committed DELETE, surfacing as a 204
+followed by the row still being listed. Production never hits it (Postgres
+gives each session its own connection). Tests that exercise CRUD around a
+producer now request the `no_background_producer` fixture. Any future
+connector with a background loop will have the same hazard.
+
 **A test-writing habit worth keeping:** three tests across Phases 10 and 12
 failed purely because they hardcoded a set or count that a new feature
 legitimately changed (`{"kafka", "mqtt"}`, `11 + 6` presets). Each said
