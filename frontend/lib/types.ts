@@ -319,9 +319,17 @@ export interface RelationshipCreateInput {
   target_field_id: string;
 }
 
-export type DatabaseDialect = "postgresql" | "mysql";
+export type DatabaseDialect = "postgresql" | "mysql" | "mongodb";
 
-export const DATABASE_DIALECTS: DatabaseDialect[] = ["postgresql", "mysql"];
+export const DATABASE_DIALECTS: DatabaseDialect[] = ["postgresql", "mysql", "mongodb"];
+
+// Default port per dialect, so switching the dropdown doesn't leave the
+// previous dialect's port behind for the user to notice and fix.
+export const DATABASE_DEFAULT_PORTS: Record<DatabaseDialect, string> = {
+  postgresql: "5432",
+  mysql: "3306",
+  mongodb: "27017",
+};
 
 export interface DatabaseConnection {
   id: string;

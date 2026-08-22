@@ -1201,9 +1201,15 @@ Goal: prove the generated data is good, instead of eyeballing the first ten rows
 
 Goal: read from and write to the systems people actually run.
 
-- [ ] Finish MySQL and MongoDB push — both are already modelled in
-      `DatabaseDialect` and rejected at runtime, so these are the cheapest
-      items on this list
+- [x] Finish MySQL and MongoDB push. Both ship as **optional extras**
+      (`pymysql`, `pymongo`) registered in the same `install.FEATURES`
+      registry Kafka and MQTT use, so a deployment that pushes to neither
+      carries neither driver, and a core install still gets an actionable
+      "install the `mongo` extra" rather than an ImportError. Postgres needs
+      no extra — its driver is already vendored for the app's own database.
+      Both also gained real compose services under `mysql`/`mongo` profiles,
+      because a connector nobody has run against a real server is a
+      connector nobody has tested.
 - [ ] Object storage: S3, GCS, Azure Blob
 - [ ] Columnar formats: Parquet, Avro, ORC
 - [ ] Warehouses: ClickHouse, Snowflake, BigQuery
@@ -1215,6 +1221,53 @@ Goal: read from and write to the systems people actually run.
       already defines how a delivery target plugs in, and the modular-install
       work means each connector's dependencies can ship as its own extra rather
       than bloating the core image.
+
+      **Scope, stated plainly: only the first bullet is done.** It was the one
+      the list itself called cheapest, and finishing it properly — drivers,
+      extras, a migration, real servers to test against, the UI — turned out
+      to be a phase's worth of work rather than an afternoon's. The remaining
+      five are each a comparable chunk, and doing five of them shallowly would
+      have produced five connectors nobody had run against a real endpoint.
+      They stay open rather than being quietly marked done.
+
+      **Design decisions worth keeping.** MongoDB reuses `DatabaseConnection`
+      rather than getting its own model: the credentials, the encrypted
+      password, the ownership checks and the entire UI are identical, and the
+      only thing that differs is how rows get written. That is one dispatch in
+      `push_rows` against a duplicated model, API and frontend. Where the two
+      genuinely differ, they differ deliberately — the SQL path serialises a
+      list to a JSON string because a column cannot hold one, while MongoDB
+      keeps it as a real array, since flattening structure is the one thing a
+      document store exists to avoid. A DATE is stored as an ISO string rather
+      than a BSON datetime, because BSON has no date-only type and promoting
+      `2024-03-05` to a midnight timestamp invents a time zone question nobody
+      asked. Documents are restricted to the declared fields, matching the SQL
+      path: being schemaless is not a reason to be shapeless.
+
+      **Known limits.** MongoDB authenticates against `admin`
+      (`db_output.MONGO_AUTH_SOURCE`), which is what the official image and
+      Atlas both expect; a deployment whose user was created *inside* the
+      target database needs a per-connection auth-source setting, and that is
+      a schema change. The dialect migration is **irreversible** — Postgres
+      has no `ALTER TYPE ... DROP VALUE`, and recreating the type under a
+      table that may hold live connections is worse than leaving an unused
+      enum value behind, so `downgrade` is a documented no-op.
+
+      14 new tests, **459 passed / 4 skipped** total, lint, format and
+      typecheck clean. Verified against real servers rather than mocks: 50
+      rows into MySQL 8.4 (correct column types inferred — `int`,
+      `varchar(255)`, `float`, `date`, `text`) and 50 documents into MongoDB
+      7, then the whole path again through the HTTP API, where Phase 10's
+      encrypted password round-tripped and authenticated successfully while
+      never appearing in a response.
+
+      One environment issue worth recording for anyone else who hits it: MySQL
+      would not start on the development host, failing with
+      `io_setup() EAGAIN` — InnoDB grabs kernel AIO contexts at startup and
+      the host's `fs.aio-max-nr` was already exhausted by other containers.
+      The compose service runs with `--innodb-use-native-aio=0`, which is the
+      right fix for a throwaway push target and avoids asking anyone to retune
+      their kernel to try SynthFlow.
 
 ## Phase 13 — Temporal Continuity and Change Simulation
 

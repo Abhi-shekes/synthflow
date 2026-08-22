@@ -90,6 +90,24 @@ OPTIONS: tuple[Option, ...] = (
         extra="mqtt",
     ),
     Option(
+        key="mysql",
+        label="MySQL push",
+        detail=(
+            "Installs the PyMySQL driver, and adds a MySQL server to push into for trying it out."
+        ),
+        profile="mysql",
+        extra="mysql",
+    ),
+    Option(
+        key="mongo",
+        label="MongoDB push",
+        detail=(
+            "Installs the pymongo driver, and adds a MongoDB server to push into for trying it out."
+        ),
+        profile="mongo",
+        extra="mongo",
+    ),
+    Option(
         key="monitoring",
         label="Monitoring dashboard",
         detail="Adds Prometheus, Grafana and Loki. No extra Python deps.",

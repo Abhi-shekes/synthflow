@@ -85,8 +85,8 @@ deployment doesn't pull in Kafka, MongoDB, or MQTT dependencies. See
 
 ## Project status
 
-**Phases 1–8 are live**, backend and frontend, each verified end to end
-rather than only by test suite:
+**Phases 1–5 and 7–11 are live**, backend and frontend, each verified end to
+end rather than only by test suite — plus the first of Phase 12:
 
 - **1–2** core platform, relationships, rules, formulas, stateful workflows
 - **3** outputs: CSV/JSON/Excel, PostgreSQL push, REST, WebSocket, Kafka, MQTT
@@ -107,14 +107,17 @@ rather than only by test suite:
   generators during profiling (so no value from your file reaches the
   project), k-anonymity and l-diversity measured on generated output, and
   connection passwords encrypted at rest
-
 - **11** data quality: a report on what was actually generated — what the
   engine discarded, where output contradicts its own field definitions, and
   your own assertions — in the browser and as `synthflow check`, which exits
   non-zero so it works as a CI gate
+- **12** MySQL and MongoDB push, alongside PostgreSQL — each an optional
+  extra, so an install only carries the drivers it uses. The rest of Phase
+  12's connector list (object storage, columnar formats, warehouses) is
+  still open.
 
 Phase 6 (the optional AI layer) is deliberately unstarted — nothing depends
-on it. Phases 12–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
+on it. Phases 13–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
 plan, including the tradeoffs and known limits recorded per item, and
 [TODO.md](TODO.md) for the active task list.
 
@@ -154,7 +157,14 @@ Or turn profiles on directly, without the wizard:
 docker compose --profile monitoring up -d   # Prometheus + Grafana + Loki
 docker compose --profile kafka up -d        # Redpanda, for Kafka outputs
 docker compose --profile mqtt up -d         # Mosquitto, for MQTT outputs
+docker compose --profile mysql up -d        # a MySQL server to push into
+docker compose --profile mongo up -d        # a MongoDB server to push into
 ```
+
+The `mysql` and `mongo` profiles start throwaway *push targets* — servers
+SynthFlow writes into, not part of SynthFlow itself. They use non-default
+host ports (3307 and 27117) so they don't collide with a database you
+already run locally.
 
 With the `monitoring` profile up, Grafana is at
 [http://localhost:3001](http://localhost:3001) — no login, already

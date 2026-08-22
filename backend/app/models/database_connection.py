@@ -10,8 +10,19 @@ from app.db.base import Base
 
 
 class DatabaseDialect(enum.StrEnum):
+    """Where a connection points. All three are implemented as of Phase 12.
+
+    `MONGODB` is here despite not being SQL because everything around a
+    connection — the credentials, the encrypted password, the ownership
+    check, the UI — is identical, and the only part that differs is how
+    rows get written. Splitting it into a separate model would have
+    duplicated all of that to avoid one dispatch in
+    `app.services.db_output`.
+    """
+
     POSTGRESQL = "postgresql"
-    MYSQL = "mysql"  # modeled for forward-compat; pushing to it isn't implemented yet
+    MYSQL = "mysql"
+    MONGODB = "mongodb"
 
 
 class DatabaseConnection(Base):

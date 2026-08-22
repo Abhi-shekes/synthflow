@@ -90,31 +90,19 @@ def test_test_connection_reports_failure_for_unreachable_host(client, auth_heade
     assert body["detail"]
 
 
-def test_mysql_dialect_accepted_but_not_yet_pushable(client, auth_headers):
+def test_mysql_and_mongodb_connections_can_be_created(client, auth_headers):
+    """Both were modelled long before they worked; Phase 12 makes them real,
+    and the API shape is unchanged for either."""
     project_id = _create_project(client, auth_headers)
-    connection = client.post(
-        f"/api/v1/projects/{project_id}/database-connections",
-        json={**CONNECTION_PAYLOAD, "dialect": "mysql", "port": 3306},
-        headers=auth_headers,
-    )
-    assert connection.status_code == 201
-
-    entity = client.post(
-        f"/api/v1/projects/{project_id}/entities", json={"name": "Row"}, headers=auth_headers
-    ).json()
-    client.post(
-        f"/api/v1/projects/{project_id}/entities/{entity['id']}/fields",
-        json={"name": "name", "field_type": "string", "required": True, "nullable": False},
-        headers=auth_headers,
-    )
-
-    resp = client.post(
-        f"/api/v1/projects/{project_id}/database-connections/{connection.json()['id']}/push",
-        json={"entity_id": entity["id"], "count": 5},
-        headers=auth_headers,
-    )
-    assert resp.status_code == 400
-    assert "not yet supported" in resp.json()["detail"]
+    for dialect, port in (("mysql", 3306), ("mongodb", 27017)):
+        response = client.post(
+            f"/api/v1/projects/{project_id}/database-connections",
+            json={**CONNECTION_PAYLOAD, "dialect": dialect, "port": port},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["dialect"] == dialect
+        assert "password" not in response.json()
 
 
 def test_push_rejects_unsafe_table_name(client, auth_headers):

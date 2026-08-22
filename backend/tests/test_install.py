@@ -9,7 +9,7 @@ availability is monkeypatched rather than assumed either way.
 
 import pytest
 
-from app.cli import init, main
+from app.cli import OPTIONS, init, main
 from app.services import install
 
 
@@ -34,7 +34,10 @@ def _create_entity_with_field(client, headers, project_id, name="Reading"):
 
 def test_describe_reports_every_optional_feature():
     described = {feature["key"]: feature for feature in install.describe()}
-    assert set(described) == {"kafka", "mqtt"}
+    # Derived from the registry rather than hardcoded: a literal set here
+    # fails whenever a feature is added, which says nothing about whether
+    # detection works — the actual subject of this test.
+    assert set(described) == {feature.key for feature in install.FEATURES}
     for feature in described.values():
         assert isinstance(feature["available"], bool)
         assert feature["label"] and feature["description"] and feature["extra"]
@@ -84,7 +87,7 @@ def test_install_config_route_lists_features(client, auth_headers):
     resp = client.get("/api/v1/install-config", headers=auth_headers)
     assert resp.status_code == 200
     keys = {feature["key"] for feature in resp.json()}
-    assert keys == {"kafka", "mqtt"}
+    assert keys == {feature.key for feature in install.FEATURES}
 
 
 def test_install_config_route_requires_auth(client):
@@ -156,8 +159,12 @@ def test_init_all_selects_everything(tmp_path):
     assert init(["--all", "--yes", "--path", str(tmp_path)]) == 0
 
     written = env_path.read_text()
-    assert "COMPOSE_PROFILES=kafka,mqtt,monitoring" in written
-    assert "SYNTHFLOW_EXTRAS=kafka,mqtt" in written
+    # Every option's profile, and every option that carries a Python extra —
+    # again from the registry, so adding a connector doesn't fail this.
+    expected_profiles = ",".join(o.profile for o in OPTIONS)
+    expected_extras = ",".join(o.extra for o in OPTIONS if o.extra)
+    assert f"COMPOSE_PROFILES={expected_profiles}" in written
+    assert f"SYNTHFLOW_EXTRAS={expected_extras}" in written
 
 
 def test_init_preserves_unrelated_env_entries(tmp_path):

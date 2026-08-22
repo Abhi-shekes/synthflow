@@ -82,6 +82,56 @@ services:
       - "1883:1883"
     profiles: ["mqtt"]
 
+  # Optional push *targets* — these exist so you can try a MySQL or MongoDB
+  # connection against a real server instead of trusting that the driver
+  # works. They are targets SynthFlow writes into, not part of SynthFlow:
+  # nothing here stores application state, and neither is needed unless you
+  # are pushing to that kind of database.
+  #   docker compose --profile mysql up
+  #   docker compose --profile mongo up
+  mysql:
+    container_name: synthflow-mysql
+    image: mysql:8.4
+    # Native AIO off: InnoDB grabs a pool of kernel aio contexts at startup
+    # and fails hard with io_setup() EAGAIN when the host's fs.aio-max-nr is
+    # already spoken for by other containers. That is easy to hit on a
+    # developer machine running several databases, and this is a throwaway
+    # push target where the I/O cost of turning it off is irrelevant.
+    command: ["--innodb-use-native-aio=0"]
+    environment:
+      MYSQL_ROOT_PASSWORD: synthflow
+      MYSQL_DATABASE: synthflow_target
+      MYSQL_USER: synthflow
+      MYSQL_PASSWORD: synthflow
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-psynthflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    profiles: ["mysql"]
+
+  mongo:
+    container_name: synthflow-mongo
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: synthflow
+      MONGO_INITDB_ROOT_PASSWORD: synthflow
+      MONGO_INITDB_DATABASE: synthflow_target
+    ports:
+      # Non-default host ports for both of these (3307, 27018): they are
+      # throwaway push targets, and a developer with a real MySQL or
+      # MongoDB already running locally should not have to stop it to try
+      # SynthFlow. Inside the compose network they still use 3306/27017.
+      - "27117:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    profiles: ["mongo"]
+
   # Optional monitoring stack — Prometheus scrapes the backend's /metrics,
   # Grafana renders the bundled dashboard, Loki + promtail collect
   # container logs. Not started by `docker compose up`; bring the whole

@@ -631,17 +631,68 @@ returned so a user can see what they got.
 25 new tests, 446 passed / 3 skipped. CLI gate verified live (exit 0 / exit
 1); browser dialog verified with zero console errors.
 
+## Phase 12 — Connector Expansion — first bullet done
+
+MySQL and MongoDB push both work, against real servers. Everything else on
+the Phase 12 list is still open, and that is stated rather than glossed:
+finishing this one bullet properly — drivers, extras, a migration, compose
+services to test against, the UI — was a phase's worth of work, and doing
+the other five shallowly would have produced five connectors nobody had
+run against a real endpoint.
+
+- Both ship as **optional extras** (`pymysql`, `pymongo`) in the same
+  `install.FEATURES` registry Kafka and MQTT use, so a core install carries
+  neither driver and reports how to add one instead of an ImportError.
+  Postgres needs no extra — its driver is already vendored.
+- **MongoDB reuses `DatabaseConnection`** rather than getting its own
+  model. Credentials, encrypted password, ownership checks and the whole UI
+  are identical; only the write path differs. One dispatch beats a
+  duplicated model, API and frontend.
+- Where they genuinely differ, they differ on purpose: SQL serialises a
+  list to a JSON string because a column can't hold one, MongoDB keeps a
+  real array. A DATE stays an ISO string rather than becoming a midnight
+  BSON timestamp, because BSON has no date-only type and promoting it
+  invents a timezone question. Documents are restricted to declared fields
+  — schemaless is not a reason to be shapeless.
+- Real compose services under `mysql`/`mongo` profiles, on non-default host
+  ports (3307, 27117), so trying this doesn't collide with a database you
+  already run locally.
+
+**Known limits:** MongoDB authenticates against `admin`, which the official
+image and Atlas both expect; a user created *inside* the target database
+needs a per-connection auth-source setting, which is a schema change. The
+dialect migration is **irreversible** — Postgres has no
+`ALTER TYPE ... DROP VALUE`, so `downgrade` is a documented no-op.
+
+14 new tests, 459 passed / 4 skipped. Verified against real servers: 50
+rows into MySQL 8.4 with correct inferred column types, 50 documents into
+MongoDB 7, then the whole path again through the HTTP API where Phase 10's
+encrypted password authenticated without ever appearing in a response.
+
+**Environment note:** MySQL wouldn't start here — `io_setup() EAGAIN`,
+because InnoDB grabs kernel AIO contexts at startup and the host's
+`fs.aio-max-nr` was exhausted by other containers. The service runs with
+`--innodb-use-native-aio=0` rather than asking anyone to retune their
+kernel.
+
 ## Now
 
 **Phases 1–5 and 7–11 are done** (10 and 11 each with deliberate
-exclusions, recorded above). Phase 6 (AI) stays deliberately unstarted.
-Next by the plan is **Phase 12 (Connector Expansion)** — MySQL and MongoDB
-push are both already modelled and merely rejected at runtime, so that is
-the cheapest real win left.
+exclusions). **Phase 12 is one bullet in of six.** Phase 6 (AI) stays
+deliberately unstarted.
+
+Next is either finishing Phase 12 — object storage and Parquet are the two
+most-asked-for of the remaining five — or **Phase 13 (Temporal Continuity)**.
 
 **Worth doing once, not twice:** a per-entity policy column would let both
 Phase 10's k-anonymity thresholds and Phase 11's assertions fail a
 scheduled Phase 8 job. Two phases have now wanted it.
+
+**A test-writing habit worth keeping:** three tests across Phases 10 and 12
+failed purely because they hardcoded a set or count that a new feature
+legitimately changed (`{"kafka", "mqtt"}`, `11 + 6` presets). Each said
+nothing about whether the mechanism worked. Derive the expectation from the
+registry being tested.
 
 Two quick wins still available anywhere: **API keys** (Phase 14 — there's
 still no machine authentication, which blocks CI use) and **MySQL/MongoDB

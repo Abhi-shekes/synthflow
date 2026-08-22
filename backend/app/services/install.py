@@ -54,6 +54,20 @@ FEATURES: tuple[Feature, ...] = (
         label="MQTT output",
         description="Publish generated rows to an MQTT broker.",
     ),
+    Feature(
+        key="mysql",
+        module="pymysql",
+        extra="mysql",
+        label="MySQL push",
+        description="Write generated rows into a MySQL database.",
+    ),
+    Feature(
+        key="mongo",
+        module="pymongo",
+        extra="mongo",
+        label="MongoDB push",
+        description="Write generated rows into a MongoDB collection.",
+    ),
 )
 
 _FEATURES_BY_KEY = {feature.key: feature for feature in FEATURES}

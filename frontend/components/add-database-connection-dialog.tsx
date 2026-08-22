@@ -21,7 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DATABASE_DIALECTS, type DatabaseConnectionCreateInput, type DatabaseDialect } from "@/lib/types";
+import {
+  DATABASE_DEFAULT_PORTS,
+  DATABASE_DIALECTS,
+  type DatabaseConnectionCreateInput,
+  type DatabaseDialect,
+} from "@/lib/types";
 
 interface FormValues {
   name: string;
@@ -99,7 +104,14 @@ export function AddDatabaseConnectionDialog({
             <Label>Dialect</Label>
             <Select
               value={dialect}
-              onValueChange={(v) => setValue("dialect", v as DatabaseDialect)}
+              onValueChange={(v) => {
+                const next = (v ?? "postgresql") as DatabaseDialect;
+                setValue("dialect", next);
+                // Carry the port with the dialect. Leaving 5432 behind
+                // after switching to MongoDB is a confusing failure that
+                // looks like the server is down.
+                setValue("port", DATABASE_DEFAULT_PORTS[next]);
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -112,10 +124,13 @@ export function AddDatabaseConnectionDialog({
                 ))}
               </SelectContent>
             </Select>
-            {dialect === "mysql" && (
+            {(dialect === "mysql" || dialect === "mongodb") && (
               <p className="text-xs text-muted-foreground">
-                MySQL connections can be saved but pushing to them isn&apos;t
-                implemented yet.
+                {dialect === "mysql"
+                  ? "Needs the mysql extra installed on the backend (synthflow init)."
+                  : "Needs the mongo extra installed on the backend (synthflow init). " +
+                    "Documents are written to a collection named after the table; " +
+                    "credentials are checked against the admin database."}
               </p>
             )}
           </div>
