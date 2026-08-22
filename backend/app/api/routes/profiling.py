@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.api.routes.projects import _get_owned_project
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.database_connection import DatabaseConnection
@@ -140,10 +141,14 @@ class ProfileSourceRequest(BaseModel):
 
 
 def _owned_project(project_id: uuid.UUID, user: User, db: Session) -> Project:
-    project = db.get(Project, project_id)
-    if project is None or project.owner_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    return project
+    """Delegates rather than repeating the ownership test.
+
+    This was a third copy of `project.owner_id != user.id`. Organisations
+    made that a liability: three copies of an access rule are three places
+    to update and two of them will be missed. There is one rule now, in
+    `projects._get_owned_project`.
+    """
+    return _get_owned_project(project_id, user, db)
 
 
 @router.post("/from-source", response_model=ProfileResponse)

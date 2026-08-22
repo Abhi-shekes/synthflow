@@ -21,5 +21,6 @@ class ProjectRead(BaseModel):
     name: str
     description: str | None
     owner_id: uuid.UUID
+    organization_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime

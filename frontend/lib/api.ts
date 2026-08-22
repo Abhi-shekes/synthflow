@@ -68,6 +68,9 @@ import type {
   ApiKeyCreated,
   ApiKeyCreateInput,
   AuditEvent,
+  Organization,
+  OrganizationMember,
+  Role,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -1088,6 +1091,50 @@ export const api = {
     params.set("limit", String(options.limit ?? 100));
     return request<AuditEvent[]>(`/api/v1/audit?${params}`, {}, token);
   },
+
+  listOrganizations: (token: string) =>
+    request<Organization[]>("/api/v1/organizations", {}, token),
+
+  createOrganization: (token: string, name: string) =>
+    request<Organization>(
+      "/api/v1/organizations",
+      { method: "POST", body: JSON.stringify({ name }) },
+      token
+    ),
+
+  deleteOrganization: (token: string, orgId: string) =>
+    request<void>(`/api/v1/organizations/${orgId}`, { method: "DELETE" }, token),
+
+  listMembers: (token: string, orgId: string) =>
+    request<OrganizationMember[]>(`/api/v1/organizations/${orgId}/members`, {}, token),
+
+  addMember: (token: string, orgId: string, email: string, role: Role) =>
+    request<OrganizationMember>(
+      `/api/v1/organizations/${orgId}/members`,
+      { method: "POST", body: JSON.stringify({ email, role }) },
+      token
+    ),
+
+  updateMemberRole: (token: string, orgId: string, memberId: string, role: Role) =>
+    request<OrganizationMember>(
+      `/api/v1/organizations/${orgId}/members/${memberId}`,
+      { method: "PATCH", body: JSON.stringify({ role }) },
+      token
+    ),
+
+  removeMember: (token: string, orgId: string, memberId: string) =>
+    request<void>(
+      `/api/v1/organizations/${orgId}/members/${memberId}`,
+      { method: "DELETE" },
+      token
+    ),
+
+  setProjectOrganization: (token: string, projectId: string, organizationId: string | null) =>
+    request<Project>(
+      `/api/v1/projects/${projectId}/organization`,
+      { method: "PUT", body: JSON.stringify({ organization_id: organizationId }) },
+      token
+    ),
 
   listStarterTemplates: (token: string) =>
     request<StarterTemplateSummary[]>("/api/v1/starter-templates", {}, token),

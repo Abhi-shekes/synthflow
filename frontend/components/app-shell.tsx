@@ -19,6 +19,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
         <div className="flex items-center gap-4">
           <Link
+            href="/settings/organizations"
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Organizations
+          </Link>
+          <Link
             href="/settings/api-keys"
             className="text-sm text-muted-foreground hover:text-foreground"
           >

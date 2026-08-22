@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user
+from app.api.routes.projects import _get_owned_project, get_db
 from app.models.object_storage import ObjectStorageTarget
 from app.models.project import Project
 from app.models.user import User
@@ -18,10 +19,14 @@ router = APIRouter(prefix="/projects/{project_id}/storage-targets", tags=["objec
 
 
 def _owned_project(project_id: uuid.UUID, user: User, db: Session) -> Project:
-    project = db.get(Project, project_id)
-    if project is None or project.owner_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    return project
+    """Delegates rather than repeating the ownership test.
+
+    This was a third copy of `project.owner_id != user.id`. Organisations
+    made that a liability: three copies of an access rule are three places
+    to update and two of them will be missed. There is one rule now, in
+    `projects._get_owned_project`.
+    """
+    return _get_owned_project(project_id, user, db)
 
 
 def _owned_target(

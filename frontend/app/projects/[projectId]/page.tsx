@@ -16,6 +16,7 @@ import { AddRelationshipDialog } from "@/components/add-relationship-dialog";
 import { AddTimelineReplayDialog } from "@/components/add-timeline-replay-dialog";
 import { AppShell } from "@/components/app-shell";
 import { JobsCard } from "@/components/jobs-card";
+import { ShareProjectCard } from "@/components/share-project-card";
 import { StreamPreview } from "@/components/stream-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ import {
 import { api } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { useRequireAuth } from "@/lib/hooks";
+import { useAuthStore } from "@/lib/store";
 import type {
   DatabaseConnectionCreateInput,
   RelationshipCreateInput,
@@ -54,6 +56,7 @@ const WS_URL = API_URL.replace(/^http/, "ws");
 
 export default function ProjectDetailPage() {
   const accessToken = useRequireAuth();
+  const currentUser = useAuthStore((s) => s.user);
   const router = useRouter();
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
@@ -743,6 +746,14 @@ export default function ProjectDetailPage() {
         </Card>
 
         <JobsCard projectId={projectId} entities={entities} />
+
+        {projectQuery.data && (
+          <ShareProjectCard
+            projectId={projectId}
+            organizationId={projectQuery.data.organization_id ?? null}
+            isOwner={projectQuery.data.owner_id === currentUser?.id}
+          />
+        )}
 
         <ActivityCard projectId={projectId} />
 

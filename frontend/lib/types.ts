@@ -267,6 +267,9 @@ export interface Project {
   name: string;
   description: string | null;
   owner_id: string;
+  /** Null means personal — visible only to the owner, exactly as before
+   * organisations existed. */
+  organization_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -948,5 +951,28 @@ export interface AuditEvent {
   status_code: number;
   project_id: string | null;
   path_params: Record<string, string>;
+  created_at: string;
+}
+
+/** Phase 14 — organisations and roles. A ladder, not a matrix: each level
+ * strictly contains the one below it. */
+export type Role = "viewer" | "member" | "admin" | "owner";
+
+export const ROLES: Role[] = ["viewer", "member", "admin", "owner"];
+
+export interface Organization {
+  id: string;
+  name: string;
+  created_at: string;
+  /** The caller's own role — what the UI needs to know which controls to
+   * show. The full membership list is a separate, permissioned read. */
+  my_role: Role;
+}
+
+export interface OrganizationMember {
+  id: string;
+  user_id: string;
+  email: string;
+  role: Role;
   created_at: string;
 }

@@ -24,6 +24,7 @@ from app.api.routes import (
     metrics,
     mqtt_outputs,
     object_storage,
+    organizations,
     output_plugins,
     outputs,
     plugin_outputs,
@@ -49,7 +50,7 @@ from app.api.routes import (
 )
 from app.core.config import settings
 from app.db import session as db_session
-from app.services import audit
+from app.services import access, audit
 from app.services.jobs import resume_producers, startup_recovery, worker_pass
 from app.services.metrics import init_gauges
 from app.services.plugin_output_producers import stop_all_plugin_outputs
@@ -151,6 +152,15 @@ async def audit_mutations(request: Request, call_next):
     that can take the API down with it is a worse trade than a log with a
     gap, and the gap is already visible in the application's own error log.
     """
+    # Set *before* `call_next`, and here rather than in a dependency. A
+    # context variable propagates down into tasks spawned from this context
+    # but never back up out of one, and FastAPI runs a sync dependency in a
+    # worker thread with its own copy of the context — so setting it in
+    # `get_current_user` left the route handler, running in a *different*
+    # copy, still seeing the default. Which meant `access.may` read every
+    # request as a GET and a viewer could write.
+    access.current_method.set(request.method)
+
     response = await call_next(request)
 
     if not settings.AUDIT_LOG or request.method not in audit.MUTATING_METHODS:
@@ -193,6 +203,7 @@ app.include_router(metrics.router)
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(api_keys.router, prefix=settings.API_V1_PREFIX)
 app.include_router(audit_routes.router, prefix=settings.API_V1_PREFIX)
+app.include_router(organizations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
 app.include_router(generator_plugins.router, prefix=settings.API_V1_PREFIX)
