@@ -21,6 +21,11 @@ dependencies = [
     "qrcode[pil]>=7.4",
     "prometheus-client>=0.21",
     "sqlglot>=25.0",
+    # Encryption at rest for stored connection secrets (app.core.secrets).
+    # Core rather than an extra on purpose: if it were optional, the default
+    # install would keep storing passwords in plaintext, which is the gap
+    # this closes.
+    "cryptography>=43.0",
 ]
 
 # Optional broker clients — this is what "modular installation" means in

@@ -531,14 +531,66 @@ noise(3.93)` against a true `19.99 * qty + gauss(0, 4)`, with only the
 real FK kept. Generated-vs-source: age mean 44.32 → 44.61, `free` 67.6%
 → 66.9%. Browser-verified, zero console errors.
 
+## Phase 10 — Privacy and Compliance — mostly done
+
+Phase 9 opened a real hole and this closes it: profiling a staff file
+produced a project containing real names and real email addresses as enum
+values, plus two employees' exact salaries as a `uniform()` range. Both
+were demonstrated before being fixed, and both have regression tests.
+
+- **PII classification** (`app/services/privacy/classify.py`) on column
+  name *and* value patterns. Name evidence alone never reaches `high`,
+  and only `high` is redacted automatically — a false positive that
+  replaces a column someone cared about is worse than a line in a report.
+- **Replacement, not masking**: a classified column is pointed at a
+  synthetic generator registered in the existing preset registry, so this
+  needed **no new column and no migration** — the third phase in a row to
+  reuse that extension point. Redaction sits in `_to_field` ahead of every
+  branch that could emit an observed value, so it is structural.
+- **Bounds rounded outward** so a fitted range stops naming the exact
+  values of the lowest and highest record.
+- **k-anonymity / l-diversity** measured on generated rows via
+  `POST /projects/{id}/entities/{id}/privacy-report`, reporting k, l, the
+  share of rows below threshold, and *which* combinations are rare.
+  Measures, never alters — an automatic fix would silently change the
+  distribution the user came for.
+- **Connection passwords encrypted at rest** (`app/core/secrets.py`),
+  Fernet keyed off `SECRET_KEY`, applied as a SQLAlchemy column type so
+  no code path can write the column in plaintext.
+
+**Not built, deliberately:** consistent-mapping pseudonymisation (a
+reversible pseudonym is still personal data; the cost of the irreversible
+choice is that joins *on a name* across two profiled files won't hold —
+joins on ids still do), and differential privacy on fitting (only
+meaningful with a real sensitivity analysis and budget accounting; an
+implementation stating an epsilon it doesn't achieve is worse than none).
+Thresholds are per-request on the report endpoint — making them fail a
+scheduled *job* needs a per-entity policy column.
+
+**Known limits:** classification is regex and keywords, so it misses
+personal data in free text and knows only the identifier formats listed.
+Encryption protects against a dump or a stray SELECT, not against an
+attacker holding the app environment — they have `SECRET_KEY` and so the
+key. Rotating `SECRET_KEY` now invalidates sessions *and* makes stored
+secrets undecryptable (loudly, with an explanatory error).
+
+37 new tests, 421 passed / 3 skipped. Verified live: a 400-row patient
+file had name/email/phone/dob redacted while `city`, `plan` and
+`annual_cost` were learned normally; the migration encrypted three real
+plaintext passwords in the running Postgres; the report endpoint gave
+k=231 for a coarse quasi-identifier over 1,000 rows and k=1 (68% of rows
+below threshold) for a fine one over 60.
+
 ## Now
 
-**Phases 1–5 and 7–9 are done.** Phase 6 (AI) stays deliberately
-unstarted. Next by the plan is **Phase 10 (Privacy and Compliance)** —
-PII detection and masking, k-anonymity checks, and encrypting the
-`DatabaseConnection` password that is still stored in plaintext. Phase 9
-makes this more urgent than it was: SynthFlow now ingests real data, so
-"we only ever handled synthetic rows" has stopped being true.
+**Phases 1–5 and 7–10 are done** (Phase 10 with the three deliberate
+exclusions above). Phase 6 (AI) stays deliberately unstarted. Next by the
+plan is **Phase 11 (Data Quality and Validation)** — profile the
+*generated* output and compare it against the source it was learned from.
+Phase 9 and 10 both leave obvious groundwork: the profiler already
+measures distributions and the anonymity module already walks generated
+rows, so "real vs generated, side by side" is mostly assembling parts
+that exist.
 
 Two quick wins still available anywhere: **API keys** (Phase 14 — there's
 still no machine authentication, which blocks CI use) and **MySQL/MongoDB
@@ -564,6 +616,13 @@ push** (Phase 12 — both already modelled and merely rejected at runtime).
   correlation) — cheaper to extend the evaluator than to add a new concept.
   Phase 9 is the strongest evidence so far: following this note is what let an
   entire phase ship with zero new models and zero migrations.
+- A heuristic that decides to *change* the user's data needs probing against
+  realistic inputs before it ships, and separate confidence levels so only the
+  strong evidence acts. Every Phase 10 classifier bug was a false positive —
+  income read as phone numbers, company names read as people — and each would
+  have silently replaced a column the user cared about. The generic version:
+  when a check can fire wrongly, make the cheap outcome (a report line) the
+  default and reserve the destructive one for unambiguous evidence.
 - Anything that infers structure *across* inputs (Phase 9's relationship
   detection, and Phase 12's schema diffing when it arrives) needs testing on
   real multi-file data, not fixtures. All three Phase 9 bugs needed the

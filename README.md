@@ -103,9 +103,13 @@ rather than only by test suite:
   observed category frequencies, correlations between columns and relationships
   between files — as an ordinary editable project, using statistics rather than
   a language model
+- **10** privacy: personal data detected and replaced with synthetic
+  generators during profiling (so no value from your file reaches the
+  project), k-anonymity and l-diversity measured on generated output, and
+  connection passwords encrypted at rest
 
 Phase 6 (the optional AI layer) is deliberately unstarted — nothing depends
-on it. Phases 10–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
+on it. Phases 11–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
 plan, including the tradeoffs and known limits recorded per item, and
 [TODO.md](TODO.md) for the active task list.
 

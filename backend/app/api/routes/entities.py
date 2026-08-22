@@ -14,12 +14,19 @@ from app.models.entity import Entity
 from app.models.field import EntityField, FieldType
 from app.models.relationship import Relationship
 from app.models.user import User
-from app.schemas.entity import EntityCreate, EntityRead, EntityUpdate, GenerateRequest
+from app.schemas.entity import (
+    EntityCreate,
+    EntityRead,
+    EntityUpdate,
+    GenerateRequest,
+    PrivacyReportRequest,
+)
 from app.schemas.field import EntityFieldCreate, EntityFieldRead, EntityFieldUpdate
 from app.services import metrics
 from app.services.expressions import ExpressionError, evaluate
 from app.services.field_validation import validate_enum_weights, validate_preset
 from app.services.generator import build_lookup_pools, generate_rows, rows_to_csv, rows_to_excel
+from app.services.privacy import anonymity
 
 router = APIRouter(prefix="/projects/{project_id}/entities", tags=["entities"])
 
@@ -291,3 +298,85 @@ def generate(
         )
 
     return rows
+
+
+@router.post("/{entity_id}/privacy-report")
+def privacy_report(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    payload: PrivacyReportRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Generate rows and measure how re-identifiable they are.
+
+    Measures the *generated* output rather than the configuration, because
+    k-anonymity is a property of actual rows: two entities with identical
+    field definitions can produce very different k depending on enum
+    weights and row count.
+
+    Reports; never alters. A failing k is returned as `passes: false` for
+    the caller to act on — suppressing or generalising rows here would
+    silently change the distribution the user configured, which is the one
+    thing they came for.
+    """
+    entity = _get_owned_entity(project_id, entity_id, current_user, db)
+    if not entity.fields:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Entity has no fields to generate"
+        )
+    if payload.count < 1 or payload.count > settings.MAX_GENERATE_ROWS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"count must be between 1 and {settings.MAX_GENERATE_ROWS}",
+        )
+
+    known = {f.name for f in entity.fields}
+    unknown = [c for c in payload.quasi_identifiers if c not in known]
+    if payload.sensitive_field is not None and payload.sensitive_field not in known:
+        unknown.append(payload.sensitive_field)
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown field(s): {', '.join(sorted(set(unknown)))}",
+        )
+
+    try:
+        rows = generate_rows(
+            entity.fields,
+            payload.count,
+            fk_pools=build_lookup_pools(entity.lookup_attachments),
+            rules=entity.rules,
+            workflows=entity.workflows,
+            trends=entity.trends,
+            error_injections=entity.error_injections,
+            event_triggers=entity.event_triggers,
+            geo_routes=entity.geo_routes,
+        )
+        report = anonymity.measure(
+            rows,
+            payload.quasi_identifiers,
+            sensitive_field=payload.sensitive_field,
+            k_threshold=payload.k_threshold,
+            l_threshold=payload.l_threshold,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return {
+        "quasi_identifiers": report.quasi_identifiers,
+        "sensitive_field": report.sensitive_field,
+        "total_rows": report.total_rows,
+        "k": report.k,
+        "k_threshold": report.k_threshold,
+        "k_passes": report.k_passes,
+        "l": report.l_diversity,
+        "l_threshold": report.l_threshold,
+        "l_passes": report.l_passes,
+        "passes": report.passes,
+        "groups": report.groups,
+        "rows_below_k": report.rows_below_k,
+        "unique_row_share": round(report.unique_row_share, 4),
+        "smallest_groups": report.smallest_groups,
+        "summary": report.summary(),
+    }

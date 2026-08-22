@@ -19,6 +19,8 @@ import math
 import statistics as st
 from dataclasses import dataclass
 
+from app.services.privacy.bounds import round_bounds
+
 # Below this many usable values, fitting is guesswork — fall back to a
 # plain uniform range rather than inventing a shape from six points.
 MIN_SAMPLES_FOR_FIT = 30
@@ -124,7 +126,12 @@ def _try_exponential(values: list[float]) -> Fit | None:
 
 
 def _try_uniform(values: list[float]) -> Fit:
-    low, high = min(values), max(values)
+    # Bounds are rounded outward before anything else uses them, so the
+    # exact minimum and maximum of the sample — two real records' values —
+    # never reach the expression. Scored against the rounded bounds rather
+    # than the raw ones, because the rounded range is what will actually be
+    # generated and the reported fit quality should describe that.
+    low, high = round_bounds(min(values), max(values))
     theoretical = [low + q * (high - low) for q in _QUANTILES]
     return Fit(
         kind="uniform",

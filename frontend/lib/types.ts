@@ -603,6 +603,15 @@ export interface ProfileColumnReport {
   distribution: string | null;
   fit_quality: string | null;
   categories: number | null;
+  /**
+   * What kind of personal data the column appears to hold, if any.
+   * `pii_redacted` says whether that was acted on — a medium-confidence
+   * finding is reported for a human to judge but left alone.
+   */
+  pii_kind: string | null;
+  pii_confidence: string | null;
+  pii_redacted: boolean;
+  pii_reason: string | null;
 }
 
 export interface ProfileResponse {

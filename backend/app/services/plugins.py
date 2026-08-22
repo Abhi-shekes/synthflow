@@ -86,9 +86,10 @@ from collections.abc import Callable
 from importlib.metadata import EntryPoint, entry_points
 from typing import Any
 
-from app.models.field import IdentifierPreset, LogPreset
+from app.models.field import IdentifierPreset, LogPreset, PiiPreset
 from app.services.identifier_generators import generate_identifier
 from app.services.log_generators import generate_log_line
+from app.services.pii_generators import generate_pii
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,8 @@ def _builtin_generators() -> dict[str, GeneratorPlugin]:
         registry[preset.value] = lambda p=preset.value: generate_log_line(p)
     for preset in IdentifierPreset:
         registry[preset.value] = lambda p=preset.value: generate_identifier(p)
+    for preset in PiiPreset:
+        registry[preset.value] = lambda p=preset.value: generate_pii(p)
     return registry
 
 
@@ -205,6 +208,7 @@ def list_available_presets() -> list[dict[str, str]]:
     presets += [
         {"name": p.value, "source": "builtin", "category": "identifier"} for p in IdentifierPreset
     ]
+    presets += [{"name": p.value, "source": "builtin", "category": "pii"} for p in PiiPreset]
     for name, (_fn, dist_name) in _discovered_plugins().items():
         presets.append({"name": name, "source": f"plugin:{dist_name}", "category": "plugin"})
     return presets

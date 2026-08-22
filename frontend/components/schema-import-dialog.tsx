@@ -25,7 +25,17 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
-import type { ProfileResponse, ProjectTemplate, SchemaImportResponse } from "@/lib/types";
+import type {
+  ProfileColumnReport,
+  ProfileResponse,
+  ProjectTemplate,
+  SchemaImportResponse,
+} from "@/lib/types";
+
+/** Marks the warnings that describe redaction rather than a loss. They are
+ * shown in their own panel, because "we replaced the real names with
+ * synthetic ones" is the tool working, not something that went wrong. */
+const REDACTION_MARKER = "replaced with synthetic values";
 
 type Source = "sql" | "json-schema" | "sample" | "learn";
 
@@ -51,7 +61,9 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
   const [sql, setSql] = useState("");
   const [dialect, setDialect] = useState("postgres");
   const [jsonText, setJsonText] = useState("");
-  const [result, setResult] = useState<SchemaImportResponse | null>(null);
+  const [result, setResult] = useState<
+    (SchemaImportResponse & { report?: ProfileColumnReport[] }) | null
+  >(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
@@ -63,7 +75,9 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
   };
 
   const preview = useMutation({
-    mutationFn: async (): Promise<SchemaImportResponse> => {
+    mutationFn: async (): Promise<
+      SchemaImportResponse & { report?: ProfileColumnReport[] }
+    > => {
       const token = accessToken!;
       if (source === "sql") {
         return api.importSchemaFromSql(token, sql, dialect, projectName);
@@ -85,7 +99,11 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
           chosen,
           projectName
         );
-        return { template: profiled.template, warnings: profiled.warnings };
+        return {
+          template: profiled.template,
+          warnings: profiled.warnings,
+          report: profiled.report,
+        };
       }
       return api.importSchemaFromSample(token, chosen[0], projectName);
     },
@@ -107,6 +125,15 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
   const entityCount = result?.template.entities.length ?? 0;
   const fieldCount =
     result?.template.entities.reduce((sum, e) => sum + e.fields.length, 0) ?? 0;
+
+  const piiFindings = (result?.report ?? []).filter((r) => r.pii_kind !== null);
+  const redacted = piiFindings.filter((r) => r.pii_redacted);
+  const flaggedOnly = piiFindings.filter((r) => !r.pii_redacted);
+  // Redaction warnings are rendered in the privacy panel instead, so they
+  // don't read as failures in the list below it.
+  const lossWarnings = (result?.warnings ?? []).filter(
+    (w) => !w.includes(REDACTION_MARKER)
+  );
 
   return (
     <Dialog
@@ -258,14 +285,58 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
               </p>
             </div>
 
-            {result.warnings.length > 0 && (
+            {piiFindings.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-md border p-3">
+                <p className="text-sm font-medium">
+                  Personal data found in {piiFindings.length} column
+                  {piiFindings.length === 1 ? "" : "s"}
+                </p>
+                {redacted.length > 0 && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Replaced with synthetic generators — no value from your
+                      file was copied into this project.
+                    </p>
+                    <ul className="flex flex-col gap-1 text-xs">
+                      {redacted.map((r) => (
+                        <li key={`${r.entity}.${r.column}`} className="font-mono">
+                          {r.entity}.{r.column}
+                          <span className="opacity-60"> → {r.pii_kind}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {flaggedOnly.length > 0 && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Possibly personal, but not certain enough to replace
+                      automatically — check these yourself:
+                    </p>
+                    <ul className="flex flex-col gap-1 text-xs">
+                      {flaggedOnly.map((r) => (
+                        <li key={`${r.entity}.${r.column}`} className="font-mono">
+                          {r.entity}.{r.column}
+                          <span className="opacity-60">
+                            {" "}
+                            — {r.pii_reason}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
+
+            {lossWarnings.length > 0 && (
               <div className="flex flex-col gap-2 rounded-md border border-dashed p-3">
                 <p className="text-sm font-medium">
-                  {result.warnings.length} thing
-                  {result.warnings.length === 1 ? "" : "s"} couldn&apos;t be carried across
+                  {lossWarnings.length} thing
+                  {lossWarnings.length === 1 ? "" : "s"} couldn&apos;t be carried across
                 </p>
                 <ul className="flex list-disc flex-col gap-1 pl-5 text-xs text-muted-foreground">
-                  {result.warnings.map((warning) => (
+                  {lossWarnings.map((warning) => (
                     <li key={warning}>{warning}</li>
                   ))}
                 </ul>
@@ -284,6 +355,9 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
                         {field.required && <span className="opacity-60">*</span>}
                         {field.formula && (
                           <span className="opacity-60"> = {field.formula}</span>
+                        )}
+                        {field.preset && (
+                          <span className="opacity-60"> = {field.preset}()</span>
                         )}
                       </span>
                     ))}

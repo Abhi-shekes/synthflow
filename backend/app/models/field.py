@@ -63,6 +63,37 @@ class IdentifierPreset(enum.StrEnum):
     BUSINESS_EMAIL = "business_email"
 
 
+class PiiPreset(enum.StrEnum):
+    """A synthetic stand-in for a kind of personal data, for a STRING field —
+    see app.services.pii_generators. Third enum sharing the `preset` column,
+    for the same reason as the first two: this is a different *domain* of
+    canned generator, not a different mechanism, so it needs no new column
+    and no migration.
+
+    These carry more weight than the other two presets. When
+    app.services.privacy.classify identifies a profiled column as personal
+    data, the profiler rewrites the field to use one of these *instead of*
+    the observed values — so a preset here is what stands between a real
+    sample file and a project that has copied real names into it."""
+
+    PERSON_NAME = "person_name"
+    FIRST_NAME = "first_name"
+    LAST_NAME = "last_name"
+    EMAIL_ADDRESS = "email_address"
+    PHONE_NUMBER = "phone_number"
+    STREET_ADDRESS = "street_address"
+    FULL_ADDRESS = "full_address"
+    POSTCODE = "postcode"
+    CITY = "city"
+    PAYMENT_CARD = "payment_card"
+    SSN = "ssn"
+    AADHAAR = "aadhaar"
+    IP_ADDRESS = "ip_address"
+    USERNAME = "username"
+    COMPANY_NAME = "company_name"
+    DATE_OF_BIRTH = "date_of_birth"
+
+
 class EntityField(Base):
     __tablename__ = "entity_fields"
 

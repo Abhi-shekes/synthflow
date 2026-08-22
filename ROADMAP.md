@@ -1026,17 +1026,99 @@ Goal: make production-shaped data safe to hand to people who should not see
 production. This is usually the reason an organisation adopts synthetic data
 in the first place.
 
-- [ ] PII detection with per-field classification: names, emails, phone numbers,
-      national identifiers, payment cards, addresses
-- [ ] Masking, tokenisation and format-preserving pseudonymisation, with a
-      mapping that stays consistent across a run so joins still work
-- [ ] k-anonymity and l-diversity measurement on generated output, with
-      configurable thresholds that can fail a run
-- [ ] Optional differential privacy applied to Phase 9's fitting step, with the
-      chosen epsilon stated in the output rather than buried
-- [ ] A re-identification risk report suitable for a compliance reviewer
-- [ ] Encrypt connection secrets at rest — closes the documented gap where
-      `DatabaseConnection` stores its password unencrypted
+**The reason this phase came now.** Phase 9 changed SynthFlow's risk profile:
+before it, the tool only ever handled data it had invented, and "it's
+synthetic, so it's safe" was true by construction. Profiling made real files
+an input, and the first thing a profiled staff file produced was a project
+containing real names and real email addresses as enum values, plus two real
+employees' exact salaries as a `uniform()` range. Phase 10 exists because
+Phase 9 opened that hole, not as a box-ticking compliance exercise.
+
+- [x] PII detection with per-field classification: names, emails, phone numbers,
+      national identifiers (SSN, Aadhaar, PAN), payment cards, addresses,
+      postcodes, IPs, usernames, dates of birth. Two independent signals —
+      column name and value patterns — because either alone is wrong often
+      enough to matter. Names alone never reach `high` confidence, and only
+      `high` is acted on automatically: a false positive that redacts a column
+      someone cared about is worse than one that adds a line to a report.
+- [x] Personal columns are **replaced, not masked**. A classified column is
+      pointed at a synthetic generator (`person_name`, `email_address`, …)
+      registered in the same preset registry the identifier and log presets
+      already use — so this needed no new column and no migration, the third
+      phase running to reuse that extension point. Redaction happens in
+      `_to_field` *before* every branch that could emit an observed value,
+      which makes it structural rather than a cleanup pass a future branch
+      could bypass.
+- [x] Observed numeric bounds are rounded outward, so a fitted range stops
+      publishing two real records' exact values. `uniform(360672, 4451382)`
+      learned from a salary column names the exact pay of the lowest and
+      highest earner; it becomes `uniform(300000, 4500000)`.
+- [x] k-anonymity and l-diversity measurement on generated output, with
+      configurable thresholds — `POST /projects/{id}/entities/{id}/privacy-report`.
+      Measures the generated rows rather than the configuration, because k is
+      a property of actual data: two entities with identical field definitions
+      produce very different k depending on enum weights and row count.
+- [x] A re-identification risk report: k, l, group count, the share of rows
+      sitting below the threshold, and the smallest groups named explicitly so
+      a reviewer can see *which* combinations are rare. Reports only — nothing
+      suppresses or generalises a row, because an automatic fix would silently
+      change the distribution the user came here for.
+- [x] Encrypt connection secrets at rest — closes the gap `DatabaseConnection`
+      documented from the day it was written. Fernet, with the key derived from
+      `SECRET_KEY`, applied through a SQLAlchemy column type so there is no
+      code path that writes the column unencrypted.
+- [ ] Masking and format-preserving **pseudonymisation with a consistent
+      mapping**. Deliberately not built, and the deliberate part matters: a
+      reversible pseudonym that maps back to an individual is still personal
+      data, so shipping one under this phase's banner would undercut the rest
+      of it. What exists instead is irreversible replacement. The real cost is
+      that the same person appearing in two profiled files gets two different
+      synthetic names, so a join *on a name* won't hold — joins on ids still
+      do, and ids are preserved. A consistent-mapping mode is a genuine
+      feature for a different use case (masking a production extract in
+      place), and it should arrive with its own honest description of what it
+      does and doesn't protect.
+- [ ] Optional differential privacy on Phase 9's fitting step. Not built, and
+      not faked: DP is only meaningful with a correct sensitivity analysis and
+      a privacy budget accounted across queries, and an implementation that
+      states an epsilon it doesn't actually achieve is *worse than none* —
+      it converts an honest "we don't know" into a false assurance someone
+      will rely on. The outward bound-rounding above is a mitigation and says
+      so in its own module docstring rather than borrowing DP's vocabulary.
+- [ ] Thresholds that **fail a run**. The thresholds are per-request on the
+      report endpoint; wiring them into Phase 8's job model so a scheduled
+      generation aborts on a k below the limit needs a per-entity policy
+      column, which is a schema change this phase didn't make.
+
+      **Limits worth stating plainly.** Classification is regex and keywords,
+      not a model — explainable and air-gap-safe, but it will miss personal
+      data in free-text columns entirely, and it only knows the identifier
+      formats listed above. Encryption protects data *at rest* against a dump
+      or a stray SELECT; it cannot protect against an attacker who already has
+      the application environment, because that attacker has `SECRET_KEY` and
+      therefore the key. A KMS is the answer there, and `app/core/secrets.py`
+      says so rather than implying otherwise. Rotating `SECRET_KEY` now
+      invalidates sessions *and* makes stored secrets undecryptable — the
+      failure is loud and explains itself, but it is a real operational
+      consequence of deriving one from the other.
+
+      Three false positives found by probing the classifier against realistic
+      columns rather than trusting it: an entire `income` column classified as
+      phone numbers (a float rendered `36578.234` is digits with a separator
+      and 8 digits in it, which satisfies the phone test exactly); every
+      `company_name`/`vendor` column redacted as person names ("Acme Ltd"
+      matches a capitalised-words pattern as well as "Priya Sharma" does — so
+      values alone can no longer establish a person); and a `dob` column of
+      ISO dates read as phone numbers. All three have regression tests.
+
+      37 new tests, **421 passed / 3 skipped** total, lint and format clean.
+      Verified live: profiling a 400-row patient file redacts name, email,
+      phone and date-of-birth while leaving `city`, `plan` and `annual_cost`
+      to be learned normally, with zero console errors in the browser; the
+      migration encrypted three real plaintext passwords in the running
+      Postgres and the app reads them back transparently; and the report
+      endpoint returns k=231 for a coarse quasi-identifier over 1,000 rows
+      and k=1 (68% of rows below threshold) for a fine one over 60.
 
 ## Phase 11 — Data Quality and Validation
 

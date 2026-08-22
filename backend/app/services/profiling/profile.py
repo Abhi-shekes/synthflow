@@ -37,6 +37,8 @@ from typing import Any
 
 from app.schemas.template import TemplateEntity, TemplateField, TemplateRelationship
 from app.services.lookup_tables import parse_upload
+from app.services.privacy.bounds import round_bounds
+from app.services.privacy.classify import PiiFinding, PiiKind, classify_column
 from app.services.profiling.distributions import MIN_SAMPLES_FOR_FIT, Fit, fit_best
 from app.services.schema_import.common import (
     ImportResult,
@@ -89,10 +91,20 @@ class ColumnProfile:
     categories: list[str] | None = None
     weights: list[float] | None = None
     unique: bool = False
+    # What kind of personal data this column appears to hold, if any — see
+    # app.services.privacy.classify. Set during profiling and consumed by
+    # `_to_field`, which is what makes redaction structural: a HIGH-
+    # confidence finding returns a preset-backed field before any branch
+    # that could emit an observed value.
+    pii: PiiFinding | None = None
 
     @property
     def null_rate(self) -> float:
         return self.missing / self.total if self.total else 0.0
+
+    @property
+    def redacted(self) -> bool:
+        return self.pii is not None and self.pii.should_redact
 
 
 def _is_number(value: Any) -> bool:
@@ -128,6 +140,13 @@ def profile_column(name: str, values: list[Any], taken: set[str]) -> ColumnProfi
         distinct=len({str(v) for v in present}),
     )
     profile.unique = len(present) > 1 and profile.distinct == len(present)
+
+    # Classify before any of the branches below, so that what gets learned
+    # from a personal-data column is decided in one place rather than
+    # depending on which branch the column happened to fall into.
+    profile.pii = classify_column(
+        name, [str(v) for v in present], numeric=inferred in ("integer", "float")
+    )
 
     if inferred in ("integer", "float"):
         profile.numeric_values = [float(v) for v in present]
@@ -169,8 +188,15 @@ def _correlations(profiles: list[ColumnProfile]) -> dict[str, tuple[str, float, 
     guarantees no cycles and satisfies the formula engine's rule that a
     formula may only reference earlier-ordered fields.
     """
+    # Redacted columns are excluded as both driver and dependent. A numeric
+    # column holding personal data (an SSN or phone stored as a number)
+    # becomes a preset-backed *string* field, so a formula referencing it
+    # would be both broken and a way to reconstruct information about the
+    # value that was redacted.
     numeric = [
-        p for p in profiles if p.fit is not None and len(p.numeric_values) >= MIN_SAMPLES_FOR_FIT
+        p
+        for p in profiles
+        if p.fit is not None and not p.redacted and len(p.numeric_values) >= MIN_SAMPLES_FOR_FIT
     ]
     found: dict[str, tuple[str, float, float, float]] = {}
 
@@ -208,6 +234,25 @@ def _correlations(profiles: list[ColumnProfile]) -> dict[str, tuple[str, float, 
     return found
 
 
+# What to generate instead of each kind of personal data. Mostly the
+# PiiPreset of the same name (app.services.pii_generators); PAN maps to the
+# pre-existing IdentifierPreset rather than duplicating that generator.
+_PII_PRESETS: dict[PiiKind, str] = {
+    PiiKind.PERSON_NAME: "person_name",
+    PiiKind.EMAIL_ADDRESS: "email_address",
+    PiiKind.PHONE_NUMBER: "phone_number",
+    PiiKind.STREET_ADDRESS: "street_address",
+    PiiKind.POSTCODE: "postcode",
+    PiiKind.PAYMENT_CARD: "payment_card",
+    PiiKind.SSN: "ssn",
+    PiiKind.AADHAAR: "aadhaar",
+    PiiKind.PAN: "pan",
+    PiiKind.IP_ADDRESS: "ip_address",
+    PiiKind.USERNAME: "username",
+    PiiKind.DATE_OF_BIRTH: "date_of_birth",
+}
+
+
 def _to_field(
     profile: ColumnProfile, order: int, correlation, result: ImportResult
 ) -> TemplateField:
@@ -218,6 +263,28 @@ def _to_field(
         "nullable": not required,
         "unique": profile.unique,
     }
+
+    # Personal data is handled before anything else on purpose. Every
+    # branch below this point puts observed values into the template —
+    # enum_values are the real categories, min/max are two real records'
+    # values — so redaction has to happen here rather than as a cleanup
+    # pass afterwards, where a later-added branch could quietly bypass it.
+    if profile.redacted:
+        assert profile.pii is not None
+        preset = _PII_PRESETS.get(profile.pii.kind)
+        result.warn(
+            f"{profile.name}: looks like {profile.pii.kind.value} "
+            f"({profile.pii.reason}) — replaced with synthetic values, so no "
+            f"value from the sample file was copied into this project"
+        )
+        if preset is not None:
+            field = make_field(profile.field_name, "string", **common)
+            field.preset = preset
+            return field
+        # Classified, but with no synthetic equivalent to swap in. Emit a
+        # plain string field rather than the observed values: losing the
+        # column's shape is the right trade against copying real data.
+        return make_field(profile.field_name, "string", **common)
 
     if profile.categories:
         return make_field(
@@ -253,12 +320,16 @@ def _to_field(
 
         # Not enough data to justify a shape — fall back to the observed
         # range, which is what Phase 7's shallow import would have done.
+        # Rounded outward for the same reason `_try_uniform` rounds: this is
+        # the small-sample path, where min and max are *more* attributable
+        # to an individual, not less.
         values = profile.numeric_values
+        low, high = round_bounds(min(values), max(values)) if values else (None, None)
         return make_field(
             profile.field_name,
             profile.inferred_type,
-            min_value=min(values) if values else None,
-            max_value=max(values) if values else None,
+            min_value=low,
+            max_value=high,
             **common,
         )
 
@@ -351,7 +422,11 @@ def _detect_foreign_keys(
     unique_columns: list[tuple[str, str, set[str]]] = []
     for entity in entities:
         for profile in profiles_by_entity[entity.name]:
-            if profile.unique and profile.distinct > 1:
+            # A redacted column is never an FK target: its generated values
+            # come from a preset and have no relationship to the values a
+            # child column was matched against, so the link would not hold
+            # in the generated data even though it held in the sample.
+            if profile.unique and profile.distinct > 1 and not profile.redacted:
                 values = {str(v) for v in (profile.numeric_values or profile.text_values)}
                 unique_columns.append((entity.name, profile.field_name, values))
 
@@ -361,7 +436,7 @@ def _detect_foreign_keys(
 
     for entity in entities:
         for profile in profiles_by_entity[entity.name]:
-            if profile.unique or profile.distinct < MIN_FK_DISTINCT:
+            if profile.unique or profile.redacted or profile.distinct < MIN_FK_DISTINCT:
                 continue
             candidate = {str(v) for v in (profile.numeric_values or profile.text_values)}
             if not candidate:

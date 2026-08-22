@@ -40,3 +40,20 @@ class EntityRead(BaseModel):
 
 class GenerateRequest(BaseModel):
     count: int = 10
+
+
+class PrivacyReportRequest(BaseModel):
+    """Which columns an attacker is assumed to already know, and what they
+    must not learn.
+
+    Both are judgement calls about the threat model, not properties of the
+    data, so they are asked for rather than guessed. Defaults mirror
+    app.services.privacy.anonymity.DEFAULT_K / DEFAULT_L — 5 is the common
+    regulatory floor, not a law.
+    """
+
+    count: int = 1000
+    quasi_identifiers: list[str]
+    sensitive_field: str | None = None
+    k_threshold: int = 5
+    l_threshold: int = 2

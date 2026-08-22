@@ -24,6 +24,13 @@ class ColumnReport(BaseModel):
     distribution: str | None = None
     fit_quality: str | None = None
     categories: int | None = None
+    # Phase 10. `pii_kind` is what the column appears to hold, `pii_redacted`
+    # is whether that was acted on — the two differ for a MEDIUM-confidence
+    # finding, which is reported for a human to judge but left alone.
+    pii_kind: str | None = None
+    pii_confidence: str | None = None
+    pii_redacted: bool = False
+    pii_reason: str | None = None
 
 
 class ProfileResponse(BaseModel):
@@ -83,6 +90,10 @@ async def profile_sample(
                     or (profile.fit.kind if profile.fit else None),
                     fit_quality=profile.fit.quality if profile.fit else None,
                     categories=len(profile.categories) if profile.categories else None,
+                    pii_kind=profile.pii.kind.value if profile.pii else None,
+                    pii_confidence=profile.pii.confidence.value if profile.pii else None,
+                    pii_redacted=profile.redacted,
+                    pii_reason=profile.pii.reason if profile.pii else None,
                 )
             )
 

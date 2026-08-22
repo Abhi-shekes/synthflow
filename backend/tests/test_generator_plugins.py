@@ -1,3 +1,4 @@
+from app.models.field import IdentifierPreset, LogPreset, PiiPreset
 from app.services import plugins
 
 
@@ -42,7 +43,11 @@ def test_builtin_presets_are_available_with_no_plugins_installed(monkeypatch):
     registry = plugins.available_presets()
     assert "pan" in registry
     assert "nginx_access_log" in registry
-    assert len(registry) == 11 + 6  # LogPreset + IdentifierPreset
+    assert "person_name" in registry
+    # Counted from the enums rather than hardcoded: the previous literal
+    # meant adding PiiPreset failed this test for no reason, which says
+    # nothing about whether discovery works.
+    assert len(registry) == len(LogPreset) + len(IdentifierPreset) + len(PiiPreset)
 
 
 def test_third_party_plugin_is_discovered_and_generates_values(monkeypatch):
