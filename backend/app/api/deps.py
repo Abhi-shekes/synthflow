@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.api_key import ApiKeyScope
+from app.models.audit import ActorKind
 from app.models.user import User
 from app.services import api_keys
 
@@ -42,19 +43,25 @@ def get_current_user(
         api_key = api_keys.verify(db, token)
         if api_key is None:
             raise credentials_error
+        user = api_key.user
+        if user is None:
+            raise credentials_error
+
+        # Both of these are recorded *before* the scope check, not after it.
+        # The credential is already proven at this point, so the caller is
+        # known — and a request that is about to be refused is exactly the
+        # one an audit log exists to show. Recording on the success path
+        # only meant every 403 arrived with no "who" attached and the
+        # middleware skipped it, so the log silently dropped the refusals.
+        request.state.api_key = api_key
+        _remember_actor(request, user, ActorKind.API_KEY, api_key.prefix)
+
         if api_key.scope == ApiKeyScope.READ_ONLY and request.method not in READ_ONLY_METHODS:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"This API key is read-only and cannot {request.method}",
             )
-        user = api_key.user
-        if user is None:
-            raise credentials_error
         api_keys.touch(db, api_key)
-        # Recorded so `require_session` can refuse the key-management
-        # routes. A leaked key that can mint more keys survives its own
-        # revocation, which defeats the point of being able to revoke it.
-        request.state.api_key = api_key
         return user
 
     try:
@@ -68,7 +75,27 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None:
         raise credentials_error
+    _remember_actor(request, user, ActorKind.SESSION, None)
     return user
+
+
+def _remember_actor(
+    request: Request, user: User, kind: ActorKind, api_key_prefix: str | None
+) -> None:
+    """Leave the caller's identity on the request for the audit middleware.
+
+    The middleware runs outside dependency injection and has no way to
+    authenticate on its own; doing it twice would mean two lookups per
+    request and two chances to disagree. Email and key prefix are copied
+    rather than referenced, because by the time the middleware reads them
+    the session that loaded the user is closed.
+    """
+    request.state.actor = {
+        "user_id": user.id,
+        "actor_email": user.email,
+        "actor_kind": kind,
+        "api_key_prefix": api_key_prefix,
+    }
 
 
 def require_session(request: Request, current_user: User = Depends(get_current_user)) -> User:

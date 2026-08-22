@@ -67,6 +67,7 @@ import type {
   ApiKey,
   ApiKeyCreated,
   ApiKeyCreateInput,
+  AuditEvent,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -1077,6 +1078,16 @@ export const api = {
 
   revokeApiKey: (token: string, keyId: string) =>
     request<ApiKey>(`/api/v1/api-keys/${keyId}`, { method: "DELETE" }, token),
+
+  listAuditEvents: (
+    token: string,
+    options: { projectId?: string; limit?: number } = {}
+  ) => {
+    const params = new URLSearchParams();
+    if (options.projectId) params.set("project_id", options.projectId);
+    params.set("limit", String(options.limit ?? 100));
+    return request<AuditEvent[]>(`/api/v1/audit?${params}`, {}, token);
+  },
 
   listStarterTemplates: (token: string) =>
     request<StarterTemplateSummary[]>("/api/v1/starter-templates", {}, token),

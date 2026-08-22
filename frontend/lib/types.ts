@@ -932,3 +932,21 @@ export interface ApiKeyCreateInput {
   scope?: ApiKeyScope;
   expires_at?: string | null;
 }
+
+/** Phase 14 — one recorded change. `route` is the router-relative template
+ * (`/projects/{project_id}`), deliberately without the `/api/v1` prefix, so
+ * a version bump does not split one route's history in two. */
+export type ActorKind = "session" | "api_key";
+
+export interface AuditEvent {
+  id: string;
+  actor_email: string | null;
+  actor_kind: ActorKind;
+  api_key_prefix: string | null;
+  method: string;
+  route: string;
+  status_code: number;
+  project_id: string | null;
+  path_params: Record<string, string>;
+  created_at: string;
+}

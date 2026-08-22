@@ -3,7 +3,7 @@ import contextlib
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
@@ -44,7 +44,12 @@ from app.api.routes import (
     websocket_streams,
     workflows,
 )
+from app.api.routes import (
+    audit as audit_routes,
+)
 from app.core.config import settings
+from app.db import session as db_session
+from app.services import audit
 from app.services.jobs import resume_producers, startup_recovery, worker_pass
 from app.services.metrics import init_gauges
 from app.services.plugin_output_producers import stop_all_plugin_outputs
@@ -128,11 +133,66 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def audit_mutations(request: Request, call_next):
+    """Record every mutating request that reached an authenticated route.
+
+    Middleware rather than calls inside the routes, because an audit log
+    assembled by remembering to log is an audit log with holes in it — and
+    the holes are invisible, since a missing entry looks exactly like a thing
+    that never happened. A route added tomorrow is covered without anyone
+    thinking about it.
+
+    Failures are recorded too. A 403 is precisely the kind of event an audit
+    log exists to show, and keeping only successes would hide the attempts.
+
+    A failure to *write* the entry is swallowed, deliberately: an audit log
+    that can take the API down with it is a worse trade than a log with a
+    gap, and the gap is already visible in the application's own error log.
+    """
+    response = await call_next(request)
+
+    if not settings.AUDIT_LOG or request.method not in audit.MUTATING_METHODS:
+        return response
+    actor = getattr(request.state, "actor", None)
+    if actor is None:
+        # Unauthenticated, or a route with no auth dependency. There is no
+        # "who", so there is nothing an audit entry could usefully say.
+        return response
+
+    route = request.scope.get("route")
+    try:
+        # Looked up on the module rather than imported by name, so the
+        # test suite's swap of `db_session.SessionLocal` reaches it. An
+        # imported name would have been bound at import time and kept
+        # pointing at the production database — the same reason the
+        # websocket stream loop resolves it this way.
+        with db_session.SessionLocal() as db:
+            audit.record(
+                db,
+                user_id=actor["user_id"],
+                actor_email=actor["actor_email"],
+                actor_kind=actor["actor_kind"],
+                api_key_prefix=actor["api_key_prefix"],
+                method=request.method,
+                route=getattr(route, "path", request.url.path),
+                status_code=response.status_code,
+                path_params=request.scope.get("path_params") or {},
+            )
+            db.commit()
+    except Exception:
+        logger.exception("Could not write an audit entry for %s %s", request.method, request.url)
+
+    return response
+
+
 app.include_router(health.router)
 # Outside /api/v1 and unauthenticated, like /healthz — see its docstring.
 app.include_router(metrics.router)
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(api_keys.router, prefix=settings.API_V1_PREFIX)
+app.include_router(audit_routes.router, prefix=settings.API_V1_PREFIX)
 app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
 app.include_router(entities.router, prefix=settings.API_V1_PREFIX)
 app.include_router(generator_plugins.router, prefix=settings.API_V1_PREFIX)

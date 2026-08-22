@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
+import { ActivityCard } from "@/components/activity-card";
 import { AddDatabaseConnectionDialog } from "@/components/add-database-connection-dialog";
 import { AddStorageTargetDialog } from "@/components/add-storage-target-dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -742,6 +743,8 @@ export default function ProjectDetailPage() {
         </Card>
 
         <JobsCard projectId={projectId} entities={entities} />
+
+        <ActivityCard projectId={projectId} />
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">

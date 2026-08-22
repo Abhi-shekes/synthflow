@@ -1,4 +1,5 @@
 from app.models.api_key import ApiKey, ApiKeyScope
+from app.models.audit import ActorKind, AuditEvent
 from app.models.continuity import (
     ChangeEvent,
     ChangeOperation,
@@ -37,6 +38,8 @@ __all__ = [
     "User",
     "ApiKey",
     "ApiKeyScope",
+    "AuditEvent",
+    "ActorKind",
     "RecordStore",
     "ChangeEvent",
     "ChangeOperation",

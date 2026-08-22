@@ -33,5 +33,11 @@ class Settings(BaseSettings):
     # assertions, and available for anyone wanting API-only replicas.
     RUN_WORKER: bool = True
 
+    # Record every mutating request against the caller who made it. On by
+    # default because an audit log nobody switched on is not an audit log,
+    # and off is a supported choice for a throwaway instance that would
+    # rather not pay a write per mutation.
+    AUDIT_LOG: bool = True
+
 
 settings = Settings()
