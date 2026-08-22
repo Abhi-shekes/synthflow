@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -28,6 +29,8 @@ interface FormValues {
   source_field_id: string;
   target_entity_id: string;
   target_field_id: string;
+  min_links: number;
+  max_links: number;
 }
 
 export function AddRelationshipDialog({
@@ -47,6 +50,8 @@ export function AddRelationshipDialog({
       source_field_id: "",
       target_entity_id: "",
       target_field_id: "",
+      min_links: 1,
+      max_links: 3,
     },
   });
 
@@ -59,8 +64,23 @@ export function AddRelationshipDialog({
     values.target_entity_id &&
     values.target_field_id;
 
+  const isManyToMany = values.relationship_type === "many_to_many";
+
   const submit = (v: FormValues) => {
-    onSubmit(v);
+    // The link counts are sent only for many_to_many. The other three types
+    // put a foreign key on a row and have nothing to count, so sending them
+    // anyway would store numbers that quietly do nothing.
+    onSubmit(
+      v.relationship_type === "many_to_many"
+        ? v
+        : {
+            relationship_type: v.relationship_type,
+            source_entity_id: v.source_entity_id,
+            source_field_id: v.source_field_id,
+            target_entity_id: v.target_entity_id,
+            target_field_id: v.target_field_id,
+          }
+    );
     reset();
     setOpen(false);
   };
@@ -92,7 +112,7 @@ export function AddRelationshipDialog({
               onValueChange={(v) => setValue("relationship_type", v as RelationshipType)}
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>{(v: string) => (v || "one_to_many").replaceAll("_", "-")}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {RELATIONSHIP_TYPES.map((type) => (
@@ -104,9 +124,45 @@ export function AddRelationshipDialog({
             </Select>
           </div>
 
+          {isManyToMany && (
+            <div className="flex flex-col gap-2 rounded-md border p-3">
+              <p className="text-sm text-muted-foreground">
+                A many-to-many has no foreign key on either side, so both
+                fields below are each entity&apos;s <em>own</em> key and
+                generation emits a join table pairing them. Each source row
+                links to a random number of distinct targets in this range —
+                a constant count is the tell that a dataset was generated.
+              </p>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="rel-min-links">Links per row</Label>
+                <Input
+                  id="rel-min-links"
+                  type="number"
+                  min={0}
+                  className="w-20"
+                  value={values.min_links}
+                  onChange={(e) =>
+                    setValue("min_links", Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+                <span className="text-sm text-muted-foreground">to</span>
+                <Input
+                  id="rel-max-links"
+                  type="number"
+                  min={0}
+                  className="w-20"
+                  value={values.max_links}
+                  onChange={(e) =>
+                    setValue("max_links", Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
             <p className="col-span-2 text-sm font-medium text-muted-foreground">
-              Source (the foreign-key field)
+              {isManyToMany ? "First side (its own key)" : "Source (the foreign-key field)"}
             </p>
             <div className="flex flex-col gap-2">
               <Label>Entity</Label>
@@ -158,7 +214,7 @@ export function AddRelationshipDialog({
 
           <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
             <p className="col-span-2 text-sm font-medium text-muted-foreground">
-              Target (the referenced field)
+              {isManyToMany ? "Second side (its own key)" : "Target (the referenced field)"}
             </p>
             <div className="flex flex-col gap-2">
               <Label>Entity</Label>

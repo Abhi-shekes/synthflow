@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -7,19 +8,22 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.api.routes.entities import _get_owned_entity
 from app.db.session import get_db
-from app.models.continuity import RecordStatus, RecordStore, StoredRecord
+from app.models.continuity import RecordStatus, RecordStore, SCDType, StoredRecord
 from app.models.field import EntityField
 from app.models.relationship import Relationship
 from app.models.user import User
 from app.schemas.continuity import (
     ApplyChangesRequest,
     ApplyChangesResponse,
+    BackfillRequest,
+    BackfillResponse,
     ChangeEventRead,
     GenerateIntoStoreRequest,
     GenerateIntoStoreResponse,
     RecordStoreCreate,
     RecordStoreRead,
     RecordStoreStats,
+    RecordVersionRead,
     StoredRecordRead,
 )
 from app.services import continuity
@@ -127,8 +131,10 @@ def create_record_store(
         entity_id=entity_id,
         name=payload.name,
         identity_field_id=payload.identity_field_id,
+        scd_type=payload.scd_type,
         position=0,
         trend_state={},
+        change_sequence=0,
     )
     db.add(store)
     db.commit()
@@ -303,6 +309,101 @@ def trim_changes(
     removed = continuity.delete_events_before(db, store, before)
     db.commit()
     return {"removed": removed}
+
+
+@router.post("/{store_id}/backfill", response_model=BackfillResponse)
+def backfill_store(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    store_id: uuid.UUID,
+    payload: BackfillRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BackfillResponse:
+    """Produce a history, then let live generation continue from its end.
+
+    A pipeline being developed against an empty table has nothing to
+    aggregate, and a dashboard with one day of data cannot be checked
+    against a month-over-month figure. The store's cursor, workflow states
+    and identities all carry forward, so the next live tick continues this
+    history rather than starting a second unrelated one — which is the
+    reason this belongs in the product and not in a script.
+    """
+    entity = _get_owned_entity(project_id, entity_id, current_user, db)
+    store = _get_store(store_id, entity_id, db)
+    pools = _parent_store_pools(db, project_id, entity, store)
+
+    try:
+        events = continuity.backfill(
+            db,
+            store,
+            start=payload.start,
+            end=payload.end,
+            ticks=payload.ticks,
+            inserts=payload.inserts,
+            updates=payload.updates,
+            deletes=payload.deletes,
+            update_fields=payload.update_fields,
+            fk_pools=pools,
+        )
+    except (continuity.ContinuityError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    times = [e.event_time for e in events]
+    written = len(events)
+    db.commit()
+    db.refresh(store)
+    active, _ = _counts(db, store)
+    return BackfillResponse(
+        events_written=written,
+        next_sequence=store.change_sequence,
+        total_active=active,
+        first_event_time=min(times) if times else None,
+        last_event_time=max(times) if times else None,
+    )
+
+
+@router.get("/{store_id}/versions", response_model=list[RecordVersionRead])
+def list_versions(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    store_id: uuid.UUID,
+    identity: str | None = None,
+    at: datetime | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list:
+    """The type 2 dimension: one record's history, or the whole population
+    as it stood at a moment.
+
+    `identity` asks "how did this record change"; `at` asks "what did the
+    table look like then". Both are questions a type 1 store cannot answer,
+    because overwriting is the whole point of type 1 — so it says so rather
+    than returning an empty list that reads like "nothing ever changed".
+    """
+    _get_owned_entity(project_id, entity_id, current_user, db)
+    store = _get_store(store_id, entity_id, db)
+
+    if store.scd_type != SCDType.TYPE_2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "This store keeps no history. Versions need SCD type 2 — type 1 "
+                "overwrites, so there is no past to look at."
+            ),
+        )
+    if identity is not None:
+        return continuity.versions_of(db, store, identity)
+    if at is not None:
+        try:
+            return continuity.snapshot_at(db, store, at)
+        except continuity.ContinuityError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Give either identity (one record's history) or at (the population then)",
+    )
 
 
 @router.delete("/{store_id}", status_code=status.HTTP_204_NO_CONTENT)

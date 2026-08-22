@@ -19,7 +19,12 @@ from app.schemas.relationship import (
     RelationshipRead,
 )
 from app.services import metrics
-from app.services.generator import generate_project, project_rows_to_csv_zip, project_rows_to_excel
+from app.services.generator import (
+    generate_join_tables,
+    generate_project,
+    project_rows_to_csv_zip,
+    project_rows_to_excel,
+)
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["relationships"])
 
@@ -143,12 +148,13 @@ def generate_all(
     try:
         with metrics.generation("api") as recorder:
             generated = generate_project(entities, relationships, counts)
+            join_tables = generate_join_tables(entities, relationships, generated)
             recorder.count(sum(len(rows) for rows in generated.values()))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if format == "csv":
-        zip_bytes = project_rows_to_csv_zip(entities, generated)
+        zip_bytes = project_rows_to_csv_zip(entities, generated, join_tables)
         return Response(
             content=zip_bytes,
             media_type="application/zip",
@@ -164,4 +170,11 @@ def generate_all(
         )
 
     entities_by_id = {e.id: e for e in entities}
-    return {entities_by_id[entity_id].name: rows for entity_id, rows in generated.items()}
+    # Join tables sit alongside the entities, keyed by their table name.
+    # A name collision with an entity would be a project that named an
+    # entity after its own link table, which the join table wins — it is
+    # the derived thing and the one the caller cannot rename.
+    return {
+        **{entities_by_id[entity_id].name: rows for entity_id, rows in generated.items()},
+        **join_tables,
+    }

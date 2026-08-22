@@ -682,3 +682,273 @@ def test_trimming_the_log_leaves_later_events_readable(client, auth_headers):
 
     remaining = client.get(f"{base}?limit=100", headers=auth_headers).json()
     assert [e["sequence"] for e in remaining] == [5, 6, 7]
+
+
+# --------------------------------------------------------------------------
+# Slowly-changing dimensions
+# --------------------------------------------------------------------------
+
+
+def _scd2_store(client, headers, project_id, entity_id, identity_field_id, name="history"):
+    response = client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores",
+        json={"name": name, "identity_field_id": identity_field_id, "scd_type": "type_2"},
+        headers=headers,
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+def _customer_with_plan(client, headers, project_id):
+    entity_id = _entity(client, headers, project_id, "Customer")
+    identity = _field(client, headers, project_id, entity_id, "customer_id")
+    _field(client, headers, project_id, entity_id, "plan", field_type="string")
+    return entity_id, identity
+
+
+def test_type_2_keeps_a_version_per_change_and_type_1_does_not(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id, identity = _customer_with_plan(client, auth_headers, project_id)
+    overwriting = _store(client, auth_headers, project_id, entity_id, identity, name="current")
+    versioned = _scd2_store(client, auth_headers, project_id, entity_id, identity)
+
+    for store_id in (overwriting, versioned):
+        _generate(client, auth_headers, project_id, entity_id, store_id, 3)
+        _changes(client, auth_headers, project_id, entity_id, store_id, updates=3)
+
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores"
+
+    # Type 1 says so rather than returning an empty list, which would read
+    # as "nothing ever changed".
+    refused = client.get(
+        f"{base}/{overwriting}/versions?at=2026-01-01T00:00:00Z", headers=auth_headers
+    )
+    assert refused.status_code == 400
+    assert "type 2" in refused.json()["detail"]
+
+    records = client.get(f"{base}/{versioned}/records", headers=auth_headers).json()
+    one = records[0]["identity"]
+    versions = client.get(
+        f"{base}/{versioned}/versions?identity={one}", headers=auth_headers
+    ).json()
+    assert [v["version"] for v in versions] == [1, 2]
+    # The first version is closed at the instant the second opens: the
+    # intervals tile the timeline with no gap a query could fall into.
+    assert versions[0]["valid_to"] is not None
+    assert versions[0]["valid_to"] == versions[1]["valid_from"]
+    assert versions[1]["valid_to"] is None
+
+
+def test_a_deleted_record_closes_its_version_and_opens_no_new_one(client, auth_headers):
+    """After a delete there is no truth about the record to record, which is
+    a different thing from a version whose values happen to be null."""
+    project_id = _project(client, auth_headers)
+    entity_id, identity = _customer_with_plan(client, auth_headers, project_id)
+    store_id = _scd2_store(client, auth_headers, project_id, entity_id, identity)
+
+    _generate(client, auth_headers, project_id, entity_id, store_id, 2)
+    tick = _changes(client, auth_headers, project_id, entity_id, store_id, deletes=1)
+    gone = tick["events"][0]["identity"]
+
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}"
+    versions = client.get(f"{base}/versions?identity={gone}", headers=auth_headers).json()
+    assert len(versions) == 1
+    assert versions[0]["valid_to"] is not None
+
+
+def test_a_point_in_time_snapshot_returns_the_values_of_that_moment(client, auth_headers):
+    """The question a type 2 dimension exists to answer."""
+    project_id = _project(client, auth_headers)
+    entity_id, identity = _customer_with_plan(client, auth_headers, project_id)
+    store_id = _scd2_store(client, auth_headers, project_id, entity_id, identity)
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}"
+
+    # A history: three ticks a day apart, each changing every record.
+    client.post(
+        f"{base}/backfill",
+        json={
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-01-04T00:00:00Z",
+            "ticks": 3,
+            "inserts": 2,
+            "updates": 2,
+        },
+        headers=auth_headers,
+    )
+
+    early = client.get(f"{base}/versions?at=2026-01-01T12:00:00Z", headers=auth_headers).json()
+    late = client.get(f"{base}/versions?at=2026-01-03T12:00:00Z", headers=auth_headers).json()
+
+    assert early, "nothing was live on the first day"
+    # Each identity appears exactly once in a snapshot — that is what makes
+    # it a snapshot rather than a log.
+    for snapshot in (early, late):
+        identities = [v["identity"] for v in snapshot]
+        assert len(identities) == len(set(identities))
+    # The population grew over the window, so the later snapshot is larger.
+    assert len(late) > len(early)
+
+
+# --------------------------------------------------------------------------
+# Backfill
+# --------------------------------------------------------------------------
+
+
+def test_a_backfill_dates_its_events_across_the_window(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id, identity = _customer_with_plan(client, auth_headers, project_id)
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}"
+
+    result = client.post(
+        f"{base}/backfill",
+        json={
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-02-01T00:00:00Z",
+            "ticks": 10,
+            "inserts": 2,
+            "updates": 1,
+        },
+        headers=auth_headers,
+    )
+    assert result.status_code == 200, result.text
+    body = result.json()
+    assert body["events_written"] > 0
+    assert body["first_event_time"].startswith("2026-01-01")
+
+    log = client.get(f"{base}/changes?limit=1000", headers=auth_headers).json()
+    times = [e["event_time"] for e in log]
+    # Spread across the window, in order, and not all the same instant —
+    # which is exactly what dating them "now" would have produced.
+    assert times == sorted(times)
+    assert len(set(times)) > 1
+
+
+def test_live_generation_continues_the_backfilled_history(client, auth_headers):
+    """The reason backfill belongs in the product rather than a script: the
+    cursor, the identities and the change log all carry forward."""
+    project_id = _project(client, auth_headers)
+    entity_id, identity = _customer_with_plan(client, auth_headers, project_id)
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}"
+
+    filled = client.post(
+        f"{base}/backfill",
+        json={
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-02-01T00:00:00Z",
+            "ticks": 5,
+            "inserts": 3,
+            "updates": 2,
+        },
+        headers=auth_headers,
+    ).json()
+    historical_active = filled["total_active"]
+
+    live = _changes(client, auth_headers, project_id, entity_id, store_id, updates=3)
+
+    # The live tick updated records that came from the backfill, and the
+    # sequence carried on rather than restarting.
+    assert live["next_sequence"] > filled["next_sequence"]
+    assert live["total_active"] == historical_active
+    log = client.get(f"{base}/changes?limit=1000", headers=auth_headers).json()
+    assert [e["sequence"] for e in log] == list(range(len(log)))
+
+
+def test_a_backfill_window_cannot_run_backwards_or_into_the_future(client, auth_headers):
+    project_id = _project(client, auth_headers)
+    entity_id, identity = _customer_with_plan(client, auth_headers, project_id)
+    store_id = _store(client, auth_headers, project_id, entity_id, identity)
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}"
+
+    backwards = client.post(
+        f"{base}/backfill",
+        json={
+            "start": "2026-02-01T00:00:00Z",
+            "end": "2026-01-01T00:00:00Z",
+            "ticks": 3,
+            "inserts": 1,
+        },
+        headers=auth_headers,
+    )
+    assert backwards.status_code == 400
+
+    future = client.post(
+        f"{base}/backfill",
+        json={
+            "start": "2099-01-01T00:00:00Z",
+            "end": "2099-02-01T00:00:00Z",
+            "ticks": 3,
+            "inserts": 1,
+        },
+        headers=auth_headers,
+    )
+    assert future.status_code == 400
+    assert "future" in future.json()["detail"]
+
+
+def test_a_backfill_cannot_run_behind_changes_the_store_already_has(client, auth_headers):
+    """Found by looking at the UI, not by the suite. Generating live and
+    then backfilling produced SCD type 2 rows whose `valid_from` was *after*
+    their `valid_to` — a record inserted today, then "updated" last week —
+    and a change log whose sequence order no longer matched its event order.
+    """
+    project_id = _project(client, auth_headers)
+    entity_id, identity = _customer_with_plan(client, auth_headers, project_id)
+    store_id = _scd2_store(client, auth_headers, project_id, entity_id, identity)
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}"
+
+    # Live first — records dated now.
+    _generate(client, auth_headers, project_id, entity_id, store_id, 3)
+
+    refused = client.post(
+        f"{base}/backfill",
+        json={
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-02-01T00:00:00Z",
+            "ticks": 5,
+            "updates": 2,
+        },
+        headers=auth_headers,
+    )
+    assert refused.status_code == 400
+    assert "has to come first" in refused.json()["detail"]
+
+
+def test_every_version_interval_runs_forwards(client, auth_headers):
+    """The invariant the inverted intervals broke: a version cannot stop
+    being true before it started."""
+    project_id = _project(client, auth_headers)
+    entity_id, identity = _customer_with_plan(client, auth_headers, project_id)
+    store_id = _scd2_store(client, auth_headers, project_id, entity_id, identity)
+    base = f"/api/v1/projects/{project_id}/entities/{entity_id}/record-stores/{store_id}"
+
+    client.post(
+        f"{base}/backfill",
+        json={
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-03-01T00:00:00Z",
+            "ticks": 8,
+            "inserts": 2,
+            "updates": 3,
+        },
+        headers=auth_headers,
+    )
+    # Then live churn, which must land after the whole window.
+    _changes(client, auth_headers, project_id, entity_id, store_id, updates=3)
+
+    records = client.get(f"{base}/records?limit=100", headers=auth_headers).json()
+    checked = 0
+    for record in records:
+        versions = client.get(
+            f"{base}/versions?identity={record['identity']}", headers=auth_headers
+        ).json()
+        for version in versions:
+            if version["valid_to"] is not None:
+                assert version["valid_from"] <= version["valid_to"]
+                checked += 1
+    assert checked > 0, "no closed versions were produced, so nothing was checked"
+
+    log = client.get(f"{base}/changes?limit=1000", headers=auth_headers).json()
+    times = [e["event_time"] for e in log]
+    assert times == sorted(times), "sequence order no longer matches event order"

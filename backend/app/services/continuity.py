@@ -29,9 +29,10 @@ from __future__ import annotations
 
 import random
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.continuity import (
@@ -39,6 +40,8 @@ from app.models.continuity import (
     ChangeOperation,
     RecordStatus,
     RecordStore,
+    RecordVersion,
+    SCDType,
     StoredRecord,
 )
 from app.models.entity import Entity
@@ -105,6 +108,7 @@ def generate_new(
     count: int,
     fk_pools: dict[str, list[Any]] | None = None,
     max_attempts_factor: int = 5,
+    event_time: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Generate `count` new records, persist them, and advance the cursor.
 
@@ -126,6 +130,7 @@ def generate_new(
     if count <= 0:
         return []
 
+    at = event_time or datetime.now(UTC)
     entity: Entity = store.entity
     identity_name = store.identity_field.name
     if not any(f.name == identity_name for f in entity.fields):
@@ -172,7 +177,17 @@ def generate_new(
                     status=RecordStatus.ACTIVE,
                 )
             )
-            _log(db, store, ChangeOperation.INSERT, identity, before=None, after=row, version=1)
+            _log(
+                db,
+                store,
+                ChangeOperation.INSERT,
+                identity,
+                before=None,
+                after=row,
+                version=1,
+                event_time=at,
+            )
+            _open_version(db, store, identity, 1, row, at)
             if len(kept) == count:
                 break
 
@@ -237,6 +252,7 @@ def _log(
     before: dict[str, Any] | None,
     after: dict[str, Any] | None,
     version: int,
+    event_time: datetime,
 ) -> ChangeEvent:
     """Append one event and advance the store's change cursor.
 
@@ -253,10 +269,53 @@ def _log(
         before=before,
         after=after,
         version=version,
+        event_time=event_time,
     )
     store.change_sequence += 1
     db.add(event)
     return event
+
+
+def _open_version(
+    db: Session,
+    store: RecordStore,
+    identity: str,
+    version: int,
+    data: dict[str, Any],
+    valid_from: datetime,
+) -> None:
+    """Start a new SCD type 2 version. No-op for a type 1 store."""
+    if store.scd_type != SCDType.TYPE_2:
+        return
+    db.add(
+        RecordVersion(
+            store_id=store.id,
+            identity=identity,
+            version=version,
+            data=data,
+            valid_from=valid_from,
+            valid_to=None,
+        )
+    )
+
+
+def _close_version(db: Session, store: RecordStore, identity: str, valid_to: datetime) -> None:
+    """Close whichever version is currently open. No-op for type 1.
+
+    Closes by `valid_to IS NULL` rather than by version number: that is the
+    single place "current" is recorded, so it cannot disagree with anything
+    else.
+    """
+    if store.scd_type != SCDType.TYPE_2:
+        return
+    current = db.scalar(
+        select(RecordVersion)
+        .where(RecordVersion.store_id == store.id)
+        .where(RecordVersion.identity == identity)
+        .where(RecordVersion.valid_to.is_(None))
+    )
+    if current is not None:
+        current.valid_to = valid_to
 
 
 def _active_records(db: Session, store: RecordStore) -> list[StoredRecord]:
@@ -347,6 +406,7 @@ def apply_changes(
     deletes: int = 0,
     update_fields: list[str] | None = None,
     fk_pools: dict[str, list[Any]] | None = None,
+    event_time: datetime | None = None,
 ) -> list[ChangeEvent]:
     """Move the population forward one tick and return what changed.
 
@@ -361,9 +421,10 @@ def apply_changes(
     consumer as two events at the same instant.
     """
     events: list[ChangeEvent] = []
+    at = event_time or datetime.now(UTC)
 
     if inserts:
-        generate_new(db, store, inserts, fk_pools=fk_pools)
+        generate_new(db, store, inserts, fk_pools=fk_pools, event_time=at)
 
     names = _changeable_field_names(store, update_fields)
 
@@ -381,6 +442,11 @@ def apply_changes(
             after = _updated_row(store, record, names)
             record.data = after
             record.version += 1
+            # Close the old version at the same instant the new one opens,
+            # so the intervals tile the timeline with no gap a query could
+            # fall into.
+            _close_version(db, store, record.identity, at)
+            _open_version(db, store, record.identity, record.version, after, at)
             events.append(
                 _log(
                     db,
@@ -390,6 +456,7 @@ def apply_changes(
                     before=before,
                     after=after,
                     version=record.version,
+                    event_time=at,
                 )
             )
         live = live[updates:]
@@ -398,6 +465,10 @@ def apply_changes(
         for record in live[:deletes]:
             record.status = RecordStatus.DELETED
             record.version += 1
+            # A deleted record's last version closes and no new one opens:
+            # after this instant there is no truth about it to record, which
+            # is different from a version whose values happen to be null.
+            _close_version(db, store, record.identity, at)
             events.append(
                 _log(
                     db,
@@ -407,6 +478,7 @@ def apply_changes(
                     before=dict(record.data),
                     after=None,
                     version=record.version,
+                    event_time=at,
                 )
             )
 
@@ -454,3 +526,139 @@ def delete_events_before(db: Session, store: RecordStore, sequence: int) -> int:
         db.delete(event)
     db.flush()
     return len(stale)
+
+
+# --------------------------------------------------------------------------
+# Slowly-changing dimensions and backfill
+# --------------------------------------------------------------------------
+
+
+def versions_of(db: Session, store: RecordStore, identity: str) -> list[RecordVersion]:
+    """Every version of one record, oldest first."""
+    return list(
+        db.scalars(
+            select(RecordVersion)
+            .where(RecordVersion.store_id == store.id)
+            .where(RecordVersion.identity == identity)
+            .order_by(RecordVersion.version)
+        ).all()
+    )
+
+
+def snapshot_at(db: Session, store: RecordStore, moment: datetime) -> list[RecordVersion]:
+    """The population as it stood at `moment`.
+
+    The question a type 2 dimension exists to answer, and one a type 1 store
+    cannot answer at all: it kept no past to look at. The interval is
+    closed-open — `valid_from <= moment < valid_to` — so a record that
+    changed exactly at `moment` is reported with its new values, not two
+    rows.
+    """
+    if store.scd_type != SCDType.TYPE_2:
+        raise ContinuityError(
+            "This store keeps no history. A point-in-time snapshot needs SCD type 2 — "
+            "type 1 overwrites, so there is no past to look at."
+        )
+    return list(
+        db.scalars(
+            select(RecordVersion)
+            .where(RecordVersion.store_id == store.id)
+            .where(RecordVersion.valid_from <= moment)
+            .where((RecordVersion.valid_to.is_(None)) | (RecordVersion.valid_to > moment))
+            .order_by(RecordVersion.identity)
+        ).all()
+    )
+
+
+def backfill(
+    db: Session,
+    store: RecordStore,
+    start: datetime,
+    end: datetime,
+    ticks: int,
+    inserts: int = 0,
+    updates: int = 0,
+    deletes: int = 0,
+    update_fields: list[str] | None = None,
+    fk_pools: dict[str, list[Any]] | None = None,
+) -> list[ChangeEvent]:
+    """Run `ticks` ticks of churn spread evenly across a past window.
+
+    A test system usually needs a history before it needs a present: an ETL
+    pipeline being developed against an empty table has nothing to
+    aggregate, and a dashboard with one day of data cannot be checked
+    against a month-over-month figure. This produces that history in one
+    call, and — because the store's cursor, workflow states and identities
+    all carry forward — live generation afterwards continues from the end of
+    it rather than starting a second, unrelated universe. That continuity is
+    the reason backfill belongs here and not in a script.
+
+    Each tick is stamped with its own `event_time`, so the change log and
+    any SCD type 2 intervals are spread across the window rather than
+    collapsed into the instant the request was made. `created_at` still says
+    now, because that is when the rows were written; conflating the two
+    would make a backfilled year look like one very busy second.
+
+    Refuses to run backwards or into the future. A window whose end precedes
+    its start would produce events in an order no consumer could read, and
+    dating changes ahead of now would make the *next* live tick look like it
+    happened in the past.
+    """
+    if end <= start:
+        raise ContinuityError("A backfill window must end after it starts")
+    if ticks < 1:
+        raise ContinuityError("A backfill needs at least one tick")
+    now = datetime.now(UTC)
+    if end > now:
+        raise ContinuityError(
+            "A backfill window cannot end in the future — the next live tick would "
+            "then look like it happened in the past"
+        )
+
+    # A backfill has to be the store's first activity. This is stricter than
+    # "the window must precede what exists", and deliberately so: the
+    # problem is not only the window but the *records*. A record created
+    # today has a version starting today, so a backfilled update dated last
+    # week closes that version before it opened — `valid_from` after
+    # `valid_to`. Dating new inserts in the past while existing rows sit at
+    # "now" separately breaks the cursor contract, because sequence order
+    # would stop matching event order for a consumer reading by time.
+    #
+    # Found by looking at the UI, not by the suite: generate, then backfill,
+    # then open the version history, and the first interval runs backwards.
+    existing = db.scalar(
+        select(func.count()).select_from(ChangeEvent).where(ChangeEvent.store_id == store.id)
+    )
+    if existing:
+        raise ContinuityError(
+            f"This store already has {existing} recorded changes. A backfill writes "
+            "history, so it has to come first — otherwise records created today get "
+            "versions that end before they start, and the change log runs out of order. "
+            "Backfill into a new store, then generate live from the end of it."
+        )
+
+    step = (end - start) / ticks
+    events: list[ChangeEvent] = []
+    for index in range(ticks):
+        # The tick's own instant, not the window's start: `ticks` ticks all
+        # dated `start` would be a backfill in name only.
+        at = start + step * index
+        events.extend(
+            apply_changes(
+                db,
+                store,
+                inserts=inserts,
+                updates=updates,
+                deletes=deletes,
+                update_fields=update_fields,
+                fk_pools=fk_pools,
+                event_time=at,
+            )
+        )
+    return events
+
+
+def default_backfill_window(days: int = 30) -> tuple[datetime, datetime]:
+    """A window ending now. Convenience for the common "last N days" ask."""
+    now = datetime.now(UTC)
+    return now - timedelta(days=days), now

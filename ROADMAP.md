@@ -1371,23 +1371,173 @@ their kernel to try SynthFlow.
 Goal: records that persist across runs and change over time, instead of every
 generation call producing a fresh unrelated universe.
 
-- [ ] Persistent record identity — a customer generated yesterday still exists
-      today and can receive new orders
-- [ ] Workflow and trend state that carries across calls, closing two documented
-      resets: a workflow's walk restarting every call, and a trend's position
-      returning to 0 on every batch
-- [ ] Simulated inserts, updates and deletes over time (change-data-capture
-      shaped), so ETL pipelines and CDC consumers have something realistic to
-      chew on
-- [ ] Slowly-changing-dimension patterns (type 1 and 2)
-- [ ] Backfill a historical window, then continue generating live from its end
-- [ ] True `many_to_many` with a real join table — closes the documented
-      simplification where it currently generates like `one_to_many`
+- [x] Persistent record identity, via a **`RecordStore`** — a population of one
+      entity's records that survives between calls. Two operations carry the
+      whole bullet: `generate_new` adds records to a store, and `identity_pool`
+      hands a child entity the identity values of a parent's *stored* records.
+      Together those make the sentence above literally true — the orders are
+      generated in a later call than the customers, so there is no batch-local
+      pool for them to be drawing from.
 
-      The deepest change on this list: it revisits the generation engine's
-      assumption that each call is independent, which nearly every Phase 4
-      feature was built on top of. Worth attempting only after Phase 8's job
-      model exists to run the long backfills it implies.
+      **`identity_field` is required, and that constraint is the feature.**
+      Persistent identity means knowing what makes two rows the same record,
+      and only the schema's author knows that. Minting a hidden surrogate key
+      would have been identity in name only: nothing downstream could join on
+      it, so a consumer could not tell an update from an unrelated insert —
+      which is precisely what this exists to make possible. A nullable field is
+      refused for the same reason, at store creation rather than partway
+      through a generation call that has already stored some records.
+
+      A store is scoped per *store*, not per entity: two consumers of one
+      schema are not watching the same population, and a demo stream must not
+      consume a nightly feed's half-used state.
+
+      **A store holds a population, not an output log.** A ten-million-row job
+      does not put ten million rows in Postgres — it draws from the store and
+      writes the rest to its file. That boundary is what keeps Phase 8's
+      streaming design intact.
+- [x] Workflow and trend state that carries across calls. Both documented
+      resets are closed, by two different mechanisms, because they turned out
+      to be two different problems.
+
+      **The trend reset was a missing cursor.** `iter_rows` gained
+      `start_position` and an optional `trend_state` it mutates in place; the
+      store carries both forward. A linear trend now continues across the call
+      boundary instead of repeating itself, and a `random_walk` keeps its
+      running value rather than snapping back to `start`. Both parameters
+      default to the old behaviour exactly, so all six existing call sites are
+      untouched.
+
+      **The workflow reset needed identity first**, which is why this bullet
+      could not be done before the one above it. Each *row* getting a fresh
+      walk is correct for a batch — it is what makes a batch catch records at
+      different points and a funnel look like a funnel. The reset only means
+      anything for the *same record seen twice*, so the fix lives on the update
+      path: `generator.advance_state` takes one step from where the record
+      already is. A customer who reached checkout does not go back to signed
+      up. Weights and per-state stop probabilities still apply, so progress
+      over many ticks traces the same distribution one walk would have produced
+      in one go, and terminal states stay put.
+
+      `generate_geo_point` also had to change: it clamped at the final
+      waypoint, which under continuity would have frozen every vehicle on its
+      destination from the second tick onward. A continued position now wraps,
+      so the vehicle drives the route again. Within a single batch the position
+      never reaches `count`, so the modulo is a no-op and nothing existing
+      changes.
+- [x] Simulated inserts, updates and deletes over time, as a per-store
+      **change log** a consumer reads back from a cursor — the same contract as
+      a Kafka offset or a replication slot. Events carry `before` and `after`
+      the way Debezium does, so a consumer can tell which columns actually
+      moved rather than diffing against state it may not hold; an insert has no
+      `before`, a delete has no `after`.
+
+      Order within a tick is inserts, then updates, then deletes, and that is
+      deliberate: a record inserted by this call can be updated by it, which is
+      what a busy table looks like, while a record deleted by it cannot then be
+      updated — a consumer must never see a change to something already
+      dropped. Updates and deletes draw without replacement, so no record
+      produces two events at the same instant with no way to order them.
+
+      Deletes are **tombstones**, not row removals. A row that has been deleted
+      from the table cannot tell anyone it was deleted, and the tombstone is
+      also what stops a later insert recycling a dead record's key — which
+      would make a delete-then-insert indistinguishable from an update.
+
+      The identity field is never updated, and neither are formula fields.
+      Changing an identity would not be an update at all: it would be a delete
+      and an unrelated insert wearing one event's clothing.
+
+      Records also carry an explicit `sequence` rather than being ordered by
+      `created_at`. Every record written by one call shares a transaction
+      timestamp to the microsecond, so ordering by it fell through to a
+      tiebreaker and a batch came back shuffled — visible immediately as a
+      continuous trend that read as noise.
+
+      Trimming the log is explicit, never automatic: only the operator knows
+      whether every consumer has caught up, and discarding events nobody has
+      read turns a replayable stream into a lossy one.
+- [x] Slowly-changing-dimension patterns, type 1 and type 2. Type 1 overwrites
+      and is the default, because it is what most consumers want and what the
+      store already did. Type 2 versions every change, so the store *is* a
+      dimension table: `valid_from`/`valid_to` bound the interval each version
+      was the truth, and "what did this customer's plan say last March" becomes
+      a query rather than a replay.
+
+      `valid_to` is null exactly on the current version. There is no separate
+      `is_current` flag, because two columns encoding one fact are two columns
+      that can disagree. A delete closes the last version and opens no new one:
+      after that instant there is no truth about the record to record, which is
+      a different thing from a version whose values happen to be null.
+
+      **Types 3, 4 and 6 are deliberately absent.** Type 3 keeps one previous
+      value in a parallel column, which needs a schema decision per field and
+      is rare; 4 and 6 are combinations built out of these two. Two that carry
+      the weight beats five that half-work.
+- [x] Backfill a historical window, then continue live from its end. Each tick
+      is stamped with its own `event_time`, so the change log and any type 2
+      intervals spread across the window instead of collapsing into the instant
+      the request was made. `created_at` still says now, because that is when
+      the rows were written — conflating the two would make a backfilled year
+      look like one very busy second.
+
+      The store's cursor, workflow states and identities all carry forward, so
+      the next live tick continues that history rather than starting a second
+      unrelated one. That continuity is the reason backfill belongs in the
+      product and not in a script.
+
+      **A backfill must be a store's first activity, and finding out why was
+      the most useful thing the browser did this phase.** The suite was green;
+      the version-history panel showed a first interval running
+      `2026-08-22 → 2026-08-19`. A record created today has a version starting
+      today, so a backfilled update dated last week closes it before it opened.
+      Dating new inserts in the past while existing rows sit at "now"
+      separately breaks the cursor contract, because sequence order stops
+      matching event order. The first guard written was subtly wrong — it
+      compared the window against the *earliest* existing event, which the
+      failing case satisfies — and the honest rule turned out to be simpler
+      than the clever one.
+- [x] True `many_to_many` with a real join table. A many-to-many has no foreign
+      key on either side; that is what makes it many-to-many. For this type
+      `source_field` and `target_field` now name each side's *own* key, and
+      generation emits a join table pairing them, exported alongside the
+      entities in JSON and in the CSV zip.
+
+      Each source row links to between `min_links` and `max_links` **distinct**
+      targets — a range rather than a constant, because a constant count is the
+      tell that a dataset was generated, and distinct because a join table with
+      a duplicated pair breaks the unique constraint most schemas put on it.
+      Asking for more links than there are targets is capped rather than
+      raising: generating fewer links is a smaller surprise than a project that
+      refuses to generate because one entity's count is low.
+
+      **This is a behaviour change, recorded rather than smuggled in.** Until
+      now the type was stored but generated exactly like `one_to_many` — each
+      source row drew one target value into its source field. A project that
+      modelled a many-to-many that way was really modelling a one-to-many and
+      should say so; the type now means what it says. The other three types are
+      untouched.
+
+**Phase 13 closed: all six bullets.** It was the deepest change on the
+roadmap, because it revisits the generation engine's assumption that each call
+is independent — the assumption nearly every Phase 4 feature was built on top
+of. Every extension turned out to fit the existing shapes: trends already took
+a mutable state dict, workflows already had a transition graph to step through,
+and `iter_rows` already computed values from a position. What was missing was
+somewhere to keep the position between calls.
+
+**The bug worth remembering** is the one above: inverted SCD type 2 intervals
+after a backfill, found by opening the version history in a browser and reading
+the dates. 33 continuity tests passed while it was there, because every one of
+them backfilled into a clean store. Verified afterwards against real Postgres —
+38 closed intervals, none running backwards, sequence order matching event
+order, and the guard refusing with a message that says what to do instead.
+
+**Known limits carried forward.** Change events accumulate; the log is bounded
+by churn rather than output volume, but a store driven hard for long enough
+still grows, and trimming is a manual decision by design. A backfill cannot
+extend an existing history further back — it has to be a store's first
+activity, which is the strict-but-correct rule rather than a clever one.
 
 ## Phase 14 — Teams and Governance
 

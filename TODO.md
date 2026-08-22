@@ -722,16 +722,82 @@ typecheck clean. All three input paths driven in a real browser against
 MinIO, MySQL and a real HTTP server — including the error path, which now
 names what was actually missing.
 
+## Phase 13 — Temporal Continuity and Change Simulation — done, all six bullets
+
+The deepest change on the roadmap: it revisits the generation engine's
+assumption that every call is independent, which nearly every Phase 4 feature
+was built on top of.
+
+A **`RecordStore`** is a population of one entity's records that survives
+between calls. From it everything else follows.
+
+- **Persistent identity.** `generate_new` adds records; `identity_pool` hands a
+  child entity the identity values of a parent's *stored* records. Orders
+  generated today reference customers generated last week, because the
+  customers are still there to reference.
+- **`identity_field` is required**, and that constraint is the feature.
+  Persistent identity means knowing what makes two rows the same record. A
+  hidden surrogate key would have been identity in name only — nothing
+  downstream could join on it, so a consumer could not tell an update from an
+  unrelated insert.
+- **Trends and geo routes finally have a cursor.** `iter_rows` gained
+  `start_position` and a mutable `trend_state`; both default to the old
+  behaviour, so all six existing call sites are untouched. A linear trend
+  continues across the call boundary; a `random_walk` keeps its running value.
+  `generate_geo_point` wraps instead of clamping, or every vehicle would have
+  frozen on its destination from the second tick.
+- **The workflow reset needed identity first.** A fresh walk per *row* is
+  correct for a batch — it is what makes a funnel look like a funnel. The reset
+  only matters for the *same record seen twice*, so the fix lives on the update
+  path: `advance_state` steps one hop from where the record already is.
+- **CDC.** A per-store change log read from a cursor, `before`/`after` in
+  Debezium's shape. Inserts, then updates, then deletes within a tick: a record
+  inserted by this call can be updated by it; one deleted by it cannot. Deletes
+  are tombstones, which is also what stops a later insert recycling a dead
+  key.
+- **SCD type 1 and 2.** Type 1 overwrites (the default, and what the store
+  already did). Type 2 versions every change, `valid_to` null exactly on the
+  current one — no `is_current` flag that could disagree with it. Types 3, 4
+  and 6 deliberately absent.
+- **Backfill, then continue live.** Each tick carries its own `event_time`, so
+  history spreads across the window rather than collapsing into one instant.
+  `created_at` still says now.
+- **True `many_to_many`.** A join table, `min_links`..`max_links` distinct
+  targets per source row. **Behaviour change:** the type used to generate
+  exactly like `one_to_many`; it now means what it says.
+
+**The bug worth remembering.** The suite was green at 33 continuity tests when
+the version-history panel showed a first interval running
+`2026-08-22 → 2026-08-19`. A record created today has a version starting today,
+so a backfilled update dated last week closes it before it opened. Every test
+had backfilled into a clean store, so none of them could see it. The first
+guard written was subtly wrong — it compared the window against the *earliest*
+existing event, which the failing case satisfies — and the honest rule (a
+backfill must be a store's first activity) turned out simpler than the clever
+one.
+
+**Known limits.** Change events accumulate; the log is bounded by churn rather
+than output volume, but trimming stays a manual decision because only the
+operator knows whether every consumer has caught up. A backfill cannot extend
+an existing history further back.
+
+**576 passed / 5 skipped**, lint and typecheck clean. Verified against real
+Postgres and in a browser: a trend running 100 to 195 unbroken across a call
+boundary, 30 orders referencing 16 of 20 persisted customers and nothing else,
+a gapless change log replayed through a paged cursor, and 38 closed type 2
+intervals none of which run backwards.
+
 ## Now
 
-**Phases 1–5 and 7–12 are done** (10, 11 and 12 each with deliberate
-exclusions — Phase 12's warehouse bullet was skipped at the user's request).
-Phase 6 (AI) stays deliberately unstarted; nothing depends on it.
+**Phases 1–5 and 7–13 are done** (10, 11 and 12 each with deliberate
+exclusions — Phase 12's warehouse bullet was skipped at the user's request;
+Phase 13 is complete on all six). Phase 6 (AI) stays deliberately unstarted;
+nothing depends on it.
 
-Next is **Phase 13 (Temporal Continuity)**, the deepest change on the
-roadmap: it revisits the generation engine's assumption that each call is
-independent, which nearly every Phase 4 feature was built on top of. Phase
-8's job model now exists to run the long backfills it implies.
+Next is **Phase 14 (Teams and Governance)**. Its **API keys** bullet is the
+smallest and most blocking item left anywhere: authentication today is a
+user-password login producing a short-lived JWT, so there is no supported way
+to call SynthFlow from CI at all.
 
 **Worth doing once, not twice:** a per-entity policy column would let both
 Phase 10's k-anonymity thresholds and Phase 11's assertions fail a

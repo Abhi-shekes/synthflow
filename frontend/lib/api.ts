@@ -61,6 +61,9 @@ import type {
   ChangeEvent,
   ApplyChangesInput,
   ApplyChangesResponse,
+  RecordVersion,
+  BackfillInput,
+  BackfillResponse,
 } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
@@ -987,6 +990,35 @@ export const api = {
     request<GenerateIntoStoreResponse>(
       `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}/generate`,
       { method: "POST", body: JSON.stringify({ count }) },
+      token
+    ),
+
+  backfillStore: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    storeId: string,
+    input: BackfillInput
+  ) =>
+    request<BackfillResponse>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}/backfill`,
+      { method: "POST", body: JSON.stringify(input) },
+      token
+    ),
+
+  listRecordVersions: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    storeId: string,
+    query: { identity: string } | { at: string }
+  ) =>
+    request<RecordVersion[]>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/record-stores/${storeId}/versions?` +
+        ("identity" in query
+          ? `identity=${encodeURIComponent(query.identity)}`
+          : `at=${encodeURIComponent(query.at)}`),
+      {},
       token
     ),
 

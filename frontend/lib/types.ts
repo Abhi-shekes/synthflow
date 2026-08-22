@@ -308,6 +308,8 @@ export interface Relationship {
   source_field_id: string;
   target_entity_id: string;
   target_field_id: string;
+  min_links: number;
+  max_links: number;
   created_at: string;
 }
 
@@ -317,6 +319,10 @@ export interface RelationshipCreateInput {
   source_field_id: string;
   target_entity_id: string;
   target_field_id: string;
+  /** many_to_many only: how many targets each source row links to. A range,
+   * because a constant count is the tell that a dataset was generated. */
+  min_links?: number;
+  max_links?: number;
 }
 
 export type DatabaseDialect = "postgresql" | "mysql" | "mongodb";
@@ -796,12 +802,19 @@ export interface ProfileSourceRequest {
 /** Phase 13 — a population of records for one entity that survives between
  * generation calls. `position` is the cursor trends and geo routes read, so
  * a curve continues across calls instead of replaying from its start. */
+/** How much of a record's past a store keeps. `type_1` overwrites;
+ * `type_2` versions every change, so the store is a dimension table you can
+ * query at a moment in the past. */
+export type SCDType = "type_1" | "type_2";
+
 export interface RecordStore {
   id: string;
   entity_id: string;
   name: string;
   identity_field_id: string;
+  scd_type: SCDType;
   position: number;
+  change_sequence: number;
   created_at: string;
   updated_at: string;
 }
@@ -824,6 +837,35 @@ export interface StoredRecord {
 export interface RecordStoreCreateInput {
   name: string;
   identity_field_id: string;
+  scd_type?: SCDType;
+}
+
+export interface RecordVersion {
+  id: string;
+  identity: string;
+  version: number;
+  data: Record<string, unknown>;
+  valid_from: string;
+  /** Null on the version that is current — there is no separate flag that
+   * could disagree with it. */
+  valid_to: string | null;
+}
+
+export interface BackfillInput {
+  start: string;
+  end: string;
+  ticks: number;
+  inserts?: number;
+  updates?: number;
+  deletes?: number;
+}
+
+export interface BackfillResponse {
+  events_written: number;
+  next_sequence: number;
+  total_active: number;
+  first_event_time: string | null;
+  last_event_time: string | null;
 }
 
 export interface GenerateIntoStoreResponse {
@@ -845,6 +887,9 @@ export interface ChangeEvent {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   version: number;
+  /** When it happened. A backfill dates events across a past window, so this
+   * is not `created_at`, which is when the row was written. */
+  event_time: string;
   created_at: string;
 }
 

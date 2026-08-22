@@ -85,7 +85,7 @@ deployment doesn't pull in Kafka, MongoDB, or MQTT dependencies. See
 
 ## Project status
 
-**Phases 1–5 and 7–12 are live**, backend and frontend, each verified end to
+**Phases 1–5 and 7–13 are live**, backend and frontend, each verified end to
 end rather than only by test suite:
 
 - **1–2** core platform, relationships, rules, formulas, stateful workflows
@@ -119,9 +119,18 @@ end rather than only by test suite:
   drivers it uses. Reading a table keeps its real column types, which a CSV
   export would flatten to strings. Warehouses (ClickHouse, Snowflake,
   BigQuery) are the one bullet not done.
+- **13** temporal continuity: a **record store** keeps an entity's records
+  between generation calls, so the same customer exists tomorrow and can
+  receive new orders. Trends and geo routes continue from where the last call
+  stopped instead of replaying. A per-store **change log** records inserts,
+  updates and deletes with `before`/`after` for a CDC consumer to read from a
+  cursor, slowly-changing-dimension type 1 and 2 make the store a queryable
+  dimension table, and a **backfill** produces a historical window that live
+  generation then continues from. `many_to_many` finally emits a real join
+  table.
 
 Phase 6 (the optional AI layer) is deliberately unstarted — nothing depends
-on it. Phases 13–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
+on it. Phases 14–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
 plan, including the tradeoffs and known limits recorded per item, and
 [TODO.md](TODO.md) for the active task list.
 

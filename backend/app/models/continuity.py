@@ -35,6 +35,31 @@ class RecordStatus(enum.StrEnum):
     DELETED = "deleted"
 
 
+class SCDType(enum.StrEnum):
+    """How much of a record's past a store keeps — the two slowly-changing
+    dimension patterns anyone actually builds.
+
+    **TYPE_1 overwrites.** The record holds its current values and nothing
+    else; history is only what the change log happens to still carry. This
+    is the default because it is what most consumers want, and because it is
+    what the store already did before history existed.
+
+    **TYPE_2 versions.** Every change closes the current version with a
+    `valid_to` and opens a new one, so the store *is* a dimension table:
+    "what did this customer's plan say last March" becomes a query rather
+    than a replay. It costs a row per change per record, which is exactly
+    why it is opt-in rather than the default.
+
+    Types 3, 4 and 6 are deliberately absent. Type 3 keeps one previous
+    value in a parallel column, which needs a schema decision per field and
+    is rare; types 4 and 6 are combinations built out of these two. Shipping
+    the two that carry the weight beats five that half-work.
+    """
+
+    TYPE_1 = "type_1"
+    TYPE_2 = "type_2"
+
+
 class RecordStore(Base):
     """A population of records for one entity that survives between
     generation calls.
@@ -104,6 +129,11 @@ class RecordStore(Base):
     # change nothing about how far a trend has travelled, but both are
     # events a consumer must see in order.
     change_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # How much of a record's past the store keeps. See SCDType.
+    scd_type: Mapped["SCDType"] = mapped_column(
+        Enum(SCDType), nullable=False, default=SCDType.TYPE_1
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -226,6 +256,56 @@ class ChangeEvent(Base):
     # The record's version *after* this change, so a consumer that has seen
     # version 3 can recognise a replay of it.
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # When the change is deemed to have happened, which is not when the row
+    # was written. A backfill produces events dated across a window that
+    # ended before the request was made; `created_at` still says "now",
+    # because that is when it was recorded. Conflating the two would make a
+    # backfilled year of history look like one very busy second.
+    event_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    store: Mapped["RecordStore"] = relationship()
+
+
+class RecordVersion(Base):
+    """One version of a record, for a store keeping SCD type 2 history.
+
+    This is a dimension table in the ordinary warehouse sense: `identity` is
+    the natural key, the row's own `id` is the surrogate, and
+    `valid_from`/`valid_to` bound the interval this version was the truth.
+    `valid_to` is null exactly on the current version, so `is_current` is
+    not a separate column that could disagree with it — one fact, one place.
+
+    Written only when the store's `scd_type` is TYPE_2. A type 1 store keeps
+    nothing here, because the whole point of type 1 is that it does not pay
+    for history.
+
+    The interval is closed-open: `valid_from <= t < valid_to`. A version
+    that changes twice in the same instant would produce a zero-width
+    interval, which is a real possibility for a backfill compressing a lot
+    of churn into a short window — that is left as it is rather than nudged,
+    because inventing a microsecond of separation is a lie about when
+    things happened.
+    """
+
+    __tablename__ = "record_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("record_stores.id", ondelete="CASCADE"), index=True
+    )
+    identity: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Null on the current version. Not paired with an `is_current` boolean:
+    # two columns encoding one fact is two columns that can disagree.
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

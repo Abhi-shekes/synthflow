@@ -3,6 +3,8 @@ from app.models.continuity import (
     ChangeOperation,
     RecordStatus,
     RecordStore,
+    RecordVersion,
+    SCDType,
     StoredRecord,
 )
 from app.models.database_connection import DatabaseConnection
@@ -35,6 +37,8 @@ __all__ = [
     "RecordStore",
     "ChangeEvent",
     "ChangeOperation",
+    "RecordVersion",
+    "SCDType",
     "StoredRecord",
     "RecordStatus",
     "Project",

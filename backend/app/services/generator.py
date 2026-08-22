@@ -34,7 +34,7 @@ from app.models.event_trigger import EventTrigger
 from app.models.field import EntityField, FieldType
 from app.models.geo_route import GeoRoute
 from app.models.lookup_attachment import LookupAttachment
-from app.models.relationship import Relationship
+from app.models.relationship import Relationship, RelationshipType
 from app.models.rule import Rule
 from app.models.trend import Trend
 from app.models.workflow import Workflow
@@ -691,6 +691,12 @@ def generate_project(
         relationship_lookup: dict[str, dict[Any, dict[str, Any]]] = {}
         relationship_entity_name: dict[str, str] = {}
         for rel in relationships_by_source.get(entity_id, []):
+            if rel.relationship_type == RelationshipType.MANY_TO_MANY:
+                # No foreign key on either side — that is what makes it
+                # many-to-many. The link is emitted as a join table by
+                # `generate_join_tables`, so the source's field is its own
+                # key and is generated normally.
+                continue
             target_field = fields_by_id[rel.target_field_id]
             source_field = fields_by_id[rel.source_field_id]
             target_entity = entities_by_id[rel.target_entity_id]
@@ -731,6 +737,75 @@ def generate_project(
         )
 
     return generated
+
+
+def join_table_name(source: Entity, target: Entity) -> str:
+    """The conventional name for a link table: both sides, lower-cased,
+    joined by an underscore. `student_course`, not `StudentCourse` — every
+    warehouse this feeds writes it that way."""
+    return f"{source.name.lower()}_{target.name.lower()}"
+
+
+def generate_join_tables(
+    entities: list[Entity],
+    relationships: list[Relationship],
+    generated: dict[uuid.UUID, list[dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Link rows for every `many_to_many` relationship in the project.
+
+    Returned separately from `generate_project` rather than folded into it,
+    because a join table is not an entity: it has no id, no fields, no rules
+    and nothing to configure. Squeezing it into a dict keyed by entity id
+    would have meant inventing an id for something the schema does not
+    contain, and every existing caller of `generate_project` keeps working
+    untouched.
+
+    Each source row links to between `min_links` and `max_links` **distinct**
+    targets — distinct because a join table with a duplicated pair is a bug
+    in every schema that has a unique constraint on it, which is most of
+    them. A relationship asking for more links than there are targets is
+    capped at the number that exist rather than raising: generating fewer
+    links than requested is a smaller surprise than a project that will not
+    generate at all because one entity's count is low.
+    """
+    entities_by_id = {e.id: e for e in entities}
+    fields_by_id = {f.id: f for e in entities for f in e.fields}
+
+    tables: dict[str, list[dict[str, Any]]] = {}
+    for rel in relationships:
+        if rel.relationship_type != RelationshipType.MANY_TO_MANY:
+            continue
+        source = entities_by_id.get(rel.source_entity_id)
+        target = entities_by_id.get(rel.target_entity_id)
+        if source is None or target is None:
+            continue
+        source_field = fields_by_id.get(rel.source_field_id)
+        target_field = fields_by_id.get(rel.target_field_id)
+        if source_field is None or target_field is None:
+            continue
+
+        target_keys = [
+            row[target_field.name]
+            for row in generated.get(rel.target_entity_id, [])
+            if row.get(target_field.name) is not None
+        ]
+        if not target_keys:
+            continue
+
+        low = max(rel.min_links, 0)
+        high = max(rel.max_links, low)
+        rows: list[dict[str, Any]] = []
+        for source_row in generated.get(rel.source_entity_id, []):
+            source_key = source_row.get(source_field.name)
+            if source_key is None:
+                continue
+            wanted = min(random.randint(low, high), len(target_keys))
+            for target_key in random.sample(target_keys, wanted):
+                rows.append({source_field.name: source_key, target_field.name: target_key})
+
+        tables[join_table_name(source, target)] = rows
+
+    return tables
 
 
 def rows_to_csv(fields: list[EntityField], rows: list[dict[str, Any]]) -> str:
@@ -807,13 +882,33 @@ def project_rows_to_excel(
 
 
 def project_rows_to_csv_zip(
-    entities: list[Entity], generated: dict[uuid.UUID, list[dict[str, Any]]]
+    entities: list[Entity],
+    generated: dict[uuid.UUID, list[dict[str, Any]]],
+    join_tables: dict[str, list[dict[str, Any]]] | None = None,
 ) -> bytes:
     """One `<entity>.csv` file per entity, zipped together — CSV has no
-    multi-table concept, so a project-wide export is a zip of flat files."""
+    multi-table concept, so a project-wide export is a zip of flat files.
+
+    Many-to-many join tables land alongside them as their own files. They
+    have no `EntityField` list to take column order from, so the columns
+    come from the first row's keys — which is exactly the two key names, in
+    the order `generate_join_tables` wrote them."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for entity in entities:
             csv_text = rows_to_csv(entity.fields, generated.get(entity.id, []))
             zf.writestr(f"{entity.name}.csv", csv_text)
+        for name, rows in (join_tables or {}).items():
+            zf.writestr(f"{name}.csv", _plain_rows_to_csv(rows))
+    return buffer.getvalue()
+
+
+def _plain_rows_to_csv(rows: list[dict[str, Any]]) -> str:
+    """CSV for rows with no field definitions behind them."""
+    if not rows:
+        return ""
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
     return buffer.getvalue()
