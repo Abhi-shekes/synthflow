@@ -39,13 +39,17 @@ _connections = sa.table(
 
 
 def upgrade() -> None:
-    op.alter_column(
-        "database_connections",
-        "password",
-        existing_type=sa.String(length=255),
-        type_=sa.String(length=1024),
-        existing_nullable=False,
-    )
+    # batch_alter_table, not a bare alter_column: SQLite has no `ALTER
+    # COLUMN ... TYPE`, so the plain form only ever worked against Postgres.
+    # Batch mode does the real ALTER on Postgres/MySQL and the
+    # recreate-copy-swap dance on SQLite — same net effect, one code path.
+    with op.batch_alter_table("database_connections") as batch_op:
+        batch_op.alter_column(
+            "password",
+            existing_type=sa.String(length=255),
+            type_=sa.String(length=1024),
+            existing_nullable=False,
+        )
 
     bind = op.get_bind()
     for row in bind.execute(sa.select(_connections.c.id, _connections.c.password)):
@@ -69,10 +73,10 @@ def downgrade() -> None:
             .values(password=decrypt_secret(row.password))
         )
 
-    op.alter_column(
-        "database_connections",
-        "password",
-        existing_type=sa.String(length=1024),
-        type_=sa.String(length=255),
-        existing_nullable=False,
-    )
+    with op.batch_alter_table("database_connections") as batch_op:
+        batch_op.alter_column(
+            "password",
+            existing_type=sa.String(length=1024),
+            type_=sa.String(length=255),
+            existing_nullable=False,
+        )

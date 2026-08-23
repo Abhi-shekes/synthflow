@@ -77,7 +77,10 @@ def upgrade() -> None:
     # For an event recorded before this column existed, when it was written
     # is when it happened. Nothing else could be true yet.
     op.execute("UPDATE change_events SET event_time = created_at")
-    op.alter_column("change_events", "event_time", server_default=None)
+    # batch_alter_table: SQLite has no ALTER COLUMN, so dropping the default
+    # (bare alter_column) only ever worked against Postgres.
+    with op.batch_alter_table("change_events") as batch_op:
+        batch_op.alter_column("event_time", server_default=None)
     op.create_index(
         op.f("ix_change_events_event_time"), "change_events", ["event_time"], unique=False
     )
@@ -87,7 +90,8 @@ def upgrade() -> None:
         "record_stores",
         sa.Column("scd_type", SCD_TYPE, nullable=False, server_default="TYPE_1"),
     )
-    op.alter_column("record_stores", "scd_type", server_default=None)
+    with op.batch_alter_table("record_stores") as batch_op:
+        batch_op.alter_column("scd_type", server_default=None)
 
 
 def downgrade() -> None:

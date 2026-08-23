@@ -40,8 +40,11 @@ def upgrade() -> None:
         "relationships",
         sa.Column("max_links", sa.Integer(), nullable=False, server_default="3"),
     )
-    op.alter_column("relationships", "min_links", server_default=None)
-    op.alter_column("relationships", "max_links", server_default=None)
+    # batch_alter_table: SQLite has no ALTER COLUMN, so dropping the default
+    # (bare alter_column) only ever worked against Postgres.
+    with op.batch_alter_table("relationships") as batch_op:
+        batch_op.alter_column("min_links", server_default=None)
+        batch_op.alter_column("max_links", server_default=None)
 
 
 def downgrade() -> None:

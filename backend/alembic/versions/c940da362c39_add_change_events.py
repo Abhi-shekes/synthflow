@@ -64,7 +64,10 @@ def upgrade() -> None:
         "record_stores",
         sa.Column("change_sequence", sa.Integer(), nullable=False, server_default="0"),
     )
-    op.alter_column("record_stores", "change_sequence", server_default=None)
+    # batch_alter_table: SQLite has no ALTER COLUMN, so dropping the default
+    # (bare alter_column) only ever worked against Postgres.
+    with op.batch_alter_table("record_stores") as batch_op:
+        batch_op.alter_column("change_sequence", server_default=None)
 
 
 def downgrade() -> None:

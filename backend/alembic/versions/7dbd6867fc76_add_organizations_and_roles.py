@@ -74,25 +74,30 @@ def upgrade() -> None:
         op.f("ix_organization_members_user_id"), "organization_members", ["user_id"]
     )
 
-    op.add_column("projects", sa.Column("organization_id", sa.Uuid(), nullable=True))
+    # batch_alter_table: SQLite has no ALTER to add a constraint to an
+    # existing table (only batch mode's recreate-copy-swap can do it), so
+    # the bare add_column/create_foreign_key this replaced only ever worked
+    # against Postgres.
+    with op.batch_alter_table("projects") as batch_op:
+        batch_op.add_column(sa.Column("organization_id", sa.Uuid(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_projects_organization_id",
+            "organizations",
+            ["organization_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
     op.create_index(op.f("ix_projects_organization_id"), "projects", ["organization_id"])
-    op.create_foreign_key(
-        "fk_projects_organization_id",
-        "projects",
-        "organizations",
-        ["organization_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
 
 
 def downgrade() -> None:
     # Named explicitly. Autogenerate emitted `drop_constraint(None, ...)`,
     # which cannot work on Postgres, where a constraint is dropped by name —
     # the same correction the object-storage migration needed.
-    op.drop_constraint("fk_projects_organization_id", "projects", type_="foreignkey")
     op.drop_index(op.f("ix_projects_organization_id"), table_name="projects")
-    op.drop_column("projects", "organization_id")
+    with op.batch_alter_table("projects") as batch_op:
+        batch_op.drop_constraint("fk_projects_organization_id", type_="foreignkey")
+        batch_op.drop_column("organization_id")
 
     op.drop_index(op.f("ix_organization_members_user_id"), table_name="organization_members")
     op.drop_index(

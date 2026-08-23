@@ -51,17 +51,21 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    op.add_column("generation_jobs", sa.Column("storage_target_id", sa.Uuid(), nullable=True))
-    # SET NULL rather than CASCADE: deleting a storage target must not
-    # delete the history of jobs that once uploaded to it.
-    op.create_foreign_key(
-        _FK_NAME,
-        "generation_jobs",
-        "object_storage_targets",
-        ["storage_target_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    # batch_alter_table, matching downgrade() below: SQLite has no ALTER to
+    # add a constraint to an existing table (only batch mode's
+    # recreate-copy-swap can do it), so the bare `create_foreign_key` this
+    # replaced only ever worked against Postgres.
+    with op.batch_alter_table("generation_jobs") as batch:
+        batch.add_column(sa.Column("storage_target_id", sa.Uuid(), nullable=True))
+        # SET NULL rather than CASCADE: deleting a storage target must not
+        # delete the history of jobs that once uploaded to it.
+        batch.create_foreign_key(
+            _FK_NAME,
+            "object_storage_targets",
+            ["storage_target_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
 
 def downgrade() -> None:
