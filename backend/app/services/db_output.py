@@ -120,8 +120,7 @@ def build_engine(connection: DatabaseConnection) -> Engine:
 #
 # Documented limitation: a deployment whose user was created *inside* the
 # target database needs authSource to be that database instead. Making it
-# configurable is a per-connection column and therefore a schema change —
-# see ROADMAP.md Phase 12.
+# configurable is a per-connection column and therefore a schema change.
 MONGO_AUTH_SOURCE = "admin"
 
 

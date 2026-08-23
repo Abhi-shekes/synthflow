@@ -11,8 +11,8 @@ bug that forgets to set them pass silently.
 
 Existing `many_to_many` rows get these values and, from this release, a real
 join table rather than the one-to-many behaviour they used to get. That is a
-deliberate behaviour change to a documented simplification, recorded in
-ROADMAP.md rather than smuggled in: a project that modelled a many-to-many
+deliberate behaviour change to a documented simplification, called out here
+rather than smuggled in: a project that modelled a many-to-many
 as a foreign key on the source row was really modelling a one-to-many, and
 the type now means what it says.
 

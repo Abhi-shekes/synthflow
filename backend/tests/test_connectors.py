@@ -4,7 +4,7 @@ No real MySQL or MongoDB is guaranteed in the test environment, so these
 cover the parts that are testable without one: dialect dispatch, URL
 construction, value coercion, and the behaviour of the core install when
 the optional driver is absent. Actual delivery is verified live against
-real servers via the `mysql` and `mongo` compose profiles — see TODO.md,
+real servers via the `mysql` and `mongo` compose profiles,
 the same split the Kafka and MQTT tests use.
 
 The absent-driver half matters as much as the present-driver half: CI runs

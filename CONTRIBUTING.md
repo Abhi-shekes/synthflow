@@ -1,10 +1,8 @@
 # Contributing to SynthFlow
 
-Read [ROADMAP.md](ROADMAP.md) for the phased plan and the reasoning behind
-each decision, [TODO.md](TODO.md) for what is in flight, and
-[README.md](README.md) for what the software does. Those three are kept
-honest: unchecked boxes carry the reason they are unchecked, and several
-items are deliberately unbuilt and say so.
+Read [README.md](README.md) for what the software does and its current
+project status. Several items are deliberately unbuilt, and the README
+says so rather than leaving them to be rediscovered.
 
 ## The development loop
 
@@ -82,7 +80,7 @@ not collide with a database you already run locally.
 
 ## What a good change looks like
 
-- **One change per PR.** Reference the ROADMAP or TODO item it addresses.
+- **One change per PR.**
 - **Tests that name the behaviour**, not the implementation. The suite reads
   as sentences — `test_a_viewer_may_read_but_not_write`, not `test_access_1`.
 - **Derive test expectations from the registry under test.** Hardcoded sets
@@ -98,14 +96,14 @@ not collide with a database you already run locally.
   to parse. The compose profiles above exist for exactly this.
 - **If it has a UI, open it in a browser.** Several defects here typechecked,
   passed tests, and were obvious on sight.
-- **Be honest in ROADMAP/TODO.** An unchecked box with a reason is worth more
-  than a checked one that overstates.
+- **Be honest about limitations.** A documented gap with a reason is worth
+  more than a silent one that gets rediscovered as a bug report.
 
 ## Plugin contributions
 
-Generator, rule-function and output plugins are documented in Phase 5 of the
-roadmap and shipped in `examples/example-plugin/`. Plugins are a
-high-value way to contribute without touching core.
+Generator, rule-function and output plugins are shipped as an example in
+`examples/example-plugin/`. Plugins are a high-value way to contribute
+without touching core.
 
 ## Code of conduct
 

@@ -5,10 +5,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        Worth a quick look at ROADMAP.md first — Phases 7–16 already plan a
-        fair amount (schema import, scale and scheduled jobs, learning from
-        real data, privacy, more connectors). If your idea is already there,
-        saying so in an issue is still useful: it's a signal about priority.
+        SynthFlow already covers a fair amount of ground (schema import,
+        scale and scheduled jobs, learning from real data, privacy, more
+        connectors). If your idea overlaps with something already in
+        progress, saying so in an issue is still useful: it's a signal
+        about priority.
 
   - type: textarea
     id: problem
@@ -40,7 +41,7 @@ body:
   - type: dropdown
     id: roadmap
     attributes:
-      label: Is this already on the roadmap?
+      label: Is this already in progress, as far as you know?
       options:
         - "No / not sure"
         - "Yes — and I'd like to see it sooner"

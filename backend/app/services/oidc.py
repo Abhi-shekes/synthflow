@@ -4,7 +4,7 @@ Until now the only way to get an account was a password this application
 stored. For a team that already has an identity provider, that is a second
 place to offboard someone from — and the one everybody forgets.
 
-**OIDC only. SAML is deliberately not implemented** — see ROADMAP.md. It
+**OIDC only. SAML is deliberately not implemented.** It
 needs `xmlsec`, a native library with a real build burden on every platform
 this ships to, and an IdP to verify against that cannot be stood up here.
 This project's rule is that a connector nobody has run against its actual

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The context help panel — a "?" in the header opens a slide-over reading
- * the current route (SIMPLICITY_PLAN.md Track B.2). Static, route-keyed
+ * the current route. Static, route-keyed
  * content from `help-content.ts`; no backend call, so it ships in one phase.
  */
 export function HelpPanel({ open, onClose }: { open: boolean; onClose: () => void }) {

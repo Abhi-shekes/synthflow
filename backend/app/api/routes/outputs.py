@@ -46,8 +46,8 @@ def list_outputs(
     db: Session = Depends(get_db),
 ) -> list[OutputSummary]:
     """A read-only aggregate over every output configured for this project,
-    across the separate typed tables that back each output kind (see
-    TODO.md's Phase 3 notes on why this isn't one polymorphic table: outputs
+    across the separate typed tables that back each output kind (not one
+    polymorphic table: outputs
     have genuinely different shapes, and separate typed tables match how
     Relationship/Rule/Workflow already work in this codebase). This IS the
     plugin manager for now — an output is "enabled" by creating a row in its

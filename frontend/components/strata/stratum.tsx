@@ -147,7 +147,7 @@ export function DepthRail() {
 /**
  * One stratum section. `id` is the scroll anchor the rail and ⌘K link to.
  *
- * In Guided mode (SIMPLICITY_PLAN.md Track A.2), every stratum but Shape
+ * In Guided mode, every stratum but Shape
  * collapses to a one-line summary with an "Add" affordance instead of its
  * full content — the same section, same data, just not open by default.
  * `hasContent` overrides this: a stratum a user already configured (before

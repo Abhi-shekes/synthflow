@@ -64,8 +64,8 @@ interface NavItem {
   /** Deferred behind the rail's "More" disclosure in Guided mode. Full
    * capability either way — this only changes what's on screen by default. */
   advanced?: boolean;
-  /** Which page section this links to, for the active-state colour
-   * (VISUAL_POLISH_PLAN.md V2). Settings/workspace links have none and fall
+  /** Which page section this links to, for the active-state colour.
+   * Settings/workspace links have none and fall
    * back to the brand colour, same as before this existed. */
   section?: SectionKey;
 }

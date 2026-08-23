@@ -1,6 +1,6 @@
 /**
  * Translates a handful of common backend failures into plain language for
- * the toasts that surface them (SIMPLICITY_PLAN.md Track B.4). Everything
+ * the toasts that surface them. Everything
  * else falls back to the raw message unchanged — this covers the failures
  * people hit often, not an exhaustive dictionary of every 4xx the API can
  * return.

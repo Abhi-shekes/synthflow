@@ -108,8 +108,8 @@ export const OUTPUT_COLOR: Record<string, string> = {
 };
 
 /**
- * One colour per top-level project section (VISUAL_POLISH_PLAN.md V2) —
- * reused for its rail link, its `SectionHeader`, and its hero panel's
+ * One colour per top-level project section — reused for its rail link,
+ * its `SectionHeader`, and its hero panel's
  * `tone="marked"` accent, so all three agree on what "this section" looks
  * like. Most entries reuse an existing hue rather than invent one:
  * `delivery` is REST's colour in `OUTPUT_COLOR`, `monitor` is the same

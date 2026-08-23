@@ -36,7 +36,7 @@ export function JobsCard({
   projectId: string;
   entities: Entity[];
   /** Section colour for the panel's `tone="marked"` edge — this is the
-   * Data page's hero panel (VISUAL_POLISH_PLAN.md V3). */
+   * Data page's hero panel. */
   accent?: string;
 }) {
   const accessToken = useAuthStore((s) => s.accessToken);

@@ -322,8 +322,8 @@ export function DeliveryStratum({
   });
 
   // hasContent is always true here: unlike Behaviour/Distortion, Delivery
-  // already leads with Generate/Download + REST regardless of mode
-  // (SIMPLICITY_PLAN.md Track A.2) — only the non-REST protocols defer, via
+  // already leads with Generate/Download + REST regardless of mode —
+  // only the non-REST protocols defer, via
   // the nested AdvancedSection below. Letting the outer Stratum also
   // collapse would hide that default-visible content behind a second,
   // redundant click.

@@ -39,7 +39,7 @@ class Trend(Base):
     means each push replays the trend across its own batch_size rows rather
     than continuing smoothly tick to tick — genuine cross-tick continuity
     would mean persisting trend state on the stream itself, which hasn't
-    been built (see TODO.md). random_walk is further affected by rules: a
+    been built. random_walk is further affected by rules: a
     rule-rejected candidate still advances the walk's running state, the
     same accepted tradeoff already documented for unique-value pools in
     generate_rows()."""

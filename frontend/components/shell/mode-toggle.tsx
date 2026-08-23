@@ -11,7 +11,7 @@ const OPTIONS = [
 ] as const;
 
 /**
- * Two-state control for Guided vs Advanced (SIMPLICITY_PLAN.md Track A).
+ * Two-state control for Guided vs Advanced.
  *
  * Nothing is ever deleted or locked behind either state — Guided only
  * defers depth (Behaviour/Distortion/advanced-Delivery, and the less-common

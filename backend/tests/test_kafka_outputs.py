@@ -1,7 +1,7 @@
 """CRUD-level coverage only — no real Kafka broker is available in the
 test environment, so these don't assert actual message delivery (that's
-covered by live docker-compose verification against a real broker; see
-TODO.md). Every test that successfully creates an output deletes it
+covered by live docker-compose verification against a real broker).
+Every test that successfully creates an output deletes it
 before returning, so its background asyncio.Task (see
 app.services.stream_producers) is cancelled promptly rather than left
 retrying against a broker that doesn't exist — the app's lifespan

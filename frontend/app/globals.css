@@ -76,7 +76,7 @@
   --color-t-object: var(--t-object);
   --color-t-json: var(--t-json);
 
-  /* Per-section identity (VISUAL_POLISH_PLAN.md V2) — one colour per
+  /* Per-section identity — one colour per
      top-level project section, reused for its rail link, page header, and
      hero-panel accent. Most sections reuse an existing hue (System Map:
      brand; Delivery: --t-string, REST's colour in OUTPUT_COLOR; Monitor:

@@ -25,7 +25,7 @@ class WebSocketStream(Base):
     you a lifecycle to hang the loop on. Kafka/MQTT outputs (not built yet)
     won't have that — a broker has no equivalent open connection to the
     caller — so they'll need an actual background-task execution model
-    (see TODO.md) instead of copying this pattern.
+    instead of copying this pattern.
     """
 
     __tablename__ = "websocket_streams"

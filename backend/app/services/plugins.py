@@ -1,5 +1,5 @@
 """Three of Phase 5's "formal plugin framework" categories — AI provider
-plugins are deliberately not started here; see ROADMAP.md for why
+plugins are deliberately not started here. Of the rest,
 generator, rule-function, and output plugins were the three cuts taken.
 
 A **generator plugin** is any installed Python package that declares one

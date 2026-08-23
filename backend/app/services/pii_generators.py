@@ -12,7 +12,7 @@ derives from any input: a generated name has no relationship to the name it
 replaced. That is the point — a format-preserving *pseudonym* that maps back
 to an individual is still personal data, and this module deliberately does
 not offer one. Consistent-mapping tokenisation is a different feature with a
-different risk profile; see ROADMAP.md Phase 10.
+different risk profile.
 
 Payment card numbers carry a real Luhn check digit because the whole reason
 to generate one is to exercise a validator, and the IIN ranges Faker draws

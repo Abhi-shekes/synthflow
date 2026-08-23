@@ -27,7 +27,7 @@ function markSeen(id: string) {
 
 /**
  * A one-time, dismissible intro banner for a surface a new user is about to
- * see for the first time (SIMPLICITY_PLAN.md Track C.3) — the System Map and
+ * see for the first time — the System Map and
  * the entity page's four strata. Dismiss is permanent, per `id`.
  *
  * Deliberately not a DOM-anchored spotlight tooltip: the System Map is a

@@ -28,7 +28,7 @@ class EventTrigger(Base):
     "Firing" today means "visible in the generated data": a consumer greps
     or filters `_triggered_events` the same way they already would for any
     other field. Sending a real external notification is future work, once
-    there's a reason to build the delivery mechanism for it (see TODO.md)."""
+    there's a reason to build the delivery mechanism for it."""
 
     __tablename__ = "event_triggers"
 

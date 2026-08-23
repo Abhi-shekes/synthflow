@@ -16,7 +16,7 @@ is a worse failure than a slightly wide range.
 This is a mitigation, not anonymity. It removes exact-value disclosure from
 the bounds; it does not make the column anonymous, and it makes no
 statistical guarantee. Differential privacy is the thing that would, and it
-belongs on the fitting step rather than here — see ROADMAP.md Phase 10.
+belongs on the fitting step rather than here.
 
 Note that the granularity scales with the span, so a wide column (salaries)
 is rounded heavily while a narrow one (ages 18-90) may not move at all. A

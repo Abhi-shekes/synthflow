@@ -15,7 +15,7 @@ import { useCompleteOnboarding, useRequireAuth } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/store";
 
 /**
- * The first-run welcome flow (SIMPLICITY_PLAN.md Track C.1) — a brand-new
+ * The first-run welcome flow — a brand-new
  * account's first stop instead of a cold, empty /projects page.
  *
  * One screen rather than a three-step wizard: every path here — a starter

@@ -19,8 +19,8 @@ class StorageProvider(enum.StrEnum):
     connector, where naming each vendor would have produced five
     near-identical ones.
 
-    Google Cloud Storage and Azure Blob are deliberately absent — see
-    ROADMAP.md Phase 12. GCS can be reached today through its
+    Google Cloud Storage and Azure Blob are deliberately absent.
+    GCS can be reached today through its
     S3-interoperability endpoint; Azure cannot, and needs its own SDK.
     """
 

@@ -1,11 +1,7 @@
 # SynthFlow — Visual User Guide
 
 A screenshot-by-screenshot walkthrough of every part of the app, for anyone
-opening SynthFlow for the first time. If you'd rather read the reasoning
-behind *why* the product is laid out this way, see
-[`SIMPLICITY_PLAN.md`](../SIMPLICITY_PLAN.md) and
-[`VISUAL_POLISH_PLAN.md`](../VISUAL_POLISH_PLAN.md) — this document is the
-practical "how do I..." companion to both.
+opening SynthFlow for the first time.
 
 Every screenshot here was taken against a real, running instance of the app
 (not mocked up), on the account setup described in each step, so what you

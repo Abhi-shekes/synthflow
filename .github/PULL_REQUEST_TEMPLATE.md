@@ -27,5 +27,4 @@
 - [ ] If it changes a database model, there's an Alembic migration
 - [ ] If it adds an optional dependency, it's an extra — not a core
       dependency — and `app/services/install.py` degrades cleanly without it
-- [ ] ROADMAP.md / TODO.md updated if this completes or changes a planned item
 - [ ] Any known limitation is documented rather than left to be rediscovered

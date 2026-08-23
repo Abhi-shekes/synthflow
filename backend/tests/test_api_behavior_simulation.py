@@ -1,9 +1,9 @@
 """API-behavior simulation (status code mixes, latency, timeouts) turned out
-to need almost no new machinery — see ROADMAP.md Phase 4. These tests cover
+to need almost no new machinery. These tests cover
 the one real gap that got closed (numeric-looking enum values generating as
 real ints/floats, not strings) and confirm the already-existing pieces
 (weighted enums, min/max numeric fields, error injection) compose the way
-the roadmap item describes.
+intended.
 """
 
 

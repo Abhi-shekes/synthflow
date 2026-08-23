@@ -4,7 +4,7 @@ import { Eyebrow } from "@/components/ui/panel";
 
 /**
  * The header for a top-level project/workspace page — System Map, Data,
- * Delivery, Monitor, Governance (VISUAL_POLISH_PLAN.md V2/V3).
+ * Delivery, Monitor, Governance.
  *
  * Generalizes `Stratum`'s header (colour dot + eyebrow + heading +
  * description) up from "one stratum on the entity page" to "one section of

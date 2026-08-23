@@ -34,7 +34,7 @@ export function useRequireAuth() {
 
 /** "guided" (the default for every new account) hides Behaviour/Distortion/
  * advanced-Delivery depth and the less-common nav sections; "advanced" is
- * the full instrument panel. See SIMPLICITY_PLAN.md Track A. */
+ * the full instrument panel. */
 export function useViewMode(): "guided" | "advanced" {
   return useAuthStore((s) => s.user?.ui_mode ?? "guided");
 }

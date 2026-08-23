@@ -4,8 +4,7 @@
  * `<Term id="k_anonymity">` (components/help/term.tsx), the context help
  * panel (components/help/help-panel.tsx), and the Learn page all read from
  * this one map rather than writing their own copy — a definition changes in
- * one place instead of drifting across three. See SIMPLICITY_PLAN.md §2 and
- * Track A.4.
+ * one place instead of drifting across three.
  */
 export interface GlossaryEntry {
   /** The term as it appears in the UI. */

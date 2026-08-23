@@ -66,8 +66,7 @@ FastAPI Backend
 ```
 
 Everything past the core is a plugin. Install only what you need — a REST-only
-deployment doesn't pull in Kafka, MongoDB, or MQTT dependencies. See
-[ROADMAP.md](ROADMAP.md) for the full plugin catalogue.
+deployment doesn't pull in Kafka, MongoDB, or MQTT dependencies.
 
 ## Tech stack
 
@@ -138,9 +137,7 @@ end rather than only by test suite:
   what it replaced. SAML is deliberately not implemented; see the roadmap.
 
 Phase 6 (the optional AI layer) is deliberately unstarted — nothing depends
-on it. Phases 15–16 are planned. See [ROADMAP.md](ROADMAP.md) for the phased
-plan, including the tradeoffs and known limits recorded per item, and
-[TODO.md](TODO.md) for the active task list.
+on it. Phases 15–16 are planned.
 
 ## Getting started
 
@@ -157,7 +154,49 @@ docker compose exec backend alembic upgrade head
 New to the app? [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) is a
 screenshot-by-screenshot walkthrough of every page — signing in, the
 welcome flow, the system map, designing an entity, Guided vs. Advanced
-mode, and everything in the workspace settings.
+mode, and everything in the workspace settings. A few pages, to give you
+the shape of it:
+
+<table>
+<tr>
+<td width="50%">
+
+**The system map** — every entity, how they relate, and where their data
+goes, in one place.
+
+![System map](docs/screenshots/05-system-map-canvas.png)
+
+</td>
+<td width="50%">
+
+**Designing an entity** — fields, formulas, and delivery, in Guided mode.
+
+![Entity page](docs/screenshots/07-entity-page-guided.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Live monitor** — events/sec, active streams, resource usage, error
+rates.
+
+![Live monitor](docs/screenshots/16-monitor.png)
+
+</td>
+<td width="50%">
+
+**Starter templates** — twelve ready-made domains to explore or build
+from.
+
+![Starter templates](docs/screenshots/06-projects-checklist-templates.png)
+
+</td>
+</tr>
+</table>
+
+The full guide covers signing in, governance, API keys, the command
+palette, and both themes.
 
 ### Optional services
 

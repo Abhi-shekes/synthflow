@@ -35,7 +35,7 @@ export function ShareProjectCard({
   organizationId: string | null;
   isOwner: boolean;
   /** Section colour for the panel's `tone="marked"` edge — this is the
-   * Governance page's hero panel (VISUAL_POLISH_PLAN.md V3). */
+   * Governance page's hero panel. */
   accent?: string;
 }) {
   const accessToken = useAuthStore((s) => s.accessToken);

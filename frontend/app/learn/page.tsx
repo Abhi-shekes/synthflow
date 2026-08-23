@@ -31,7 +31,7 @@ const GLOSSARY_ORDER: GlossaryId[] = [
 
 /**
  * SynthFlow's feature list (README.md), translated into plain language with
- * one example each (SIMPLICITY_PLAN.md Track C.5). The context help panel
+ * one example each. The context help panel
  * and every `<Term>` popover link here for "tell me more" — this page and
  * they both read from the same `lib/glossary.ts` and `help-content.ts`, so
  * a definition changes in one place rather than three.

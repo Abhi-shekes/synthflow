@@ -14,8 +14,8 @@ export interface HelpTopic {
  * (components/help/help-panel.tsx) and the Learn page both read this.
  *
  * Static on purpose: this is a one-phase, zero-backend-dependency layer.
- * A real assistant (SIMPLICITY_PLAN.md §4 B.5) waits on ROADMAP.md Phase 6
- * (BYO-LLM), which hasn't started — this ships without it.
+ * A real assistant waits on the optional BYO-LLM layer, which hasn't
+ * started — this ships without it.
  *
  * Ordered most-specific pattern first; `match()` returns the first pattern
  * whose regex matches the current pathname.

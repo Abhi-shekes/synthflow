@@ -8,9 +8,9 @@ body:
         Thanks for reporting. A note that saves everyone time: several
         behaviours that look like bugs are documented tradeoffs — background
         producers not surviving a backend restart, trends restarting each
-        generate call, `many_to_many` generating like `one_to_many`. Those
-        are listed in ROADMAP.md and TODO.md. If yours is one of them,
-        a feature request is the better fit.
+        generate call, `many_to_many` generating like `one_to_many`. If
+        yours turns out to be one of those, a feature request is the
+        better fit.
 
   - type: textarea
     id: what-happened
