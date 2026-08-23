@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
@@ -18,6 +19,17 @@ class UserRead(BaseModel):
 
     id: uuid.UUID
     email: EmailStr
+    ui_mode: Literal["guided", "advanced"]
+    has_onboarded: bool
+
+
+class UserUpdate(BaseModel):
+    """Both fields are user-set preferences, never inferred server-side —
+    onboarding completion is recorded when the welcome flow finishes or is
+    skipped, not guessed from activity."""
+
+    ui_mode: Literal["guided", "advanced"] | None = None
+    has_onboarded: bool | None = None
 
 
 class TokenPair(BaseModel):

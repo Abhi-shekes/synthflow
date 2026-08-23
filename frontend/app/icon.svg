@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The SynthFlow core sample. Literal hex, not CSS variables: a favicon is
+       rendered outside the document and cannot resolve them. Values are the
+       dark-palette steps from globals.css, on the app's own ground — a dark
+       tile reads on both light and dark browser chrome, where bare bands on
+       transparency would disappear into one of them. -->
+  <rect width="32" height="32" rx="7" fill="#0A0D13"/>
+  <rect x="6" y="5"  width="20" height="4" rx="1.6" fill="#63B3D9"/>
+  <rect x="6" y="11" width="14" height="4" rx="1.6" fill="#4FAE9C"/>
+  <rect x="6" y="17" width="20" height="4" rx="1.6" fill="#E8925C"/>
+  <rect x="6" y="23" width="10" height="4" rx="1.6" fill="#E7B45C"/>
+</svg>

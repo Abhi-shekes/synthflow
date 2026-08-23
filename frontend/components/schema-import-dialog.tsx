@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import type {
@@ -37,11 +38,12 @@ import type {
  * synthetic ones" is the tool working, not something that went wrong. */
 const REDACTION_MARKER = "replaced with synthetic values";
 
-type Source = "sql" | "json-schema" | "sample" | "learn" | "url";
+type Source = "sql" | "json-schema" | "database" | "sample" | "learn" | "url";
 
 const SOURCE_LABELS: Record<Source, string> = {
   sql: "SQL (CREATE TABLE…)",
   "json-schema": "JSON Schema / OpenAPI",
+  database: "A live database (via a saved connection)",
   sample: "Sample data file (schema only)",
   learn: "Sample data file (learn distributions)",
   url: "URL (learn distributions)",
@@ -63,6 +65,11 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
   const [dialect, setDialect] = useState("postgres");
   const [jsonText, setJsonText] = useState("");
   const [urlText, setUrlText] = useState("");
+  // The database importer reads a connection, and connections are
+  // project-scoped — so this branch picks a project before a connection.
+  const [sourceProjectId, setSourceProjectId] = useState("");
+  const [connectionId, setConnectionId] = useState("");
+  const [schemaName, setSchemaName] = useState("");
   const [result, setResult] = useState<
     (SchemaImportResponse & { report?: ProfileColumnReport[] }) | null
   >(null);
@@ -73,9 +80,23 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
     setSql("");
     setJsonText("");
     setUrlText("");
+    setConnectionId("");
+    setSchemaName("");
     setProjectName("");
     if (fileRef.current) fileRef.current.value = "";
   };
+
+  const projectsQuery = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => api.listProjects(accessToken!),
+    enabled: !!accessToken && open && source === "database",
+  });
+
+  const connectionsQuery = useQuery({
+    queryKey: ["database-connections", sourceProjectId],
+    queryFn: () => api.listDatabaseConnections(accessToken!, sourceProjectId),
+    enabled: !!accessToken && source === "database" && !!sourceProjectId,
+  });
 
   const preview = useMutation({
     mutationFn: async (): Promise<
@@ -93,6 +114,15 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
           throw new Error("That isn't valid JSON");
         }
         return api.importSchemaFromJsonSchema(token, document, projectName);
+      }
+      if (source === "database") {
+        if (!connectionId) throw new Error("Choose a connection first");
+        return api.importSchemaFromDatabase(
+          token,
+          connectionId,
+          schemaName.trim() || undefined,
+          projectName
+        );
       }
       if (source === "url") {
         const urls = urlText
@@ -127,7 +157,7 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
       return api.importSchemaFromSample(token, chosen[0], projectName);
     },
     onSuccess: setResult,
-    onError: (error: Error) => toast.error(error.message || "Could not read that schema"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not read that schema"),
   });
 
   const apply = useMutation({
@@ -138,7 +168,7 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
       reset();
       onImported();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not create the project"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not create the project"),
   });
 
   const entityCount = result?.template.entities.length ?? 0;
@@ -244,6 +274,75 @@ export function SchemaImportDialog({ onImported }: { onImported: () => void }) {
                   onChange={(e) => setJsonText(e.target.value)}
                 />
               </div>
+            )}
+
+            {source === "database" && (
+              <>
+                <div className="flex flex-col gap-2">
+                  <Label>Connection lives in</Label>
+                  <Select
+                    value={sourceProjectId}
+                    onValueChange={(v) => {
+                      setSourceProjectId(v ?? "");
+                      // A connection id is only meaningful inside its own
+                      // project, so changing project has to clear it.
+                      setConnectionId("");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(projectsQuery.data ?? []).map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label>Connection</Label>
+                  <Select
+                    value={connectionId}
+                    onValueChange={(v) => setConnectionId(v ?? "")}
+                    disabled={!sourceProjectId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a saved connection" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(connectionsQuery.data ?? []).map((connection) => (
+                        <SelectItem key={connection.id} value={connection.id}>
+                          {connection.name} ({connection.dialect})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {sourceProjectId && (connectionsQuery.data ?? []).length === 0 && (
+                    <p className="text-xs text-ink-faint">
+                      That project has no database connections. Add one on the project&apos;s
+                      Data page first.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="import-schema-name">Schema (optional)</Label>
+                  <Input
+                    id="import-schema-name"
+                    value={schemaName}
+                    onChange={(e) => setSchemaName(e.target.value)}
+                    placeholder="public"
+                  />
+                  <p className="text-xs text-ink-faint">
+                    SynthFlow reads the table definitions only — column types, keys and
+                    constraints. No rows are read, so nothing from the live database ends up in
+                    the new project.
+                  </p>
+                </div>
+              </>
             )}
 
             {source === "url" && (

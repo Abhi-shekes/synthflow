@@ -217,3 +217,63 @@ def test_declared_sources_and_kinds_match_what_is_exported(client):
         assert f'synthflow_rows_generated_total{{source="{source}"}}' in body, source
     for kind in metrics.PRODUCER_KINDS:
         assert f'synthflow_active_producers{{kind="{kind}"}}' in body, kind
+
+
+# --- /api/v1/metrics/summary ------------------------------------------------
+#
+# The JSON projection the in-app live monitor reads. Same registry as
+# /metrics, so the same delta-not-absolute rule applies to every assertion.
+
+
+def test_summary_requires_authentication(client):
+    """The whole reason this endpoint exists rather than pointing the browser
+    at /metrics: that one is deliberately unauthenticated for Prometheus, and
+    widening who may reach it was the alternative we rejected."""
+    assert client.get("/api/v1/metrics/summary").status_code == 401
+
+
+def test_summary_reports_every_generation_source(client, auth_headers):
+    body = client.get("/api/v1/metrics/summary", headers=auth_headers).json()
+    # Derived from the registry rather than a hardcoded list: a new source is
+    # a legitimate change, and a test that fails for that says nothing about
+    # whether the mechanism works.
+    assert set(body["generation"]) == set(metrics.GENERATION_SOURCES)
+    assert set(body["outputs"]) == set(metrics.PRODUCER_KINDS)
+
+
+def test_summary_counters_move_after_generating(client, auth_headers):
+    project_id = _create_project(client, auth_headers, "SummaryDelta")
+    entity_id = _create_entity_with_field(client, auth_headers, project_id)
+
+    before = client.get("/api/v1/metrics/summary", headers=auth_headers).json()
+    client.post(
+        f"/api/v1/projects/{project_id}/entities/{entity_id}/generate",
+        json={"count": 7},
+        headers=auth_headers,
+    )
+    after = client.get("/api/v1/metrics/summary", headers=auth_headers).json()
+
+    assert after["generation"]["api"]["rows"] - before["generation"]["api"]["rows"] == 7
+    assert after["generation"]["api"]["calls"] - before["generation"]["api"]["calls"] == 1
+    assert after["rows_total"] - before["rows_total"] == 7
+
+
+def test_summary_matches_the_registry_it_projects(client, auth_headers):
+    """There must be no second source of truth. If these ever disagree the
+    dashboard and Grafana are showing different numbers for the same thing."""
+    body = client.get("/api/v1/metrics/summary", headers=auth_headers).json()
+    for source in metrics.GENERATION_SOURCES:
+        assert body["generation"][source]["rows"] == _sample(
+            "synthflow_rows_generated_total", {"source": source}
+        )
+    assert body["active_websocket_clients"] == _sample("synthflow_active_websocket_clients")
+
+
+def test_summary_carries_a_server_clock_and_process_stats(client, auth_headers):
+    """`captured_at` is what makes a rate derivable client-side, and it has to
+    be the server's clock — the browser's would drift or be throttled."""
+    body = client.get("/api/v1/metrics/summary", headers=auth_headers).json()
+    assert body["captured_at"] > 0
+    assert body["process"]["resident_bytes"] > 0
+    assert body["process"]["start_time"] > 0
+    assert body["captured_at"] >= body["process"]["start_time"]

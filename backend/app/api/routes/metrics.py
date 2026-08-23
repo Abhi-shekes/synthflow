@@ -1,5 +1,9 @@
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+from app.api.deps import get_current_user
+from app.models.user import User
+from app.services import metrics as metrics_service
 
 router = APIRouter(tags=["metrics"])
 
@@ -21,3 +25,39 @@ def metrics_endpoint() -> Response:
     to.
     """
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+summary_router = APIRouter(prefix="/metrics", tags=["metrics"])
+
+
+@summary_router.get("/summary")
+def metrics_summary(current_user: User = Depends(get_current_user)) -> dict:
+    """The same numbers as `/metrics`, as JSON, behind the session token.
+
+    The in-app live monitor exists because the README promises events/sec,
+    active streams and error rates in the product, and until now only
+    Grafana had them — which means they were only there for installs that
+    turned on the optional `monitoring` Compose profile.
+
+    Three ways to feed a browser dashboard were on the table, and this is
+    the least bad:
+
+    - Parse the exposition format in the frontend. Means shipping a
+      Prometheus text parser to the client and re-deriving series names
+      there, so a metric rename breaks the dashboard silently.
+    - Let the app's origin read the unauthenticated `/metrics`. Widens who
+      can reach that endpoint from "your monitoring network" to "anything
+      that can reach the API", for no gain.
+    - This: one authenticated projection, server-side, reading the same
+      registry so there is no second source of truth to drift.
+
+    The cost, recorded honestly: two surfaces now render one set of
+    numbers, and adding a metric means touching `summary()` as well as
+    defining it.
+
+    Not scoped to a project, because the underlying metrics are not — see
+    app.services.metrics on why label cardinality is bounded. Any signed-in
+    user sees process-wide totals; that is the same information `/metrics`
+    already gives anyone who can reach it.
+    """
+    return metrics_service.summary()

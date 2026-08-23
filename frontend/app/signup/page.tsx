@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
+import { Mark } from "@/components/brand/mark";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelBody } from "@/components/ui/panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
@@ -36,19 +38,22 @@ export default function SignupPage() {
     },
     onSuccess: ({ tokens, user }) => {
       setAuth(tokens, user);
-      router.push("/projects");
+      router.push(user.has_onboarded ? "/projects" : "/welcome");
     },
-    onError: (error: Error) => toast.error(error.message || "Sign up failed"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Sign up failed"),
   });
 
   return (
-    <div className="flex flex-1 items-center justify-center px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Create an account</CardTitle>
-          <CardDescription>Start building a SynthFlow project</CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="flex flex-1 items-center justify-center px-4 py-12">
+      <Panel className="w-full max-w-sm">
+        <PanelBody className="flex flex-col gap-5 py-6">
+          {/* The mark, at the one moment the product introduces itself. */}
+          <Mark className="mx-auto size-8" />
+          <div className="text-center">
+            <h1 className="font-display text-lg font-bold tracking-tight">Create an account</h1>
+            <p className="mt-0.5 text-xs text-ink-dim">Start modelling a system</p>
+          </div>
+          <div>
           <form
             className="flex flex-col gap-4"
             onSubmit={handleSubmit((values) => mutation.mutate(values))}
@@ -62,7 +67,7 @@ export default function SignupPage() {
                 {...register("email", { required: "Email is required" })}
               />
               {errors.email && (
-                <p className="text-sm text-destructive">{errors.email.message}</p>
+                <p className="text-xs text-sev-crit">{errors.email.message}</p>
               )}
             </div>
             <div className="flex flex-col gap-2">
@@ -77,21 +82,22 @@ export default function SignupPage() {
                 })}
               />
               {errors.password && (
-                <p className="text-sm text-destructive">{errors.password.message}</p>
+                <p className="text-xs text-sev-crit">{errors.password.message}</p>
               )}
             </div>
             <Button type="submit" disabled={mutation.isPending} className="mt-2">
               {mutation.isPending ? "Creating account…" : "Sign up"}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
+          <p className="mt-4 text-center text-xs text-ink-dim">
             Already have an account?{" "}
             <Link href="/login" className="underline underline-offset-4">
               Sign in
             </Link>
           </p>
-        </CardContent>
-      </Card>
+          </div>
+        </PanelBody>
+      </Panel>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import {
   Select,
   SelectContent,
@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
@@ -28,10 +29,14 @@ export function ShareProjectCard({
   projectId,
   organizationId,
   isOwner,
+  accent,
 }: {
   projectId: string;
   organizationId: string | null;
   isOwner: boolean;
+  /** Section colour for the panel's `tone="marked"` edge — this is the
+   * Governance page's hero panel (VISUAL_POLISH_PLAN.md V3). */
+  accent?: string;
 }) {
   const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
@@ -53,7 +58,7 @@ export function ShareProjectCard({
       );
       return queryClient.invalidateQueries({ queryKey: ["project", projectId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not change sharing"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not change sharing"),
   });
 
   const available = orgs.data ?? [];
@@ -61,19 +66,19 @@ export function ShareProjectCard({
   const currentName = available.find((o) => o.id === organizationId)?.name;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Sharing</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+    <Panel tone={accent ? "marked" : "raised"} accent={accent}>
+      <PanelHeader>
+        <PanelTitle>Sharing</PanelTitle>
+      </PanelHeader>
+      <PanelBody className="flex flex-col gap-3">
         {!isOwner ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs leading-relaxed text-ink-dim">
             Shared with you through{" "}
             <span className="font-medium">{currentName ?? "an organization"}</span>. Only
             the project&apos;s owner can change who it is shared with.
           </p>
         ) : available.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs leading-relaxed text-ink-dim">
             This project is personal. To share it, first{" "}
             <Link href="/settings/organizations" className="underline">
               create an organization
@@ -82,7 +87,7 @@ export function ShareProjectCard({
           </p>
         ) : (
           <>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs leading-relaxed text-ink-dim">
               A personal project is visible only to you. Sharing it with an
               organization gives every member access at whatever role they
               hold there.
@@ -111,7 +116,7 @@ export function ShareProjectCard({
             </Select>
           </>
         )}
-      </CardContent>
-    </Card>
+      </PanelBody>
+    </Panel>
   );
 }

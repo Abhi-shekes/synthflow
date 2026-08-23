@@ -30,10 +30,11 @@ that *does* know its identity wraps the call in `generation(source)` —
 so app.services.generator stays free of metrics code entirely.
 """
 
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from prometheus_client import Counter, Gauge, Histogram
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram
 
 # Fixed, bounded label values — see module docstring on why these are
 # hardcoded rather than derived from user data.
@@ -163,3 +164,73 @@ def record_delivery(kind: str, batches: int = 1) -> None:
 
 def record_delivery_error(kind: str) -> None:
     output_delivery_errors_total.labels(kind=kind).inc()
+
+
+# ---------------------------------------------------------------------------
+# The in-app dashboard's projection of the above.
+# ---------------------------------------------------------------------------
+#
+# `/metrics` is Prometheus exposition format, unauthenticated, and outside
+# `/api/v1`. The browser dashboard needs the same numbers as JSON and behind
+# the ordinary session token, so `summary()` reads them back out of the
+# registry rather than keeping a second set of counters that could drift.
+#
+# Counters are returned as cumulative totals plus `captured_at`, not as rates.
+# A rate needs two samples and a clock, and the caller polling this endpoint
+# already has both — deriving it there keeps this function stateless, which
+# matters because several API replicas can serve it and none of them shares a
+# window with the others.
+
+
+def _sample(name: str, labels: dict[str, str] | None = None) -> float:
+    """One value out of the default registry, or 0.0 if that series does not
+    exist yet. `_init_label_values` means the labelled ones normally do."""
+    value = REGISTRY.get_sample_value(name, labels or {})
+    return float(value) if value is not None else 0.0
+
+
+def summary() -> dict:
+    """Everything the live monitor renders, in one scrape of the registry."""
+    generation = {}
+    for source in GENERATION_SOURCES:
+        label = {"source": source}
+        seconds = _sample("synthflow_generation_seconds_sum", label)
+        calls = _sample("synthflow_generation_seconds_count", label)
+        generation[source] = {
+            "rows": _sample("synthflow_rows_generated_total", label),
+            "errors": _sample("synthflow_generation_errors_total", label),
+            "calls": calls,
+            # Mean rather than a quantile: Histogram exposes buckets, and
+            # reconstructing a p95 from them here would be a worse number than
+            # the honest average, presented with more authority than it earns.
+            "mean_seconds": (seconds / calls) if calls else 0.0,
+        }
+
+    outputs = {
+        kind: {
+            "deliveries": _sample("synthflow_output_deliveries_total", {"kind": kind}),
+            "errors": _sample("synthflow_output_delivery_errors_total", {"kind": kind}),
+            "active_producers": _sample("synthflow_active_producers", {"kind": kind}),
+        }
+        for kind in PRODUCER_KINDS
+    }
+
+    return {
+        "captured_at": time.time(),
+        "generation": generation,
+        "outputs": outputs,
+        "active_websocket_clients": _sample("synthflow_active_websocket_clients"),
+        "active_producers_total": sum(o["active_producers"] for o in outputs.values()),
+        "rows_total": sum(g["rows"] for g in generation.values()),
+        "errors_total": sum(g["errors"] for g in generation.values())
+        + sum(o["errors"] for o in outputs.values()),
+        "process": {
+            # Supplied by prometheus_client's default ProcessCollector on
+            # Linux. Absent on platforms where it can't read /proc, hence the
+            # 0.0 fallback in _sample rather than a KeyError.
+            "resident_bytes": _sample("process_resident_memory_bytes"),
+            "cpu_seconds": _sample("process_cpu_seconds_total"),
+            "open_fds": _sample("process_open_fds"),
+            "start_time": _sample("process_start_time_seconds"),
+        },
+    }

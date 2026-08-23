@@ -1,11 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app-shell";
+import { SectionHeader } from "@/components/section-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
+import { SECTION_COLOR } from "@/lib/field-visual";
 import { useRequireAuth } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/store";
 import type { ApiKey, ApiKeyScope } from "@/lib/types";
@@ -64,7 +68,7 @@ export default function ApiKeysPage() {
       setExpiresAt("");
       return queryClient.invalidateQueries({ queryKey: ["api-keys"] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not create that key"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not create that key"),
   });
 
   const revoke = useMutation({
@@ -73,27 +77,36 @@ export default function ApiKeysPage() {
       toast.success("Key revoked");
       return queryClient.invalidateQueries({ queryKey: ["api-keys"] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not revoke that key"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not revoke that key"),
   });
 
   const keys = keysQuery.data ?? [];
 
   return (
     <AppShell>
-      <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      <div className="flex w-full flex-col gap-6">
         <div>
           <Link href="/projects" className="text-sm text-muted-foreground">
             ← Projects
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">API keys</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A session token lasts minutes and needs a password to get. A key
-            lasts until you revoke it, which is what makes it usable from CI.
-            Send it the same way as any other token:{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">
-              Authorization: Bearer sfk_…
-            </code>
-          </p>
+          <div className="mt-2">
+            <SectionHeader
+              icon={KeyRound}
+              color={SECTION_COLOR.governance}
+              eyebrow="Workspace"
+              title="API keys"
+              description={
+                <>
+                  A session token lasts minutes and needs a password to get. A key lasts until you
+                  revoke it, which is what makes it usable from CI. Send it the same way as any
+                  other token:{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                    Authorization: Bearer sfk_…
+                  </code>
+                </>
+              }
+            />
+          </div>
         </div>
 
         {freshKey && (

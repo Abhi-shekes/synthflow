@@ -7,10 +7,12 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
+import { Mark } from "@/components/brand/mark";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelBody } from "@/components/ui/panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 
@@ -58,7 +60,7 @@ export default function LoginPage() {
       .me(accessToken)
       .then((user) => {
         setAuth(tokens, user);
-        router.push("/projects");
+        router.push(user.has_onboarded ? "/projects" : "/welcome");
       })
       .catch(() => toast.error("That single sign-on session could not be completed"));
   }, [router, setAuth]);
@@ -71,19 +73,22 @@ export default function LoginPage() {
     },
     onSuccess: ({ tokens, user }) => {
       setAuth(tokens, user);
-      router.push("/projects");
+      router.push(user.has_onboarded ? "/projects" : "/welcome");
     },
-    onError: (error: Error) => toast.error(error.message || "Login failed"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Login failed"),
   });
 
   return (
-    <div className="flex flex-1 items-center justify-center px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>Log in to your SynthFlow account</CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="flex flex-1 items-center justify-center px-4 py-12">
+      <Panel className="w-full max-w-sm">
+        <PanelBody className="flex flex-col gap-5 py-6">
+          {/* The mark, at the one moment the product introduces itself. */}
+          <Mark className="mx-auto size-8" />
+          <div className="text-center">
+            <h1 className="font-display text-lg font-bold tracking-tight">Sign in</h1>
+            <p className="mt-0.5 text-xs text-ink-dim">Welcome back to SynthFlow</p>
+          </div>
+          <div>
           <form
             className="flex flex-col gap-4"
             onSubmit={handleSubmit((values) => mutation.mutate(values))}
@@ -97,7 +102,7 @@ export default function LoginPage() {
                 {...register("email", { required: "Email is required" })}
               />
               {errors.email && (
-                <p className="text-sm text-destructive">{errors.email.message}</p>
+                <p className="text-xs text-sev-crit">{errors.email.message}</p>
               )}
             </div>
             <div className="flex flex-col gap-2">
@@ -109,7 +114,7 @@ export default function LoginPage() {
                 {...register("password", { required: "Password is required" })}
               />
               {errors.password && (
-                <p className="text-sm text-destructive">{errors.password.message}</p>
+                <p className="text-xs text-sev-crit">{errors.password.message}</p>
               )}
             </div>
             <Button type="submit" disabled={mutation.isPending} className="mt-2">
@@ -119,9 +124,9 @@ export default function LoginPage() {
           {sso.data?.enabled && (
             <>
               <div className="my-4 flex items-center gap-3">
-                <span className="h-px flex-1 bg-border" />
-                <span className="text-xs text-muted-foreground">or</span>
-                <span className="h-px flex-1 bg-border" />
+                <span className="h-px flex-1 bg-line" />
+                <span className="text-xs text-ink-faint">or</span>
+                <span className="h-px flex-1 bg-line" />
               </div>
               <Button
                 variant="outline"
@@ -141,14 +146,15 @@ export default function LoginPage() {
               </Button>
             </>
           )}
-          <p className="mt-4 text-center text-sm text-muted-foreground">
+          <p className="mt-4 text-center text-xs text-ink-dim">
             No account?{" "}
             <Link href="/signup" className="underline underline-offset-4">
               Sign up
             </Link>
           </p>
-        </CardContent>
-      </Card>
+          </div>
+        </PanelBody>
+      </Panel>
     </div>
   );
 }

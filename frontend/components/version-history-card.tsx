@@ -1,12 +1,20 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Panel,
+  PanelBody,
+  PanelEmpty,
+  PanelHeader,
+  PanelTitle,
+} from "@/components/ui/panel";
 import { Input } from "@/components/ui/input";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import type { VersionDiff } from "@/lib/types";
@@ -49,7 +57,7 @@ export function VersionHistoryCard({ projectId }: { projectId: string }) {
       setLabel("");
       return refresh();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not snapshot"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not snapshot"),
   });
 
   const rollback = useMutation({
@@ -76,18 +84,28 @@ export function VersionHistoryCard({ projectId }: { projectId: string }) {
       );
       return refresh();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not roll back"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not roll back"),
+  });
+
+  const remove = useMutation({
+    mutationFn: (version: number) => api.deleteProjectVersion(accessToken!, projectId, version),
+    onSuccess: () => {
+      toast.success("Snapshot deleted");
+      return refresh();
+    },
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete that snapshot"),
   });
 
   const rows = versions.data ?? [];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Version history</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">
+    <Panel>
+      <PanelHeader>
+        <PanelTitle>Version history</PanelTitle>
+        <span className="eyebrow tabular-nums">{rows.length} snapshots</span>
+      </PanelHeader>
+      <PanelBody className="flex flex-col gap-3">
+        <p className="text-xs leading-relaxed text-ink-dim">
           A snapshot of the project&apos;s design — entities, fields,
           relationships, rules — that you can compare against and roll back
           to. Generated data is not included; this is the schema, not a
@@ -107,15 +125,23 @@ export function VersionHistoryCard({ projectId }: { projectId: string }) {
         </div>
 
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No snapshots yet.</p>
+          <PanelEmpty>
+            No snapshots yet. Take one before a change you might want to undo — a snapshot
+            records the design, not the generated data.
+          </PanelEmpty>
         ) : (
           <ul className="flex flex-col gap-1 text-sm">
             {rows.map((version) => (
-              <li key={version.id} className="flex flex-col gap-1 rounded border p-2">
+              <li
+                key={version.id}
+                className="flex flex-col gap-1 rounded-lg border border-line-soft bg-surface-2 p-2.5"
+              >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">v{version.version}</span>
+                  <span className="font-mono text-xs font-semibold text-brand">
+                    v{version.version}
+                  </span>
                   {version.label && <span>{version.label}</span>}
-                  <span className="text-xs text-muted-foreground">
+                  <span className="font-mono text-xs text-ink-faint">
                     {version.created_at.slice(0, 16).replace("T", " ")}
                     {version.created_by_email ? ` · ${version.created_by_email}` : ""}
                   </span>
@@ -137,6 +163,26 @@ export function VersionHistoryCard({ projectId }: { projectId: string }) {
                     >
                       Roll back
                     </Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`Delete snapshot v${version.version}`}
+                      disabled={remove.isPending}
+                      onClick={() => {
+                        // Deleting a snapshot destroys the only record of that
+                        // design, and unlike a rollback it leaves nothing behind
+                        // to undo it with — so this one asks.
+                        if (
+                          window.confirm(
+                            `Delete snapshot v${version.version}? This cannot be undone.`
+                          )
+                        ) {
+                          remove.mutate(version.version);
+                        }
+                      }}
+                    >
+                      <Trash2 />
+                    </Button>
                   </div>
                 </div>
                 {openDiff === version.version && (
@@ -146,8 +192,8 @@ export function VersionHistoryCard({ projectId }: { projectId: string }) {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </PanelBody>
+    </Panel>
   );
 }
 
@@ -163,18 +209,16 @@ function DiffPanel({ projectId, version }: { projectId: string; version: number 
     enabled: !!accessToken,
   });
 
-  if (diff.isPending) return <p className="text-xs text-muted-foreground">Comparing…</p>;
-  if (!diff.data) return <p className="text-xs text-destructive">Could not compare.</p>;
+  if (diff.isPending) return <p className="text-xs text-ink-faint">Comparing…</p>;
+  if (!diff.data) return <p className="text-xs text-sev-crit">Could not compare.</p>;
   if (diff.data.identical) {
     return (
-      <p className="text-xs text-muted-foreground">
-        Nothing has changed since this snapshot.
-      </p>
+      <p className="text-xs text-ink-faint">Nothing has changed since this snapshot.</p>
     );
   }
 
   return (
-    <ul className="flex flex-col gap-0.5 border-t pt-1 text-xs text-muted-foreground">
+    <ul className="flex flex-col gap-0.5 border-t border-line-soft pt-1.5 font-mono text-[13px] text-ink-dim">
       {lines(diff.data).map((line, index) => (
         <li key={index}>{line}</li>
       ))}

@@ -24,6 +24,7 @@ from app.schemas.auth import (
     UserCreate,
     UserLogin,
     UserRead,
+    UserUpdate,
 )
 from app.services import oidc
 
@@ -74,6 +75,23 @@ def refresh(payload: RefreshRequest) -> AccessToken:
 
 @router.get("/me", response_model=UserRead)
 def me(current_user: User = Depends(get_current_user)) -> User:
+    return current_user
+
+
+@router.patch("/me", response_model=UserRead)
+def update_me(
+    payload: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Guided/advanced mode and onboarding completion — a user's own
+    preferences, so no other route needs to touch this record."""
+    if payload.ui_mode is not None:
+        current_user.ui_mode = payload.ui_mode
+    if payload.has_onboarded is not None:
+        current_user.has_onboarded = payload.has_onboarded
+    db.commit()
+    db.refresh(current_user)
     return current_user
 
 

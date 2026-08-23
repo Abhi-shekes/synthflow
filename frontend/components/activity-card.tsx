@@ -2,7 +2,13 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Panel,
+  PanelBody,
+  PanelEmpty,
+  PanelHeader,
+  PanelTitle,
+} from "@/components/ui/panel";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import type { AuditEvent } from "@/lib/types";
@@ -17,11 +23,14 @@ import type { AuditEvent } from "@/lib/types";
  * guessing, because a wrong description in an audit log is worse than a
  * terse one.
  */
-export function ActivityCard({ projectId }: { projectId: string }) {
+export function ActivityCard({ projectId }: { projectId?: string }) {
   const accessToken = useAuthStore((s) => s.accessToken);
 
   const events = useQuery({
-    queryKey: ["audit", projectId],
+    // `projectId` in the key, undefined included: the unscoped feed at
+    // /settings/activity and a project's own feed are different results and
+    // must not share a cache entry.
+    queryKey: ["audit", projectId ?? "all"],
     queryFn: () => api.listAuditEvents(accessToken!, { projectId, limit: 100 }),
     enabled: !!accessToken,
     // Polled rather than invalidated from every mutation on the page.
@@ -35,37 +44,36 @@ export function ActivityCard({ projectId }: { projectId: string }) {
   const rows = events.data ?? [];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Activity</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">
-          Every change to this project, and whether it came from a browser
-          session or an API key. Reads are not recorded — only things that
-          changed something.
+    <Panel>
+      <PanelHeader>
+        <PanelTitle>Activity</PanelTitle>
+        <span className="eyebrow">live · 10s</span>
+      </PanelHeader>
+      <PanelBody className="flex flex-col gap-3">
+        <p className="text-xs leading-relaxed text-ink-dim">
+          Every change {projectId ? "to this project" : "you can see"}, and whether it came from
+          a browser session or an API key. Reads are not recorded — only things that changed
+          something.
         </p>
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nothing recorded yet.
-          </p>
+          <PanelEmpty>Nothing recorded yet.</PanelEmpty>
         ) : (
-          <ul className="flex max-h-80 flex-col gap-1 overflow-y-auto text-sm">
+          <ul className="flex max-h-96 flex-col gap-1 overflow-y-auto text-xs">
             {rows.map((event) => (
               <li
                 key={event.id}
-                className="flex flex-wrap items-baseline gap-2 rounded border px-2 py-1"
+                className="flex flex-wrap items-baseline gap-2 rounded-lg border border-line-soft bg-surface-2 px-2.5 py-1.5"
               >
-                <span className="w-32 shrink-0 text-xs text-muted-foreground">
+                <span className="w-28 shrink-0 font-mono text-xs text-ink-faint">
                   {event.created_at.slice(0, 16).replace("T", " ")}
                 </span>
                 {event.status_code >= 400 && (
-                  <span className="rounded bg-destructive/10 px-1.5 text-xs font-medium text-destructive">
+                  <span className="rounded bg-sev-crit/10 px-1.5 font-mono text-xs font-medium text-sev-crit">
                     refused {event.status_code}
                   </span>
                 )}
                 <span>{describe(event)}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
+                <span className="ml-auto font-mono text-xs text-ink-faint">
                   {event.actor_kind === "api_key"
                     ? `key sfk_${event.api_key_prefix}…`
                     : (event.actor_email ?? "a deleted user")}
@@ -74,8 +82,8 @@ export function ActivityCard({ projectId }: { projectId: string }) {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </PanelBody>
+    </Panel>
   );
 }
 

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import type { ObjectStorageTargetCreateInput } from "@/lib/types";
@@ -47,7 +48,7 @@ export function AddStorageTargetDialog({
       reset({ region: "us-east-1", prefix: "", endpoint_url: "" });
       onCreated();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add the target"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add the target"),
   });
 
   return (

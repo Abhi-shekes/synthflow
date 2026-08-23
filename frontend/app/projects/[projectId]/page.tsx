@@ -1,67 +1,64 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
+import { Boxes, Download, LayoutGrid, Trash2, Waypoints } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-import { ActivityCard } from "@/components/activity-card";
-import { AddDatabaseConnectionDialog } from "@/components/add-database-connection-dialog";
-import { AddStorageTargetDialog } from "@/components/add-storage-target-dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { AddLookupTableDialog } from "@/components/add-lookup-table-dialog";
 import { AddRelationshipDialog } from "@/components/add-relationship-dialog";
-import { AddTimelineReplayDialog } from "@/components/add-timeline-replay-dialog";
 import { AppShell } from "@/components/app-shell";
-import { JobsCard } from "@/components/jobs-card";
-import { ShareProjectCard } from "@/components/share-project-card";
-import { VersionHistoryCard } from "@/components/version-history-card";
-import { StreamPreview } from "@/components/stream-preview";
-import { Badge } from "@/components/ui/badge";
+import { SystemMap, SystemMapList, type MapSource } from "@/components/map/system-map";
+import { CoachMark } from "@/components/onboarding/coach-mark";
+import { SectionHeader } from "@/components/section-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Panel,
+  PanelBody,
+  PanelEmpty,
+  PanelHeader,
+  PanelTitle,
+} from "@/components/ui/panel";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
+import { markChecklistStep } from "@/lib/checklist";
 import { downloadBlob } from "@/lib/download";
-import { useRequireAuth } from "@/lib/hooks";
-import { useAuthStore } from "@/lib/store";
-import type {
-  DatabaseConnectionCreateInput,
-  RelationshipCreateInput,
-  TimelineReplayCreateInput,
-} from "@/lib/types";
+import { fieldFill, OUTPUT_COLOR, SECTION_COLOR } from "@/lib/field-visual";
+import { useRequireAuth, useViewMode } from "@/lib/hooks";
+import { useMetricsStream } from "@/lib/use-metrics-stream";
+import { cn } from "@/lib/utils";
+import type { RelationshipCreateInput } from "@/lib/types";
 
 interface FormValues {
   name: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
-const WS_URL = API_URL.replace(/^http/, "ws");
-
-export default function ProjectDetailPage() {
+/**
+ * The project as a pipeline, on one canvas.
+ *
+ * What used to be here — ten stacked cards covering entities, relationships,
+ * storage, connections, lookup tables, replays, jobs, versions, activity and
+ * sharing — is now split by what you came to do: designing happens here, running
+ * happens on Data, and history happens on Governance.
+ */
+export default function ProjectMapPage() {
   const accessToken = useRequireAuth();
-  const currentUser = useAuthStore((s) => s.user);
   const router = useRouter();
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
   const { register, handleSubmit, reset } = useForm<FormValues>();
+  const [generateCount, setGenerateCount] = useState(100);
+
+  // Guided mode defaults to the list view — a canvas with z-plane parallax
+  // and level-of-detail-on-zoom is a real "wow" once you already understand
+  // the pipeline shape, and one more thing to parse before then. `null`
+  // means "follow the mode"; once someone flips the toggle by hand it's
+  // remembered as an explicit choice for the rest of this visit.
+  const mode = useViewMode();
+  const [canvasOverride, setCanvasOverride] = useState<boolean | null>(null);
+  const showCanvas = canvasOverride ?? mode === "advanced";
 
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
@@ -81,67 +78,10 @@ export default function ProjectDetailPage() {
     enabled: !!accessToken,
   });
 
-  const [sourceKind, setSourceKind] = useState<"object" | "table">("object");
-  const [sourceTargetId, setSourceTargetId] = useState("");
-  const [sourceConnectionId, setSourceConnectionId] = useState("");
-  const [sourceNames, setSourceNames] = useState("");
-
-  const sourceObjectsQuery = useQuery({
-    queryKey: ["source-objects", projectId, sourceTargetId],
-    queryFn: () => api.listSourceObjects(accessToken!, projectId, sourceTargetId),
-    enabled: !!accessToken && sourceKind === "object" && !!sourceTargetId,
-  });
-
-  const learnFromSource = useMutation({
-    // Profiling and applying are both in the mutation, not an `onSuccess`
-    // chain: a failure to create the project is just as worth reporting as
-    // a failure to read the source, and an error thrown from `onSuccess`
-    // never reaches `onError`.
-    mutationFn: async () => {
-      const names = sourceNames
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
-      if (names.length === 0) throw new Error("Name at least one object or table");
-      const profiled = await api.profileFromSource(accessToken!, {
-        project_id: projectId,
-        ...(sourceKind === "object"
-          ? { storage_target_id: sourceTargetId, object_keys: names }
-          : { connection_id: sourceConnectionId, tables: names }),
-      });
-      return api.importProject(accessToken!, profiled.template);
-    },
-    onSuccess: (project) => {
-      toast.success(
-        `Learned "${project.name}" from ${sourceKind === "object" ? "storage" : "the database"}`
-      );
-      setSourceNames("");
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not learn from that source"),
-  });
-
-  const storageTargetsQuery = useQuery({
-    queryKey: ["storage-targets", projectId],
-    queryFn: () => api.listStorageTargets(accessToken!, projectId),
+  const outputsQuery = useQuery({
+    queryKey: ["outputs", projectId],
+    queryFn: () => api.listOutputs(accessToken!, projectId),
     enabled: !!accessToken,
-  });
-
-  const testStorageTarget = useMutation({
-    mutationFn: (targetId: string) =>
-      api.testStorageTarget(accessToken!, projectId, targetId),
-    onSuccess: (result) =>
-      result.ok ? toast.success(result.detail) : toast.error(result.detail),
-    onError: (error: Error) => toast.error(error.message || "Could not reach the bucket"),
-  });
-
-  const deleteStorageTarget = useMutation({
-    mutationFn: (targetId: string) =>
-      api.deleteStorageTarget(accessToken!, projectId, targetId),
-    onSuccess: () => {
-      toast.success("Storage target removed");
-      queryClient.invalidateQueries({ queryKey: ["storage-targets", projectId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not remove the target"),
   });
 
   const connectionsQuery = useQuery({
@@ -150,19 +90,56 @@ export default function ProjectDetailPage() {
     enabled: !!accessToken,
   });
 
-  const lookupTablesQuery = useQuery({
-    queryKey: ["lookup-tables", projectId],
-    queryFn: () => api.listLookupTables(accessToken!, projectId),
+  const storageQuery = useQuery({
+    queryKey: ["storage-targets", projectId],
+    queryFn: () => api.listStorageTargets(accessToken!, projectId),
     enabled: !!accessToken,
   });
+
+  // The map animates its edges only while the engine is actually producing.
+  // A pipeline drawn as permanently flowing tells you nothing; one that moves
+  // when rows move tells you something true.
+  const { history } = useMetricsStream(accessToken, 4000);
+  const flowing = (history[history.length - 1]?.totalRowsPerSecond ?? 0) > 0;
+  const activity = flowing
+    ? Object.fromEntries(entitiesQuery.data?.map((entity) => [entity.id, 1]) ?? [])
+    : undefined;
+
+  const entities = entitiesQuery.data ?? [];
+  const relationships = relationshipsQuery.data ?? [];
 
   const createEntity = useMutation({
     mutationFn: (values: FormValues) => api.createEntity(accessToken!, projectId, values.name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entities", projectId] });
+      markChecklistStep("entity");
       reset();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not create entity"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not create entity"),
+  });
+
+  const createRelationship = useMutation({
+    mutationFn: (values: RelationshipCreateInput) =>
+      api.createRelationship(accessToken!, projectId, values),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["relationships", projectId] }),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not create relationship"),
+  });
+
+  const deleteRelationship = useMutation({
+    mutationFn: (id: string) => api.deleteRelationship(accessToken!, projectId, id),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["relationships", projectId] }),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete relationship"),
+  });
+
+  const exportProject = useMutation({
+    mutationFn: () => api.exportProject(accessToken!, projectId),
+    onSuccess: (template) => {
+      const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
+      downloadBlob(blob, `${template.name || "project"}.synthflow.json`);
+    },
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not export project"),
   });
 
   const deleteProject = useMutation({
@@ -171,786 +148,274 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       router.push("/projects");
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete project"),
-  });
-
-  const exportProject = useMutation({
-    mutationFn: () => api.exportProject(accessToken!, projectId),
-    onSuccess: (template) => {
-      const blob = new Blob([JSON.stringify(template, null, 2)], {
-        type: "application/json",
-      });
-      downloadBlob(blob, `${template.name || "project"}.synthflow.json`);
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not export project"),
-  });
-
-  const createRelationship = useMutation({
-    mutationFn: (values: RelationshipCreateInput) =>
-      api.createRelationship(accessToken!, projectId, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["relationships", projectId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not create relationship"),
-  });
-
-  const deleteRelationship = useMutation({
-    mutationFn: (relationshipId: string) =>
-      api.deleteRelationship(accessToken!, projectId, relationshipId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["relationships", projectId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete relationship"),
-  });
-
-  const createConnection = useMutation({
-    mutationFn: (values: DatabaseConnectionCreateInput) =>
-      api.createDatabaseConnection(accessToken!, projectId, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["database-connections", projectId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not add connection"),
-  });
-
-  const deleteConnection = useMutation({
-    mutationFn: (connectionId: string) =>
-      api.deleteDatabaseConnection(accessToken!, projectId, connectionId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["database-connections", projectId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete connection"),
-  });
-
-  const testConnection = useMutation({
-    mutationFn: (connectionId: string) =>
-      api.testDatabaseConnection(accessToken!, projectId, connectionId),
-    onSuccess: (result) => {
-      if (result.ok) toast.success(result.detail);
-      else toast.error(result.detail);
-    },
-    onError: (error: Error) => toast.error(error.message || "Test failed"),
-  });
-
-  const createLookupTable = useMutation({
-    mutationFn: (values: { name: string; file: File }) =>
-      api.createLookupTable(accessToken!, projectId, values.name, values.file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lookup-tables", projectId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not upload lookup table"),
-  });
-
-  const deleteLookupTable = useMutation({
-    mutationFn: (lookupTableId: string) =>
-      api.deleteLookupTable(accessToken!, projectId, lookupTableId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lookup-tables", projectId] });
-      // A deleted lookup table cascades to any entity's lookup attachment —
-      // refresh entities so those cards reflect that immediately.
-      queryClient.invalidateQueries({ queryKey: ["entities", projectId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete lookup table"),
-  });
-
-  const timelineReplaysQuery = useQuery({
-    queryKey: ["timeline-replays", projectId],
-    queryFn: () => api.listTimelineReplays(accessToken!, projectId),
-    enabled: !!accessToken,
-  });
-
-  const createTimelineReplay = useMutation({
-    mutationFn: (values: TimelineReplayCreateInput) =>
-      api.createTimelineReplay(accessToken!, projectId, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["timeline-replays", projectId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not add timeline replay"),
-  });
-
-  const deleteTimelineReplay = useMutation({
-    mutationFn: (replayId: string) =>
-      api.deleteTimelineReplay(accessToken!, projectId, replayId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["timeline-replays", projectId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete timeline replay"),
-  });
-
-  const [pushConnectionId, setPushConnectionId] = useState("");
-  const [pushEntityId, setPushEntityId] = useState("");
-  const [pushCount, setPushCount] = useState(10);
-
-  const pushToDatabase = useMutation({
-    mutationFn: () =>
-      api.pushToDatabaseConnection(
-        accessToken!,
-        projectId,
-        pushConnectionId,
-        pushEntityId,
-        pushCount
-      ),
-    onSuccess: (result) =>
-      toast.success(`Wrote ${result.rows_written} row(s) to '${result.table}'`),
-    onError: (error: Error) => toast.error(error.message || "Push failed"),
-  });
-
-  const [generateCount, setGenerateCount] = useState(10);
-  const [generated, setGenerated] = useState<Record<string, Record<string, unknown>[]> | null>(
-    null
-  );
-
-  const generateAll = useMutation({
-    mutationFn: () => api.generateProject(accessToken!, projectId, generateCount),
-    onSuccess: (data) => setGenerated(data),
-    onError: (error: Error) => toast.error(error.message || "Generation failed"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete project"),
   });
 
   const downloadCsvZip = useMutation({
     mutationFn: () => api.generateProjectCsvZip(accessToken!, projectId, generateCount),
-    onSuccess: (blob) => downloadBlob(blob, `${projectQuery.data?.name ?? "project"}.zip`),
-    onError: (error: Error) => toast.error(error.message || "CSV export failed"),
+    onSuccess: (blob) => downloadBlob(blob, "project.zip"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not export"),
   });
 
   const downloadExcel = useMutation({
     mutationFn: () => api.generateProjectExcel(accessToken!, projectId, generateCount),
-    onSuccess: (blob) => downloadBlob(blob, `${projectQuery.data?.name ?? "project"}.xlsx`),
-    onError: (error: Error) => toast.error(error.message || "Excel export failed"),
+    onSuccess: (blob) => downloadBlob(blob, "project.xlsx"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not export"),
   });
 
-  if (!accessToken) return null;
+  // The map's left column: everything this project can learn from or read.
+  const sources: MapSource[] = [
+    ...(storageQuery.data ?? []).map((target) => ({
+      id: target.id,
+      label: target.name,
+      detail: `s3://${target.bucket}`,
+      color: OUTPUT_COLOR.storage,
+    })),
+    ...(connectionsQuery.data ?? []).map((connection) => ({
+      id: connection.id,
+      label: connection.name,
+      detail: `${connection.dialect} · ${connection.database}`,
+      color: OUTPUT_COLOR.database,
+    })),
+  ];
 
-  const entities = entitiesQuery.data ?? [];
-  const entityById = new Map(entities.map((e) => [e.id, e]));
-  const lookupTables = lookupTablesQuery.data ?? [];
-  const lookupTableById = new Map(lookupTables.map((t) => [t.id, t]));
-  const fieldLabel = (entityId: string, fieldId: string) => {
-    const field = entityById.get(entityId)?.fields.find((f) => f.id === fieldId);
-    return field?.name ?? "?";
-  };
+  const fieldCount = entities.reduce((sum, entity) => sum + entity.fields.length, 0);
 
   return (
     <AppShell>
-      <div className="mx-auto flex max-w-3xl flex-col gap-6">
-        <div>
-          <Link href="/projects" className="text-sm text-muted-foreground hover:underline">
-            ← Projects
-          </Link>
-        </div>
-
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {projectQuery.data?.name ?? "…"}
-            </h1>
-            {projectQuery.data?.description && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {projectQuery.data.description}
-              </p>
-            )}
-          </div>
-          <div className="flex gap-2">
+      <div className="flex w-full flex-col gap-6">
+        <SectionHeader
+          icon={Boxes}
+          color={SECTION_COLOR.map}
+          eyebrow="System map"
+          title={projectQuery.data?.name ?? "…"}
+          description={
+            <>
+              {projectQuery.data?.description}
+              <span className="mt-1 block font-mono text-xs text-ink-faint">
+                {entities.length} entities · {fieldCount} fields · {relationships.length}{" "}
+                relationships · {(outputsQuery.data ?? []).length} outputs
+              </span>
+            </>
+          }
+          action={
+          <div className="flex items-center gap-2">
+            <div
+              role="group"
+              aria-label="Map or list view"
+              className="hidden items-center gap-0.5 rounded-lg border border-line bg-surface-2 p-0.5 md:flex"
+            >
+              <button
+                type="button"
+                title="List view"
+                aria-pressed={!showCanvas}
+                onClick={() => setCanvasOverride(false)}
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-md transition-colors",
+                  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  !showCanvas ? "bg-surface text-ink shadow-sm" : "text-ink-faint hover:text-ink-dim"
+                )}
+              >
+                <LayoutGrid className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                title="Map view"
+                aria-pressed={showCanvas}
+                onClick={() => setCanvasOverride(true)}
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-md transition-colors",
+                  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  showCanvas ? "bg-surface text-ink shadow-sm" : "text-ink-faint hover:text-ink-dim"
+                )}
+              >
+                <Waypoints className="size-3.5" />
+              </button>
+            </div>
             <Button
               variant="outline"
               size="sm"
-              disabled={exportProject.isPending}
               onClick={() => exportProject.mutate()}
+              disabled={exportProject.isPending}
             >
-              {exportProject.isPending ? "Exporting…" : "Export"}
+              <Download />
+              Export
             </Button>
             <Button
-              variant="destructive"
-              size="sm"
-              disabled={deleteProject.isPending}
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Delete project"
               onClick={() => {
-                if (confirm("Delete this project and all its entities?")) {
+                if (
+                  window.confirm(
+                    `Delete "${projectQuery.data?.name}" and everything in it? This cannot be undone.`
+                  )
+                ) {
                   deleteProject.mutate();
                 }
               }}
             >
-              Delete project
+              <Trash2 />
             </Button>
           </div>
-        </div>
+          }
+        />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Add an entity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form
-              className="flex gap-2"
-              onSubmit={handleSubmit((values) => createEntity.mutate(values))}
-            >
-              <Input placeholder="e.g. Customer" {...register("name", { required: true })} />
-              <Button type="submit" disabled={createEntity.isPending}>
-                Add
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        <CoachMark id="system-map">
+          <strong className="font-medium text-ink">This is the system map.</strong> Sources feed
+          entities, entities relate to each other, and entities feed destinations — left to
+          right. Click an entity to open and edit it.
+        </CoachMark>
 
-        <div className="flex flex-col gap-2">
-          <h2 className="text-lg font-medium">Entities</h2>
-          {entitiesQuery.data?.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No entities yet. Add one above to start defining fields.
-            </p>
-          )}
-          {entitiesQuery.data?.map((entity) => (
-            <Link key={entity.id} href={`/projects/${projectId}/entities/${entity.id}`}>
-              <Card className="transition-colors hover:border-foreground/30">
-                <CardContent className="flex items-center justify-between py-4">
-                  <span className="font-medium">{entity.name}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {entity.fields.length} field{entity.fields.length === 1 ? "" : "s"}
-                  </span>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Relationships</CardTitle>
-            <AddRelationshipDialog
+        {/* The canvas from md up, when selected; a list otherwise — always a
+            list below md, since a canvas on a phone is not a canvas. */}
+        {showCanvas && (
+          <div className="hidden md:block">
+            <SystemMap
+              projectId={projectId}
               entities={entities}
-              onSubmit={(v) => createRelationship.mutate(v)}
-              isPending={createRelationship.isPending}
+              relationships={relationships}
+              outputs={outputsQuery.data ?? []}
+              sources={sources}
+              activity={activity}
             />
-          </CardHeader>
-          <CardContent>
-            {entities.length < 2 && (
-              <p className="text-sm text-muted-foreground">
-                Add at least two entities (each with fields) to connect them.
-              </p>
-            )}
-            {relationshipsQuery.data?.length === 0 && entities.length >= 2 && (
-              <p className="text-sm text-muted-foreground">
-                No relationships yet. A relationship makes a foreign-key field on
-                one entity draw its generated values from another entity instead
-                of random data.
-              </p>
-            )}
-            {relationshipsQuery.data && relationshipsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {relationshipsQuery.data.map((rel) => (
-                  <li
-                    key={rel.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-medium">
-                        {entityById.get(rel.source_entity_id)?.name}.
-                        {fieldLabel(rel.source_entity_id, rel.source_field_id)}
-                      </span>
-                      {" → "}
-                      <span className="font-medium">
-                        {entityById.get(rel.target_entity_id)?.name}.
-                        {fieldLabel(rel.target_entity_id, rel.target_field_id)}
-                      </span>
-                      <span className="ml-2 text-muted-foreground">
-                        ({rel.relationship_type.replaceAll("_", "-")})
-                      </span>
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteRelationship.mutate(rel.id)}
-                    >
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        )}
+        <div className={cn(showCanvas && "md:hidden")}>
+          {entities.length === 0 ? (
+            <PanelEmpty>No entities yet.</PanelEmpty>
+          ) : (
+            <SystemMapList projectId={projectId} entities={entities} />
+          )}
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Learn from a connected source</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Profile data that already lives in this project&apos;s storage
-              bucket or database — the same places generation writes to — and
-              turn it into a new project. Reading a database table keeps its
-              real column types, so dates stay dates rather than becoming
-              strings the way a CSV export would.
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Panel tone="marked" accent={SECTION_COLOR.map}>
+            <PanelHeader>
+              <PanelTitle>Add an entity</PanelTitle>
+            </PanelHeader>
+            <PanelBody>
+              <form
+                className="flex items-center gap-2"
+                onSubmit={handleSubmit((values) => createEntity.mutate(values))}
+              >
+                <Input
+                  placeholder="Customer"
+                  className="h-8"
+                  {...register("name", { required: true })}
+                />
+                <Button size="sm" type="submit" disabled={createEntity.isPending}>
+                  {createEntity.isPending ? "Adding…" : "Add"}
+                </Button>
+              </form>
+              <p className="mt-2 text-xs leading-relaxed text-ink-dim">
+                An entity is one table of generated rows. It appears on the map immediately,
+                and its bands fill in as you add fields.
+              </p>
+            </PanelBody>
+          </Panel>
+
+          <Panel>
+            <PanelHeader>
+              <PanelTitle>Relationships</PanelTitle>
+              <AddRelationshipDialog
+                entities={entities}
+                onSubmit={(v) => createRelationship.mutate(v)}
+                isPending={createRelationship.isPending}
+              />
+            </PanelHeader>
+            <PanelBody className="flex flex-col gap-2">
+              {relationships.length === 0 ? (
+                <PanelEmpty>
+                  No relationships yet. Link two entities and a child&apos;s foreign keys start
+                  drawing from the parent&apos;s generated rows.
+                </PanelEmpty>
+              ) : (
+                <ul className="flex flex-col gap-1.5">
+                  {relationships.map((relationship) => {
+                    const source = entities.find(
+                      (e) => e.id === relationship.source_entity_id
+                    );
+                    const target = entities.find(
+                      (e) => e.id === relationship.target_entity_id
+                    );
+                    const field = source?.fields.find(
+                      (f) => f.id === relationship.source_field_id
+                    );
+                    return (
+                      <li
+                        key={relationship.id}
+                        className="flex flex-wrap items-center gap-2 rounded-lg border border-line-soft bg-surface-2 px-2.5 py-2"
+                      >
+                        {field && (
+                          <span
+                            aria-hidden
+                            className="h-3.5 w-1 shrink-0 rounded-full"
+                            style={{ background: fieldFill(field.field_type, field.preset) }}
+                          />
+                        )}
+                        <span className="font-mono text-xs">
+                          {source?.name ?? "?"} → {target?.name ?? "?"}
+                        </span>
+                        <span className="font-mono text-xs text-ink-faint">
+                          {relationship.relationship_type.replaceAll("_", " ")}
+                        </span>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          className="ml-auto"
+                          onClick={() => deleteRelationship.mutate(relationship.id)}
+                        >
+                          Delete
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </PanelBody>
+          </Panel>
+        </div>
+
+        <Panel>
+          <PanelHeader>
+            <PanelTitle>Export the whole project</PanelTitle>
+          </PanelHeader>
+          <PanelBody className="flex flex-col gap-3">
+            <p className="text-xs leading-relaxed text-ink-dim">
+              Generates every entity at once and downloads the result. Entities in a
+              relationship draw their foreign keys from the referenced entity&apos;s rows, so
+              the files stay consistent with each other. For anything large, or on a schedule,
+              queue a job on the Data page instead — it streams and survives a restart.
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={sourceKind}
-                onValueChange={(v) => setSourceKind((v ?? "object") as "object" | "table")}
-              >
-                <SelectTrigger className="w-44">
-                  {/* A render function, not a bare `SelectValue`: the
-                   * trigger otherwise shows the raw value — "object", or
-                   * worse, a target's UUID. */}
-                  <SelectValue>
-                    {(v: string) =>
-                      v === "table" ? "Database table" : "Object storage"
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="object">Object storage</SelectItem>
-                  <SelectItem value="table">Database table</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {sourceKind === "object" ? (
-                <Select value={sourceTargetId} onValueChange={(v) => setSourceTargetId(v ?? "")}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue>
-                      {(v: string) =>
-                        (storageTargetsQuery.data ?? []).find((t) => t.id === v)
-                          ?.name ?? "storage target"
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(storageTargetsQuery.data ?? []).map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Select
-                  value={sourceConnectionId}
-                  onValueChange={(v) => setSourceConnectionId(v ?? "")}
-                >
-                  <SelectTrigger className="w-48">
-                    <SelectValue>
-                      {(v: string) => {
-                        const c = (connectionsQuery.data ?? []).find((x) => x.id === v);
-                        return c ? `${c.name} (${c.dialect})` : "connection";
-                      }}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(connectionsQuery.data ?? []).map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name} ({c.dialect})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-
-              <Button
-                onClick={() => learnFromSource.mutate()}
-                disabled={
-                  learnFromSource.isPending ||
-                  (sourceKind === "object" ? !sourceTargetId : !sourceConnectionId)
-                }
-              >
-                {learnFromSource.isPending ? "Learning…" : "Learn"}
-              </Button>
-            </div>
-
-            <Textarea
-              className="min-h-20 font-mono text-xs"
-              placeholder={
-                sourceKind === "object"
-                  ? "customers.csv\norders.csv"
-                  : "customers\norders"
-              }
-              value={sourceNames}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                setSourceNames(e.target.value)
-              }
-            />
-            <p className="text-xs text-muted-foreground">
-              One per line. Naming several related tables or files at once is
-              what lets relationships between them be detected.
-              {sourceKind === "object" &&
-                " Object keys are relative to the target's prefix, so don't repeat it."}
-              {sourceKind === "object" && (sourceObjectsQuery.data?.length ?? 0) > 0 && (
-                <>
-                  {" "}Available:{" "}
-                  <span className="font-mono">
-                    {sourceObjectsQuery.data!.slice(0, 8).join(", ")}
-                  </span>
-                </>
-              )}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Object storage</CardTitle>
-            <AddStorageTargetDialog
-              projectId={projectId}
-              onCreated={() =>
-                queryClient.invalidateQueries({ queryKey: ["storage-targets", projectId] })
-              }
-            />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Upload a generation job&apos;s file to a bucket when it finishes.
-              Works with AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces and
-              Backblaze B2 — pick a target when you queue a job. The local
-              artifact is kept either way, so a failed upload never loses a run.
-            </p>
-            {storageTargetsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No storage targets yet.</p>
-            )}
-            {storageTargetsQuery.data && storageTargetsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {storageTargetsQuery.data.map((target) => (
-                  <li
-                    key={target.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-medium">{target.name}</span>{" "}
-                      <Badge variant="secondary">{target.provider}</Badge>{" "}
-                      <span className="font-mono text-xs text-muted-foreground">
-                        s3://{target.bucket}
-                        {target.prefix ? `/${target.prefix}` : ""}
-                      </span>
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => testStorageTarget.mutate(target.id)}
-                        disabled={testStorageTarget.isPending}
-                      >
-                        Test
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteStorageTarget.mutate(target.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Database connections</CardTitle>
-            <AddDatabaseConnectionDialog
-              onSubmit={(v) => createConnection.mutate(v)}
-              isPending={createConnection.isPending}
-            />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Write generated rows straight into an external database instead
-              of just downloading them. PostgreSQL, MySQL and MongoDB.
-            </p>
-            {connectionsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No connections yet.</p>
-            )}
-            {connectionsQuery.data && connectionsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {connectionsQuery.data.map((conn) => (
-                  <li
-                    key={conn.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-medium">{conn.name}</span>{" "}
-                      <Badge variant="secondary">{conn.dialect}</Badge>{" "}
-                      <span className="text-muted-foreground">
-                        {conn.host}:{conn.port}/{conn.database}
-                      </span>
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => testConnection.mutate(conn.id)}
-                        disabled={testConnection.isPending}
-                      >
-                        Test
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteConnection.mutate(conn.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {connectionsQuery.data && connectionsQuery.data.length > 0 && entities.length > 0 && (
-              <div className="flex flex-col gap-2 rounded-md border p-3">
-                <p className="text-sm font-medium">Push data to a connection</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Select value={pushConnectionId} onValueChange={(v) => setPushConnectionId(v ?? "")}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue>
-                        {(v: string) =>
-                          v ? connectionsQuery.data?.find((c) => c.id === v)?.name : "Connection"
-                        }
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {connectionsQuery.data.map((conn) => (
-                        <SelectItem key={conn.id} value={conn.id}>
-                          {conn.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={pushEntityId} onValueChange={(v) => setPushEntityId(v ?? "")}>
-                    <SelectTrigger className="w-48">
-                      <SelectValue>
-                        {(v: string) => (v ? entities.find((e) => e.id === v)?.name : "Entity")}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {entities.map((e) => (
-                        <SelectItem key={e.id} value={e.id}>
-                          {e.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={5000}
-                    value={pushCount}
-                    onChange={(e) => setPushCount(Number(e.target.value))}
-                    className="w-24"
-                  />
-                  <Button
-                    onClick={() => pushToDatabase.mutate()}
-                    disabled={pushToDatabase.isPending || !pushConnectionId || !pushEntityId}
-                  >
-                    {pushToDatabase.isPending ? "Pushing…" : "Push"}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <JobsCard projectId={projectId} entities={entities} />
-
-        {projectQuery.data && (
-          <ShareProjectCard
-            projectId={projectId}
-            organizationId={projectQuery.data.organization_id ?? null}
-            isOwner={projectQuery.data.owner_id === currentUser?.id}
-          />
-        )}
-
-        <VersionHistoryCard projectId={projectId} />
-
-        <ActivityCard projectId={projectId} />
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Lookup tables</CardTitle>
-            <AddLookupTableDialog
-              onSubmit={(v) => createLookupTable.mutate(v)}
-              isPending={createLookupTable.isPending}
-            />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Reference data uploaded once (CSV, Excel, or JSON) that any
-              field in this project can draw real values from — see a
-              field&apos;s <span className="font-mono">Add lookup</span> option
-              on its entity page.
-            </p>
-            {lookupTablesQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No lookup tables yet.</p>
-            )}
-            {lookupTablesQuery.data && lookupTablesQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {lookupTablesQuery.data.map((table) => (
-                  <li
-                    key={table.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-medium">{table.name}</span>{" "}
-                      <span className="text-muted-foreground">
-                        {table.row_count} row{table.row_count === 1 ? "" : "s"} ·{" "}
-                        {table.columns.join(", ")}
-                      </span>
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteLookupTable.mutate(table.id)}
-                    >
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Timeline replays</CardTitle>
-            <AddTimelineReplayDialog
-              lookupTables={lookupTables}
-              onSubmit={(v) => createTimelineReplay.mutate(v)}
-              isPending={createTimelineReplay.isPending}
-            />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Replays an uploaded lookup table&apos;s rows over a public
-              WebSocket in their original timestamp order, at N&times; real
-              time, looping once it reaches the end — a historical dataset
-              turned into a live feed for testing stream consumers against
-              realistic timing, not just realistic content.
-            </p>
-            {timelineReplaysQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No timeline replays yet.</p>
-            )}
-            {timelineReplaysQuery.data && timelineReplaysQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-3">
-                {timelineReplaysQuery.data.map((replay) => {
-                  const wsUrl = `${WS_URL}/public/replay/${replay.token}`;
-                  return (
-                    <li key={replay.id} className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                        <span className="truncate">
-                          <span className="font-medium">
-                            {lookupTableById.get(replay.lookup_table_id)?.name ?? "?"}
-                          </span>
-                          <span className="ml-2 text-muted-foreground">
-                            {replay.timestamp_column} · {replay.speed_multiplier}&times;
-                          </span>
-                        </span>
-                        <div className="flex shrink-0 gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              navigator.clipboard.writeText(wsUrl);
-                              toast.success("Copied");
-                            }}
-                          >
-                            Copy URL
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteTimelineReplay.mutate(replay.id)}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
-                      <StreamPreview wsUrl={wsUrl} />
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Generate all entities</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Generates every entity in this project at once. Entities involved in
-              a relationship draw their foreign-key values from the referenced
-              entity&apos;s generated rows.
-            </p>
-            <div className="flex items-center gap-2">
               <Input
                 type="number"
                 min={1}
                 max={5000}
+                className="h-8 w-28"
                 value={generateCount}
-                onChange={(e) => setGenerateCount(Number(e.target.value))}
-                className="w-32"
+                onChange={(event) => setGenerateCount(Number(event.target.value))}
               />
               <Button
-                onClick={() => generateAll.mutate()}
-                disabled={generateAll.isPending || entities.length === 0}
-              >
-                {generateAll.isPending ? "Generating…" : "Generate all"}
-              </Button>
-              <Button
+                size="sm"
                 variant="outline"
                 onClick={() => downloadCsvZip.mutate()}
                 disabled={downloadCsvZip.isPending || entities.length === 0}
               >
-                {downloadCsvZip.isPending ? "Preparing…" : "Download CSV (zip)"}
+                {downloadCsvZip.isPending ? "Preparing…" : "CSV (zip)"}
               </Button>
               <Button
+                size="sm"
                 variant="outline"
                 onClick={() => downloadExcel.mutate()}
                 disabled={downloadExcel.isPending || entities.length === 0}
               >
-                {downloadExcel.isPending ? "Preparing…" : "Download Excel"}
+                {downloadExcel.isPending ? "Preparing…" : "Excel"}
               </Button>
             </div>
-
-            {generated &&
-              Object.entries(generated).map(([entityName, rows]) => (
-                <div key={entityName} className="flex flex-col gap-2">
-                  <h3 className="text-sm font-medium">
-                    {entityName} ({rows.length} row{rows.length === 1 ? "" : "s"})
-                  </h3>
-                  {rows.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No fields to generate.</p>
-                  ) : (
-                    <div className="overflow-x-auto rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            {Object.keys(rows[0]).map((col) => (
-                              <TableHead key={col}>{col}</TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {rows.map((row, i) => (
-                            <TableRow key={i}>
-                              {Object.keys(rows[0]).map((col) => (
-                                <TableCell key={col} className="font-mono text-xs">
-                                  {row[col] === null || row[col] === undefined
-                                    ? "null"
-                                    : typeof row[col] === "object"
-                                      ? JSON.stringify(row[col])
-                                      : String(row[col])}
-                                </TableCell>
-                              ))}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </div>
-              ))}
-          </CardContent>
-        </Card>
+          </PanelBody>
+        </Panel>
       </div>
     </AppShell>
   );

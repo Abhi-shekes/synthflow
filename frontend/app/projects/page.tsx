@@ -7,9 +7,10 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app-shell";
+import { GettingStartedCard } from "@/components/onboarding/getting-started-card";
 import { SchemaImportDialog } from "@/components/schema-import-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Eyebrow, Panel, PanelBody, PanelEmpty } from "@/components/ui/panel";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
 import { useRequireAuth } from "@/lib/hooks";
 import type { ProjectTemplate } from "@/lib/types";
@@ -55,7 +57,7 @@ export default function ProjectsPage() {
       setOpen(false);
       reset();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not create project"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not create project"),
   });
 
   const importMutation = useMutation({
@@ -64,7 +66,7 @@ export default function ProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       toast.success("Project imported");
     },
-    onError: (error: Error) => toast.error(error.message || "Could not import project"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not import project"),
   });
 
   const useStarterTemplate = useMutation({
@@ -76,7 +78,7 @@ export default function ProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       toast.success(`"${project.name}" created from starter template`);
     },
-    onError: (error: Error) => toast.error(error.message || "Could not use starter template"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not use starter template"),
   });
 
   const handleImportFile = async (file: File) => {
@@ -94,10 +96,19 @@ export default function ProjectsPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto flex max-w-4xl flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-          <div className="flex gap-2">
+      <div className="flex w-full flex-col gap-8">
+        <GettingStartedCard hasProject={(projectsQuery.data?.length ?? 0) > 0} />
+
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <Eyebrow>Workspace</Eyebrow>
+            <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">Projects</h1>
+            <p className="mt-1.5 max-w-prose text-sm text-ink-dim">
+              A project is one system being modelled — its entities, how they relate, and
+              everywhere its data goes.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <input
               ref={importInputRef}
               type="file"
@@ -111,16 +122,17 @@ export default function ProjectsPage() {
             />
             <Button
               variant="outline"
+              size="sm"
               disabled={importMutation.isPending}
               onClick={() => importInputRef.current?.click()}
             >
-              {importMutation.isPending ? "Importing…" : "Import project"}
+              {importMutation.isPending ? "Importing…" : "Import"}
             </Button>
             <SchemaImportDialog
               onImported={() => queryClient.invalidateQueries({ queryKey: ["projects"] })}
             />
             <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger render={<Button>New project</Button>} />
+              <DialogTrigger render={<Button size="sm">New project</Button>} />
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>New project</DialogTitle>
@@ -146,70 +158,79 @@ export default function ProjectsPage() {
               </DialogContent>
             </Dialog>
           </div>
-        </div>
+        </header>
 
-        {projectsQuery.isLoading && (
-          <p className="text-sm text-muted-foreground">Loading projects…</p>
-        )}
+        {projectsQuery.isLoading && <p className="text-sm text-ink-dim">Loading projects…</p>}
 
         {projectsQuery.data?.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No projects yet. Create one to start modeling entities.
-          </p>
+          <PanelEmpty>
+            No projects yet. Create one from scratch, import a schema you already have, or
+            start from one of the templates below.
+          </PanelEmpty>
         )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-          {projectsQuery.data?.map((project) => (
-            <Link key={project.id} href={`/projects/${project.id}`}>
-              <Card className="h-full transition-colors hover:border-foreground/30">
-                <CardHeader>
-                  <CardTitle className="text-base">{project.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    {project.description || "No description"}
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <h2 className="text-lg font-semibold tracking-tight">Starter templates</h2>
-          <p className="text-sm text-muted-foreground">
-            Pre-built entities, relationships, and simulation config for common domains —
-            creates a new project you can freely edit afterward.
-          </p>
-        </div>
-
-        {starterTemplatesQuery.isLoading && (
-          <p className="text-sm text-muted-foreground">Loading starter templates…</p>
+        {(projectsQuery.data?.length ?? 0) > 0 && (
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {projectsQuery.data?.map((project) => (
+              <li key={project.id}>
+                <Link href={`/projects/${project.id}`} className="block h-full">
+                  <Panel className="sf-lift h-full">
+                    <PanelBody className="flex h-full flex-col gap-1.5">
+                      <p className="font-display text-sm font-semibold tracking-tight">
+                        {project.name}
+                      </p>
+                      <p className="line-clamp-2 text-xs leading-relaxed text-ink-dim">
+                        {project.description || "No description"}
+                      </p>
+                      <p className="mt-auto pt-2 font-mono text-xs text-ink-faint">
+                        {project.organization_id ? "shared" : "personal"} · updated{" "}
+                        {project.updated_at.slice(0, 10)}
+                      </p>
+                    </PanelBody>
+                  </Panel>
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-          {starterTemplatesQuery.data?.map((t) => {
-            const isThisPending = useStarterTemplate.isPending && useStarterTemplate.variables === t.key;
-            return (
-              <Card key={t.key} className="flex h-full flex-col justify-between">
-                <CardHeader>
-                  <CardTitle className="text-base">{t.name}</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3">
-                  <p className="text-sm text-muted-foreground">{t.description}</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={useStarterTemplate.isPending}
-                    onClick={() => useStarterTemplate.mutate(t.key)}
-                  >
-                    {isThisPending ? "Creating…" : "Use template"}
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <section className="flex flex-col gap-3">
+          <div>
+            <Eyebrow>Starter templates</Eyebrow>
+            <p className="mt-1 max-w-prose text-xs leading-relaxed text-ink-dim">
+              Pre-built entities, relationships and simulation config for common domains.
+              Each creates an ordinary project you can edit freely afterwards.
+            </p>
+          </div>
+
+          {starterTemplatesQuery.isLoading && (
+            <p className="text-sm text-ink-dim">Loading starter templates…</p>
+          )}
+
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {starterTemplatesQuery.data?.map((t) => (
+              <li key={t.key}>
+                <Panel tone="flat" className="flex h-full flex-col">
+                  <PanelBody className="flex h-full flex-col gap-2">
+                    <p className="font-display text-sm font-semibold tracking-tight">{t.name}</p>
+                    <p className="text-xs leading-relaxed text-ink-dim">{t.description}</p>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      className="mt-auto self-start"
+                      disabled={useStarterTemplate.isPending}
+                      onClick={() => useStarterTemplate.mutate(t.key)}
+                    >
+                      {useStarterTemplate.isPending && useStarterTemplate.variables === t.key
+                        ? "Creating…"
+                        : "Use template"}
+                    </Button>
+                  </PanelBody>
+                </Panel>
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
     </AppShell>
   );

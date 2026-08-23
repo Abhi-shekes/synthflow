@@ -201,6 +201,7 @@ async def audit_mutations(request: Request, call_next):
 app.include_router(health.router)
 # Outside /api/v1 and unauthenticated, like /healthz — see its docstring.
 app.include_router(metrics.router)
+app.include_router(metrics.summary_router, prefix=settings.API_V1_PREFIX)
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(api_keys.router, prefix=settings.API_V1_PREFIX)
 app.include_router(audit_routes.router, prefix=settings.API_V1_PREFIX)

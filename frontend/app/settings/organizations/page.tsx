@@ -1,11 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app-shell";
+import { SectionHeader } from "@/components/section-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
+import { SECTION_COLOR } from "@/lib/field-visual";
 import { useRequireAuth } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/store";
 import { ROLES, type Organization, type Role } from "@/lib/types";
@@ -57,22 +61,25 @@ export default function OrganizationsPage() {
       setName("");
       return queryClient.invalidateQueries({ queryKey: ["organizations"] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not create it"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not create it"),
   });
 
   return (
     <AppShell>
-      <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      <div className="flex w-full flex-col gap-6">
         <div>
           <Link href="/projects" className="text-sm text-muted-foreground">
             ← Projects
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Organizations</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A group of people who share projects. Projects stay personal
-            until you share one — a project without an organization behaves
-            exactly as it always did.
-          </p>
+          <div className="mt-2">
+            <SectionHeader
+              icon={Users}
+              color={SECTION_COLOR.governance}
+              eyebrow="Workspace"
+              title="Organizations"
+              description="A group of people who share projects. Projects stay personal until you share one — a project without an organization behaves exactly as it always did."
+            />
+          </div>
         </div>
 
         <Card>
@@ -136,20 +143,20 @@ function OrgCard({ org }: { org: Organization }) {
       setEmail("");
       return invalidate();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add them"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add them"),
   });
 
   const changeRole = useMutation({
     mutationFn: ({ memberId, next }: { memberId: string; next: Role }) =>
       api.updateMemberRole(accessToken!, org.id, memberId, next),
     onSuccess: () => invalidate(),
-    onError: (error: Error) => toast.error(error.message || "Could not change that role"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not change that role"),
   });
 
   const remove = useMutation({
     mutationFn: (memberId: string) => api.removeMember(accessToken!, org.id, memberId),
     onSuccess: () => invalidate(),
-    onError: (error: Error) => toast.error(error.message || "Could not remove them"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not remove them"),
   });
 
   const dissolve = useMutation({
@@ -158,7 +165,7 @@ function OrgCard({ org }: { org: Organization }) {
       toast.success(`"${org.name}" dissolved — its projects went back to their owners`);
       return queryClient.invalidateQueries({ queryKey: ["organizations"] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not dissolve it"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not dissolve it"),
   });
 
   // An admin cannot grant a role above their own, and the server refuses it.

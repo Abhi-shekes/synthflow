@@ -4,10 +4,12 @@ import type {
   DatabaseConnectionTestResult,
   DatabasePushResult,
   Entity,
+  EntityField,
   ErrorInjection,
   ErrorInjectionCreateInput,
   EventTrigger,
   FieldCreateInput,
+  FieldUpdateInput,
   GenerationJob,
   GeneratorPresetSummary,
   GeoRoute,
@@ -22,10 +24,13 @@ import type {
   LookupTable,
   MQTTOutput,
   MQTTOutputCreateInput,
+  MetricsSummary,
   OutputPluginSummary,
   OutputSummary,
   PluginOutput,
   PluginOutputCreateInput,
+  PrivacyReport,
+  PrivacyReportRequest,
   ProfileResponse,
   Project,
   ProjectTemplate,
@@ -41,6 +46,7 @@ import type {
   Trend,
   TrendCreateInput,
   User,
+  UserUpdateInput,
   WebSocketStream,
   Workflow,
   WorkflowCreateInput,
@@ -76,6 +82,8 @@ import type {
   RollbackResult,
 } from "@/lib/types";
 
+import { useAuthStore } from "@/lib/store";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
 export class ApiError extends Error {
@@ -86,10 +94,69 @@ export class ApiError extends Error {
   }
 }
 
+// Access tokens expire in 30 minutes (backend/app/core/config.py); nothing
+// used to refresh one, so an idle tab quietly 401'd on every call forever
+// once it did. One shared in-flight refresh — concurrent 401s from several
+// requests firing at once await the *same* call rather than each starting
+// their own — swaps in a new access token via the still-valid refresh
+// token (7 days), transparently, with no user-visible interruption.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = useAuthStore.getState().refreshToken;
+  if (!refreshToken) return null;
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!res.ok) return null;
+        const data: { access_token: string } = await res.json();
+        useAuthStore.getState().setAccessToken(data.access_token);
+        return data.access_token;
+      } catch {
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
+}
+
+async function extractDetail(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    return body?.detail ?? fallback;
+  } catch {
+    return fallback; // response had no JSON body
+  }
+}
+
+/**
+ * Refresh-and-retry-once on a 401, for a request already carrying a token.
+ *
+ * No path exclusion for the auth endpoints: `login`/`signup` never pass a
+ * token to begin with (`!token` already short-circuits them), and
+ * `/auth/refresh` is called directly with `fetch` inside
+ * `refreshAccessToken` below, never through `request()` — so there's
+ * nothing here that would recurse. `/auth/me` *does* carry a token and
+ * benefits from the same retry as everything else.
+ */
+async function withRefreshRetry(token: string | null | undefined, isRetry: boolean) {
+  if (!token || isRetry) return null;
+  return refreshAccessToken();
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  token?: string | null
+  token?: string | null,
+  isRetry = false
 ): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -100,15 +167,14 @@ async function request<T>(
     },
   });
 
+  if (res.status === 401) {
+    const newToken = await withRefreshRetry(token, isRetry);
+    if (newToken) return request<T>(path, options, newToken, true);
+    if (token) useAuthStore.getState().logout();
+  }
+
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.detail) detail = body.detail;
-    } catch {
-      // response had no JSON body
-    }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, await extractDetail(res, res.statusText));
   }
 
   if (res.status === 204) return undefined as T;
@@ -118,7 +184,8 @@ async function request<T>(
 async function requestBlob(
   path: string,
   options: RequestInit,
-  token: string
+  token: string,
+  isRetry = false
 ): Promise<Blob> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -128,35 +195,39 @@ async function requestBlob(
       ...options.headers,
     },
   });
+
+  if (res.status === 401) {
+    const newToken = await withRefreshRetry(token, isRetry);
+    if (newToken) return requestBlob(path, options, newToken, true);
+    useAuthStore.getState().logout();
+  }
+
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.detail) detail = body.detail;
-    } catch {
-      // response had no JSON body
-    }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, await extractDetail(res, res.statusText));
   }
   return res.blob();
 }
 
-async function requestUpload<T>(path: string, formData: FormData, token: string): Promise<T> {
+async function requestUpload<T>(
+  path: string,
+  formData: FormData,
+  token: string,
+  isRetry = false
+): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: formData,
   });
 
+  if (res.status === 401) {
+    const newToken = await withRefreshRetry(token, isRetry);
+    if (newToken) return requestUpload<T>(path, formData, newToken, true);
+    useAuthStore.getState().logout();
+  }
+
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.detail) detail = body.detail;
-    } catch {
-      // response had no JSON body
-    }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, await extractDetail(res, res.statusText));
   }
 
   return res.json();
@@ -182,6 +253,9 @@ export const api = {
 
   me: (token: string) => request<User>("/api/v1/auth/me", {}, token),
 
+  updateMe: (token: string, data: UserUpdateInput) =>
+    request<User>("/api/v1/auth/me", { method: "PATCH", body: JSON.stringify(data) }, token),
+
   listProjects: (token: string) => request<Project[]>("/api/v1/projects", {}, token),
 
   createProject: (token: string, data: { name: string; description?: string }) =>
@@ -206,6 +280,13 @@ export const api = {
   getEntity: (token: string, projectId: string, entityId: string) =>
     request<Entity>(`/api/v1/projects/${projectId}/entities/${entityId}`, {}, token),
 
+  updateEntity: (token: string, projectId: string, entityId: string, name: string) =>
+    request<Entity>(
+      `/api/v1/projects/${projectId}/entities/${entityId}`,
+      { method: "PATCH", body: JSON.stringify({ name }) },
+      token
+    ),
+
   deleteEntity: (token: string, projectId: string, entityId: string) =>
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}`,
@@ -220,6 +301,24 @@ export const api = {
       token
     ),
 
+  /** Partial update — send only the keys you mean to change. The backend
+   * applies `exclude_unset`, so an omitted key keeps its stored value and an
+   * explicit `null` clears it. That distinction is load-bearing for
+   * `null_probability`, where null means "unspecified, use the engine
+   * default" and 0 means "never null". */
+  updateField: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    fieldId: string,
+    patch: FieldUpdateInput
+  ) =>
+    request<EntityField>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/fields/${fieldId}`,
+      { method: "PATCH", body: JSON.stringify(patch) },
+      token
+    ),
+
   deleteField: (token: string, projectId: string, entityId: string, fieldId: string) =>
     request<void>(
       `/api/v1/projects/${projectId}/entities/${entityId}/fields/${fieldId}`,
@@ -231,6 +330,22 @@ export const api = {
     request<Record<string, unknown>[]>(
       `/api/v1/projects/${projectId}/entities/${entityId}/generate`,
       { method: "POST", body: JSON.stringify({ count }) },
+      token
+    ),
+
+  /** Measures how re-identifiable generated rows are. Reports; never alters —
+   * a failing k comes back as `passes: false` for the caller to act on, because
+   * suppressing or generalising rows here would silently change the very
+   * distribution the project was configured to produce. */
+  privacyReport: (
+    token: string,
+    projectId: string,
+    entityId: string,
+    body: PrivacyReportRequest
+  ) =>
+    request<PrivacyReport>(
+      `/api/v1/projects/${projectId}/entities/${entityId}/privacy-report`,
+      { method: "POST", body: JSON.stringify(body) },
       token
     ),
 
@@ -304,8 +419,6 @@ export const api = {
       token
     ),
 
-  listRules: (token: string, projectId: string, entityId: string) =>
-    request<Rule[]>(`/api/v1/projects/${projectId}/entities/${entityId}/rules`, {}, token),
 
   createRule: (token: string, projectId: string, entityId: string, condition: string) =>
     request<Rule>(
@@ -321,12 +434,6 @@ export const api = {
       token
     ),
 
-  listEventTriggers: (token: string, projectId: string, entityId: string) =>
-    request<EventTrigger[]>(
-      `/api/v1/projects/${projectId}/entities/${entityId}/event-triggers`,
-      {},
-      token
-    ),
 
   createEventTrigger: (
     token: string,
@@ -348,8 +455,6 @@ export const api = {
       token
     ),
 
-  listWorkflows: (token: string, projectId: string, entityId: string) =>
-    request<Workflow[]>(`/api/v1/projects/${projectId}/entities/${entityId}/workflows`, {}, token),
 
   createWorkflow: (
     token: string,
@@ -473,8 +578,6 @@ export const api = {
       token
     ),
 
-  listTrends: (token: string, projectId: string, entityId: string) =>
-    request<Trend[]>(`/api/v1/projects/${projectId}/entities/${entityId}/trends`, {}, token),
 
   createTrend: (token: string, projectId: string, entityId: string, data: TrendCreateInput) =>
     request<Trend>(
@@ -490,12 +593,6 @@ export const api = {
       token
     ),
 
-  listErrorInjections: (token: string, projectId: string, entityId: string) =>
-    request<ErrorInjection[]>(
-      `/api/v1/projects/${projectId}/entities/${entityId}/error-injections`,
-      {},
-      token
-    ),
 
   createErrorInjection: (
     token: string,
@@ -542,12 +639,6 @@ export const api = {
       token
     ),
 
-  listLookupAttachments: (token: string, projectId: string, entityId: string) =>
-    request<LookupAttachment[]>(
-      `/api/v1/projects/${projectId}/entities/${entityId}/lookup-attachments`,
-      {},
-      token
-    ),
 
   createLookupAttachment: (
     token: string,
@@ -594,12 +685,6 @@ export const api = {
       token
     ),
 
-  listGeoRoutes: (token: string, projectId: string, entityId: string) =>
-    request<GeoRoute[]>(
-      `/api/v1/projects/${projectId}/entities/${entityId}/geo-routes`,
-      {},
-      token
-    ),
 
   createGeoRoute: (
     token: string,
@@ -698,6 +783,11 @@ export const api = {
       token
     ),
 
+  /** Cumulative totals plus `captured_at`, not rates — see the endpoint's
+   * docstring. Two consecutive samples and the elapsed time between them are
+   * what the monitor turns into a per-second figure. */
+  metricsSummary: (token: string) => request<MetricsSummary>("/api/v1/metrics/summary", {}, token),
+
   listInstallConfig: (token: string) =>
     request<InstallFeature[]>("/api/v1/install-config", {}, token),
 
@@ -791,9 +881,6 @@ export const api = {
       { method: "POST" },
       token
     ),
-
-  jobArtifactUrl: (projectId: string, jobId: string, name: string) =>
-    `/api/v1/projects/${projectId}/jobs/${jobId}/artifacts/${encodeURIComponent(name)}`,
 
   downloadJobArtifact: (token: string, projectId: string, jobId: string, name: string) =>
     requestBlob(

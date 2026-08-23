@@ -913,6 +913,16 @@ field, disappears when Required is ticked, and the field list shows
 Phase 12's warehouses (skipped at the user's request) and Phase 14's SAML.
 Phase 6 (AI) stays deliberately unstarted; nothing depends on it.
 
+**A parallel frontend track is now open**: see [UI_TODO.md](UI_TODO.md) for the
+checklist and [UI_UPGRADE_PLAN.md](UI_UPGRADE_PLAN.md) for the reasoning. It
+exists because an audit found the UI is a working form over the API rather than
+a surface for what the backend does — the entity page is 1,655 lines of sixteen
+identically-weighted cards, and ten backend capabilities have no frontend at
+all, including the whole of Phase 10's k-anonymity reporting and the in-app live
+monitoring the README promises. U1 (design foundation) and the one backend
+addition it needs (`GET /api/v1/metrics/summary`) are done. The track is
+independent of Phase 15 and can run alongside it.
+
 Next is **Phase 15 (Developer Experience)**: generated client libraries, a
 full CLI beyond `init`, pytest fixtures, a GitHub Action and a Terraform
 provider. Phase 14's API keys unblocked all of it — until this release there

@@ -1,11 +1,16 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,9 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
-import type { ChangeEvent, Entity, RecordVersion, SCDType } from "@/lib/types";
+import type {
+  ChangeEvent,
+  Entity,
+  RecordVersion,
+  SCDType,
+  StoredRecord,
+} from "@/lib/types";
 
 /**
  * Record stores for one entity.
@@ -78,7 +90,7 @@ export function RecordStoresCard({
       setName("default");
       return invalidate();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not create that store"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not create that store"),
   });
 
   const generate = useMutation({
@@ -88,7 +100,7 @@ export function RecordStoresCard({
       toast.success(
         `${result.rows.length} added — ${result.total_active} records in the store now`
       ),
-    onError: (error: Error) => toast.error(error.message || "Could not generate into that store"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not generate into that store"),
   });
 
   const churn = useMutation({
@@ -103,7 +115,7 @@ export function RecordStoresCard({
         `${result.events.length} change${result.events.length === 1 ? "" : "s"} — ` +
           `${result.total_active} records active`
       ),
-    onError: (error: Error) => toast.error(error.message || "Could not apply changes"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not apply changes"),
   });
 
   const backfill = useMutation({
@@ -124,23 +136,23 @@ export function RecordStoresCard({
         `${result.events_written} events across ${backfillDays} days — ` +
           `${result.total_active} records active`
       ),
-    onError: (error: Error) => toast.error(error.message || "Could not backfill"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not backfill"),
   });
 
   const remove = useMutation({
     mutationFn: (storeId: string) =>
       api.deleteRecordStore(accessToken!, projectId, entity.id, storeId),
     onSuccess: () => invalidate(),
-    onError: (error: Error) => toast.error(error.message || "Could not delete that store"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete that store"),
   });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Record stores</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">
+    <Panel>
+      <PanelHeader>
+        <PanelTitle>Record stores</PanelTitle>
+      </PanelHeader>
+      <PanelBody className="flex flex-col gap-4">
+        <p className="text-xs leading-relaxed text-ink-dim">
           A store keeps this entity&apos;s records between generation calls, so
           the same customer exists tomorrow and can receive new orders. Trends
           and geo routes continue from where the last call stopped instead of
@@ -204,7 +216,7 @@ export function RecordStoresCard({
         </div>
 
         {identityCandidates.length === 0 && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-ink-faint">
             Every field on this entity is nullable. A record needs a
             non-nullable field to identify it — a null identity joins to
             nothing.
@@ -212,7 +224,7 @@ export function RecordStoresCard({
         )}
 
         {stores.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs leading-relaxed text-ink-dim">
             No stores yet. Without one, every generation call produces a fresh
             unrelated set of records.
           </p>
@@ -230,7 +242,7 @@ export function RecordStoresCard({
                 value={count}
                 onChange={(e) => setCount(Math.max(1, Number(e.target.value) || 1))}
               />
-              <span className="ml-4 text-xs text-muted-foreground">Per tick of change:</span>
+              <span className="ml-4 text-xs text-ink-faint">Per tick of change:</span>
               {(
                 [
                   ["insert", inserts, setInserts],
@@ -241,7 +253,7 @@ export function RecordStoresCard({
                 <span key={label} className="flex items-center gap-1">
                   <Label
                     htmlFor={`store-${label}-${entity.id}`}
-                    className="text-xs text-muted-foreground"
+                    className="text-xs text-ink-faint"
                   >
                     {label}
                   </Label>
@@ -257,8 +269,8 @@ export function RecordStoresCard({
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Backfill:</span>
-              <Label htmlFor={`store-days-${entity.id}`} className="text-xs text-muted-foreground">
+              <span className="text-xs text-ink-faint">Backfill:</span>
+              <Label htmlFor={`store-days-${entity.id}`} className="text-xs text-ink-faint">
                 days back
               </Label>
               <Input
@@ -269,7 +281,7 @@ export function RecordStoresCard({
                 value={backfillDays}
                 onChange={(e) => setBackfillDays(Math.max(1, Number(e.target.value) || 1))}
               />
-              <Label htmlFor={`store-ticks-${entity.id}`} className="text-xs text-muted-foreground">
+              <Label htmlFor={`store-ticks-${entity.id}`} className="text-xs text-ink-faint">
                 ticks
               </Label>
               <Input
@@ -280,7 +292,7 @@ export function RecordStoresCard({
                 value={backfillTicks}
                 onChange={(e) => setBackfillTicks(Math.max(1, Number(e.target.value) || 1))}
               />
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-ink-faint">
                 — same per-tick counts, dated across the window. Backfill a new
                 store <em>before</em> generating live: history has to come
                 first, or records created today end up with versions that end
@@ -306,8 +318,8 @@ export function RecordStoresCard({
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </PanelBody>
+    </Panel>
   );
 }
 
@@ -344,7 +356,7 @@ function StoreRow({
   onDelete: () => void;
 }) {
   const accessToken = useAuthStore((s) => s.accessToken);
-  const [panel, setPanel] = useState<"none" | "log" | "history">("none");
+  const [panel, setPanel] = useState<"none" | "records" | "log" | "history">("none");
   const [identity, setIdentity] = useState("");
 
   const stats = useQuery({
@@ -354,6 +366,15 @@ function StoreRow({
     // The counts change whenever a generate, a tick or a backfill lands,
     // including one triggered from somewhere other than this page.
     refetchInterval: 5000,
+  });
+
+  // What is actually in the store. `GET .../records` has existed since Phase 13
+  // and nothing called it — you could generate into a store, churn it and read
+  // its change log, but never look at the records themselves.
+  const records = useQuery({
+    queryKey: ["record-store-records", projectId, entityId, storeId],
+    queryFn: () => api.listStoredRecords(accessToken!, projectId, entityId, storeId, 50),
+    enabled: !!accessToken && panel === "records",
   });
 
   const log = useQuery({
@@ -376,10 +397,10 @@ function StoreRow({
   const events = [...(log.data ?? [])].reverse();
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border p-2 text-sm">
+    <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{storeName}</span>
-        <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+        <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-ink-faint">
           {scdType === "type_2" ? "type 2" : "type 1"}
         </span>
         <span className="text-muted-foreground">
@@ -396,6 +417,13 @@ function StoreRow({
           </Button>
           <Button size="sm" variant="outline" onClick={onBackfill} disabled={backfilling}>
             {backfilling ? "Backfilling…" : "Backfill"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setPanel((p) => (p === "records" ? "none" : "records"))}
+          >
+            {panel === "records" ? "Hide records" : "Browse records"}
           </Button>
           <Button
             size="sm"
@@ -419,10 +447,12 @@ function StoreRow({
         </div>
       </div>
 
+      {panel === "records" && <RecordBrowser query={records} />}
+
       {panel === "log" && (
         <div className="max-h-64 overflow-y-auto rounded border bg-muted/30 p-2">
           {events.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-ink-faint">
               Nothing has changed yet. Generate records, then apply a tick of
               change or backfill a window.
             </p>
@@ -458,7 +488,7 @@ function StoreRow({
             />
           </div>
           {identity.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-ink-faint">
               A type 2 store keeps every version of a record. Name one to see
               how it changed and when each version was the truth.
             </p>
@@ -478,7 +508,7 @@ function StoreRow({
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-ink-faint">
               No versions for that identity.
             </p>
           )}
@@ -486,6 +516,98 @@ function StoreRow({
       )}
     </div>
   );
+}
+
+/**
+ * The store's contents as a table.
+ *
+ * Columns are derived from the union of keys across the returned rows rather
+ * than from the entity's field list: a type 2 store can hold versions written
+ * before a field was added, and showing a column the older rows never had is
+ * more honest than hiding one they do.
+ *
+ * Deleted records are shown, struck through, not filtered out — in a store with
+ * soft deletes "where did that row go?" is the question, and an empty table
+ * answers it badly.
+ */
+function RecordBrowser({
+  query,
+}: {
+  query: UseQueryResult<StoredRecord[], Error>;
+}) {
+  if (query.isPending) {
+    return (
+      <p className="rounded border border-line-soft bg-surface-2 p-2 text-xs text-ink-faint">
+        Loading records…
+      </p>
+    );
+  }
+  if (query.isError) {
+    return (
+      <p className="rounded border border-line-soft bg-surface-2 p-2 text-xs text-sev-crit">
+        {query.error.message || "Could not read records."}
+      </p>
+    );
+  }
+
+  const rows = query.data ?? [];
+  if (rows.length === 0) {
+    return (
+      <p className="rounded border border-line-soft bg-surface-2 p-2 text-xs text-ink-faint">
+        This store is empty. Generate into it and the records will appear here.
+      </p>
+    );
+  }
+
+  const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row.data))));
+
+  return (
+    <div className="max-h-72 overflow-auto rounded border border-line-soft bg-surface-2">
+      <table className="w-full border-collapse text-left font-mono text-[13px]">
+        <thead className="sticky top-0 bg-surface-3">
+          <tr>
+            <th className="px-2 py-1.5 font-medium text-ink-faint">identity</th>
+            <th className="px-2 py-1.5 font-medium text-ink-faint">v</th>
+            {columns.map((column) => (
+              <th key={column} className="px-2 py-1.5 font-medium whitespace-nowrap text-ink-dim">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.id}
+              className={
+                row.status === "deleted"
+                  ? "border-t border-line-soft text-ink-faint line-through"
+                  : "border-t border-line-soft"
+              }
+            >
+              <td className="max-w-40 truncate px-2 py-1 text-ink-dim">{row.identity}</td>
+              <td className="px-2 py-1 text-ink-faint">{row.version}</td>
+              {columns.map((column) => (
+                <td key={column} className="px-2 py-1 whitespace-nowrap">
+                  {format(row.data[column])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** A cell value, short enough to sit on one line. */
+function format(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "object") {
+    const json = JSON.stringify(value);
+    return json.length > 40 ? `${json.slice(0, 40)}…` : json;
+  }
+  return String(value);
 }
 
 /** What actually moved, rather than the whole row.

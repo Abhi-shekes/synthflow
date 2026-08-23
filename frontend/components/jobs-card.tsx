@@ -5,7 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -28,7 +28,17 @@ const ACTIVE = new Set(["queued", "running"]);
  * than refetching on a fixed timer forever — a project whose jobs have
  * all finished shouldn't keep hitting the API.
  */
-export function JobsCard({ projectId, entities }: { projectId: string; entities: Entity[] }) {
+export function JobsCard({
+  projectId,
+  entities,
+  accent,
+}: {
+  projectId: string;
+  entities: Entity[];
+  /** Section colour for the panel's `tone="marked"` edge — this is the
+   * Data page's hero panel (VISUAL_POLISH_PLAN.md V3). */
+  accent?: string;
+}) {
   const accessToken = useAuthStore((s) => s.accessToken);
   const queryClient = useQueryClient();
 
@@ -120,12 +130,12 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
     id === null ? "whole project" : (entities.find((e) => e.id === id)?.name ?? "?");
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Generation jobs</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <p className="text-sm text-muted-foreground">
+    <Panel tone={accent ? "marked" : "raised"} accent={accent}>
+      <PanelHeader>
+        <PanelTitle>Generation jobs</PanelTitle>
+      </PanelHeader>
+      <PanelBody className="flex flex-col gap-4">
+        <p className="text-xs leading-relaxed text-ink-dim">
           A job generates in the background and streams rows straight to a file,
           so it isn&apos;t limited by what fits in one response — millions of rows
           are fine. Progress updates while it runs, and it survives a backend
@@ -196,7 +206,7 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
         </div>
 
         {jobsQuery.data?.length === 0 && (
-          <p className="text-sm text-muted-foreground">No jobs yet.</p>
+          <p className="text-xs leading-relaxed text-ink-dim">No jobs yet.</p>
         )}
 
         {jobsQuery.data && jobsQuery.data.length > 0 && (
@@ -243,8 +253,11 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
                     </span>
                   </div>
                   {ACTIVE.has(job.status) && (
-                    <div className="mt-2 h-1 w-full overflow-hidden rounded bg-muted">
-                      <div className="h-full bg-foreground/60" style={{ width: `${pct}%` }} />
+                    <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-surface-3">
+                      <div
+                        className="h-full rounded-full bg-brand transition-[width] duration-500"
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   )}
                   {job.error && (
@@ -258,7 +271,7 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
 
         <div className="flex flex-col gap-2 border-t pt-4">
           <p className="text-sm font-medium">Schedules</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs leading-relaxed text-ink-dim">
             Run the settings above on a repeating schedule. A scheduled run
             queues an ordinary job, so it gets the same progress and artifacts.
           </p>
@@ -285,7 +298,7 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
           </div>
 
           {schedulesQuery.data?.length === 0 && (
-            <p className="text-sm text-muted-foreground">No schedules yet.</p>
+            <p className="text-xs leading-relaxed text-ink-dim">No schedules yet.</p>
           )}
           {schedulesQuery.data && schedulesQuery.data.length > 0 && (
             <ul className="flex flex-col gap-2">
@@ -312,7 +325,7 @@ export function JobsCard({ projectId, entities }: { projectId: string; entities:
             </ul>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </PanelBody>
+    </Panel>
   );
 }

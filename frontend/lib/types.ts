@@ -32,7 +32,7 @@ export const FIELD_TYPES: FieldType[] = [
 export interface GeneratorPresetSummary {
   name: string;
   source: string;
-  category: "log" | "identifier" | "plugin";
+  category: "log" | "identifier" | "pii" | "plugin";
 }
 
 // Every function callable by name from a rule/event-trigger condition or
@@ -281,6 +281,17 @@ export interface Project {
 export interface User {
   id: string;
   email: string;
+  /** "guided" hides Behaviour/Distortion/advanced-Delivery depth by default;
+   * "advanced" is the full instrument panel. Defaults to "guided" for every
+   * new account. */
+  ui_mode: "guided" | "advanced";
+  /** Whether the first-run welcome flow has been completed or skipped. */
+  has_onboarded: boolean;
+}
+
+export interface UserUpdateInput {
+  ui_mode?: "guided" | "advanced";
+  has_onboarded?: boolean;
 }
 
 export interface FieldCreateInput {
@@ -290,6 +301,33 @@ export interface FieldCreateInput {
   nullable: boolean;
   unique: boolean;
   null_probability?: number | null;
+  min_value?: number | null;
+  max_value?: number | null;
+  regex?: string | null;
+  preset?: string | null;
+  enum_values?: string[] | null;
+  enum_weights?: number[] | null;
+  formula?: string | null;
+}
+
+/**
+ * A partial field edit. Mirrors the backend's `EntityFieldUpdate`, where every
+ * key is optional and `exclude_unset` decides what gets written.
+ *
+ * Every value is therefore three-state, not two: absent (leave alone), `null`
+ * (clear it), or a value. `null_probability` is the case that makes this matter
+ * — null there means "unspecified, take the engine default", which is a
+ * different thing from an explicit `0` meaning "never null".
+ */
+export interface FieldUpdateInput {
+  name?: string;
+  field_type?: FieldType;
+  order?: number;
+  required?: boolean;
+  nullable?: boolean;
+  unique?: boolean;
+  null_probability?: number | null;
+  default_value?: string | null;
   min_value?: number | null;
   max_value?: number | null;
   regex?: string | null;
@@ -510,7 +548,16 @@ export interface JobSchedule {
 }
 
 export interface OutputSummary {
-  type: "database" | "rest" | "websocket" | "timeline_replay" | "kafka" | "mqtt" | "plugin";
+  type:
+    | "database"
+    | "rest"
+    | "websocket"
+    | "timeline_replay"
+    | "kafka"
+    | "mqtt"
+    | "rabbitmq"
+    | "webhook"
+    | "plugin";
   id: string;
   detail: string;
 }
@@ -677,6 +724,78 @@ export interface ProjectTemplate {
  * contradicting the field's own declaration (a defect, not an opinion),
  * and `assertions` are the user's own bar.
  */
+/**
+ * Phase 10's k-anonymity / l-diversity measurement.
+ *
+ * Both thresholds are judgement calls about a threat model rather than
+ * properties of the data, which is why the request asks for them instead of
+ * guessing. The defaults (k=5, l=2) mirror the backend's — 5 is a common
+ * regulatory floor, not a law.
+ */
+export interface PrivacyReportRequest {
+  count: number;
+  /** Columns an attacker is assumed to already know. */
+  quasi_identifiers: string[];
+  /** What they must not learn. Omit to measure k only. */
+  sensitive_field?: string | null;
+  k_threshold: number;
+  l_threshold: number;
+}
+
+export interface PrivacyGroup {
+  values: Record<string, unknown>;
+  rows: number;
+  distinct_sensitive_values?: number;
+}
+
+export interface PrivacyReport {
+  quasi_identifiers: string[];
+  sensitive_field: string | null;
+  total_rows: number;
+  /** Size of the smallest group sharing one combination of quasi-identifiers.
+   * k=1 means at least one row is unique on those columns. */
+  k: number;
+  k_threshold: number;
+  k_passes: boolean;
+  /** Null when no sensitive field was named — l is only meaningful against one. */
+  l: number | null;
+  l_threshold: number;
+  l_passes: boolean;
+  passes: boolean;
+  groups: number;
+  rows_below_k: number;
+  unique_row_share: number;
+  smallest_groups: PrivacyGroup[];
+  /** One line for a human, phrased so a pass can't be mistaken for a guarantee. */
+  summary: string;
+}
+
+/**
+ * The live monitor's feed. Counters are cumulative totals as of `captured_at`,
+ * so a rate is `(now.rows - previous.rows) / (now.captured_at - previous.captured_at)`.
+ * The endpoint stays stateless that way, which matters because several API
+ * replicas can serve it and none of them share a window.
+ */
+export interface MetricsSummary {
+  /** Unix seconds, from the server's clock — never the browser's. */
+  captured_at: number;
+  generation: Record<
+    string,
+    { rows: number; errors: number; calls: number; mean_seconds: number }
+  >;
+  outputs: Record<string, { deliveries: number; errors: number; active_producers: number }>;
+  active_websocket_clients: number;
+  active_producers_total: number;
+  rows_total: number;
+  errors_total: number;
+  process: {
+    resident_bytes: number;
+    cpu_seconds: number;
+    open_fds: number;
+    start_time: number;
+  };
+}
+
 export interface QualityReport {
   rows: number;
   passes: boolean;

@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import type { QualityReport } from "@/lib/types";
@@ -52,7 +53,7 @@ export function QualityReportDialog({
       return api.qualityReport(accessToken!, projectId, entityId, count, assertions);
     },
     onSuccess: setReport,
-    onError: (error: Error) => toast.error(error.message || "Could not run the report"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not run the report"),
   });
 
   const violations = report?.observation.violations ?? [];

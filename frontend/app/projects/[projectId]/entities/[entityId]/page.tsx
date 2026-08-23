@@ -2,7 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { ChevronUp, Trash2 } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -14,20 +15,24 @@ import { AddLookupAttachmentDialog } from "@/components/add-lookup-attachment-di
 import { AddTrendDialog } from "@/components/add-trend-dialog";
 import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
 import { AppShell } from "@/components/app-shell";
+import { Term } from "@/components/help/term";
+import { CoachMark } from "@/components/onboarding/coach-mark";
+import { FieldRow } from "@/components/strata/field-row";
+import { DeliveryStratum } from "@/components/strata/delivery-stratum";
+import { PrivacyPanel } from "@/components/strata/privacy-panel";
 import { QualityReportDialog } from "@/components/quality-report-dialog";
-import { RecordStoresCard } from "@/components/record-stores-card";
-import { StreamPreview } from "@/components/stream-preview";
-import { Badge } from "@/components/ui/badge";
+import { Specimen } from "@/components/strata/specimen";
+import { TrendPreview } from "@/components/strata/trend-preview";
+import { DepthRail, Stratum, StrataProvider } from "@/components/strata/stratum";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Panel,
+  PanelBody,
+  PanelEmpty,
+  PanelHeader,
+  PanelTitle,
+} from "@/components/ui/panel";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -36,11 +41,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
+import { friendlyError } from "@/lib/friendly-error";
 import { api } from "@/lib/api";
+import { markChecklistStep } from "@/lib/checklist";
 import { downloadBlob } from "@/lib/download";
+import { fieldFill } from "@/lib/field-visual";
 import { useRequireAuth } from "@/lib/hooks";
+import { cn } from "@/lib/utils";
 import type {
+  Entity,
   ErrorInjectionCreateInput,
   FieldCreateInput,
   GeoRouteCreateInput,
@@ -58,8 +67,6 @@ interface EventTriggerFormValues {
   condition: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
-const WS_URL = API_URL.replace(/^http/, "ws");
 
 export default function EntityDetailPage() {
   const accessToken = useRequireAuth();
@@ -87,41 +94,23 @@ export default function EntityDetailPage() {
 
   // Which optional outputs this backend install actually supports (see
   // the backend's app/services/install.py). Used to disable a card whose
-  // extra isn't installed rather than offer a button that can only 400.
-  const installQuery = useQuery({
-    queryKey: ["install-config"],
-    queryFn: () => api.listInstallConfig(accessToken!),
-    enabled: !!accessToken,
-  });
-  const feature = (key: string) =>
-    (installQuery.data ?? []).find((f) => f.key === key);
-  const kafkaFeature = feature("kafka");
-  const mqttFeature = feature("mqtt");
-  // Default to enabled until the query resolves, so the controls don't
-  // flicker disabled on every page load.
-  const kafkaAvailable = kafkaFeature?.available ?? true;
-  const mqttAvailable = mqttFeature?.available ?? true;
 
   const addField = useMutation({
     mutationFn: (field: FieldCreateInput) => api.addField(accessToken!, projectId, entityId, field),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add field"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add field"),
   });
 
-  const deleteField = useMutation({
-    mutationFn: (fieldId: string) => api.deleteField(accessToken!, projectId, entityId, fieldId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete field"),
-  });
 
   const generate = useMutation({
     mutationFn: () => api.generate(accessToken!, projectId, entityId, count),
-    onSuccess: (data) => setRows(data),
-    onError: (error: Error) => toast.error(error.message || "Generation failed"),
+    onSuccess: (data) => {
+      setRows(data);
+      markChecklistStep("generated");
+    },
+    onError: (error: Error) => toast.error(friendlyError(error) || "Generation failed"),
   });
 
   const addRule = useMutation({
@@ -130,7 +119,7 @@ export default function EntityDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
       ruleForm.reset();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add rule"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add rule"),
   });
 
   const deleteRule = useMutation({
@@ -138,7 +127,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete rule"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete rule"),
   });
 
   const addEventTrigger = useMutation({
@@ -148,7 +137,7 @@ export default function EntityDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
       eventTriggerForm.reset();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add event trigger"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add event trigger"),
   });
 
   const deleteEventTrigger = useMutation({
@@ -157,7 +146,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete event trigger"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete event trigger"),
   });
 
   const addWorkflow = useMutation({
@@ -166,7 +155,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add workflow"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add workflow"),
   });
 
   const deleteWorkflow = useMutation({
@@ -175,7 +164,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete workflow"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete workflow"),
   });
 
   const addTrend = useMutation({
@@ -184,7 +173,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add trend"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add trend"),
   });
 
   const deleteTrend = useMutation({
@@ -192,7 +181,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete trend"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete trend"),
   });
 
   const addErrorInjection = useMutation({
@@ -201,7 +190,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add error injection"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add error injection"),
   });
 
   const deleteErrorInjection = useMutation({
@@ -210,7 +199,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete error injection"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete error injection"),
   });
 
   const lookupTablesQuery = useQuery({
@@ -225,7 +214,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add lookup"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add lookup"),
   });
 
   const deleteLookupAttachment = useMutation({
@@ -234,7 +223,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete lookup"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete lookup"),
   });
 
   const addGeoRoute = useMutation({
@@ -243,7 +232,7 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not add geo route"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not add geo route"),
   });
 
   const deleteGeoRoute = useMutation({
@@ -252,270 +241,19 @@ export default function EntityDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] });
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete geo route"),
-  });
-
-  const restOutputsQuery = useQuery({
-    queryKey: ["rest-outputs", projectId, entityId],
-    queryFn: () => api.listRestOutputs(accessToken!, projectId, entityId),
-    enabled: !!accessToken,
-  });
-
-  const [restOutputCount, setRestOutputCount] = useState(10);
-
-  const addRestOutput = useMutation({
-    mutationFn: () => api.createRestOutput(accessToken!, projectId, entityId, restOutputCount),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rest-outputs", projectId, entityId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not create REST output"),
-  });
-
-  const deleteRestOutput = useMutation({
-    mutationFn: (outputId: string) => api.deleteRestOutput(accessToken!, projectId, entityId, outputId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rest-outputs", projectId, entityId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete REST output"),
-  });
-
-  const streamsQuery = useQuery({
-    queryKey: ["websocket-streams", projectId, entityId],
-    queryFn: () => api.listWebSocketStreams(accessToken!, projectId, entityId),
-    enabled: !!accessToken,
-  });
-
-  const [streamEventsPerSecond, setStreamEventsPerSecond] = useState(2);
-  const [streamBatchSize, setStreamBatchSize] = useState(1);
-
-  const addStream = useMutation({
-    mutationFn: () =>
-      api.createWebSocketStream(
-        accessToken!,
-        projectId,
-        entityId,
-        streamEventsPerSecond,
-        streamBatchSize
-      ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["websocket-streams", projectId, entityId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not create stream"),
-  });
-
-  const deleteStream = useMutation({
-    mutationFn: (streamId: string) =>
-      api.deleteWebSocketStream(accessToken!, projectId, entityId, streamId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["websocket-streams", projectId, entityId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete stream"),
-  });
-
-  const kafkaOutputsQuery = useQuery({
-    queryKey: ["kafka-outputs", projectId, entityId],
-    queryFn: () => api.listKafkaOutputs(accessToken!, projectId, entityId),
-    enabled: !!accessToken,
-  });
-
-  const [kafkaBootstrapServers, setKafkaBootstrapServers] = useState("");
-  const [kafkaTopic, setKafkaTopic] = useState("");
-  const [kafkaEventsPerSecond, setKafkaEventsPerSecond] = useState(2);
-  const [kafkaBatchSize, setKafkaBatchSize] = useState(1);
-
-  const addKafkaOutput = useMutation({
-    mutationFn: () =>
-      api.createKafkaOutput(accessToken!, projectId, entityId, {
-        bootstrap_servers: kafkaBootstrapServers,
-        topic: kafkaTopic,
-        events_per_second: kafkaEventsPerSecond,
-        batch_size: kafkaBatchSize,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["kafka-outputs", projectId, entityId] });
-      setKafkaTopic("");
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not create Kafka output"),
-  });
-
-  const deleteKafkaOutput = useMutation({
-    mutationFn: (outputId: string) =>
-      api.deleteKafkaOutput(accessToken!, projectId, entityId, outputId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["kafka-outputs", projectId, entityId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete Kafka output"),
-  });
-
-  const mqttOutputsQuery = useQuery({
-    queryKey: ["mqtt-outputs", projectId, entityId],
-    queryFn: () => api.listMqttOutputs(accessToken!, projectId, entityId),
-    enabled: !!accessToken,
-  });
-
-  const [mqttBrokerHost, setMqttBrokerHost] = useState("");
-  const [mqttBrokerPort, setMqttBrokerPort] = useState(1883);
-  const [mqttTopic, setMqttTopic] = useState("");
-  const [mqttEventsPerSecond, setMqttEventsPerSecond] = useState(2);
-  const [mqttBatchSize, setMqttBatchSize] = useState(1);
-
-  const addMqttOutput = useMutation({
-    mutationFn: () =>
-      api.createMqttOutput(accessToken!, projectId, entityId, {
-        broker_host: mqttBrokerHost,
-        broker_port: mqttBrokerPort,
-        topic: mqttTopic,
-        events_per_second: mqttEventsPerSecond,
-        batch_size: mqttBatchSize,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mqtt-outputs", projectId, entityId] });
-      setMqttTopic("");
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not create MQTT output"),
-  });
-
-  const deleteMqttOutput = useMutation({
-    mutationFn: (outputId: string) =>
-      api.deleteMqttOutput(accessToken!, projectId, entityId, outputId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mqtt-outputs", projectId, entityId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete MQTT output"),
-  });
-
-  const rabbitOutputsQuery = useQuery({
-    queryKey: ["rabbitmq-outputs", projectId, entityId],
-    queryFn: () => api.listRabbitMQOutputs(accessToken!, projectId, entityId),
-    enabled: !!accessToken,
-  });
-
-  const [rabbitHost, setRabbitHost] = useState("");
-  const [rabbitPort, setRabbitPort] = useState(5672);
-  const [rabbitUser, setRabbitUser] = useState("guest");
-  const [rabbitPassword, setRabbitPassword] = useState("guest");
-  const [rabbitExchange, setRabbitExchange] = useState("");
-  const [rabbitRoutingKey, setRabbitRoutingKey] = useState("");
-  const [rabbitEventsPerSecond, setRabbitEventsPerSecond] = useState(2);
-
-  const addRabbitOutput = useMutation({
-    mutationFn: () =>
-      api.createRabbitMQOutput(accessToken!, projectId, entityId, {
-        host: rabbitHost,
-        port: rabbitPort,
-        username: rabbitUser,
-        password: rabbitPassword,
-        exchange: rabbitExchange,
-        routing_key: rabbitRoutingKey,
-        events_per_second: rabbitEventsPerSecond,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["rabbitmq-outputs", projectId, entityId] });
-      setRabbitRoutingKey("");
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not create RabbitMQ output"),
-  });
-
-  const deleteRabbitOutput = useMutation({
-    mutationFn: (outputId: string) =>
-      api.deleteRabbitMQOutput(accessToken!, projectId, entityId, outputId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["rabbitmq-outputs", projectId, entityId] }),
-    onError: (error: Error) => toast.error(error.message || "Could not delete RabbitMQ output"),
-  });
-
-  const webhookOutputsQuery = useQuery({
-    queryKey: ["webhook-outputs", projectId, entityId],
-    queryFn: () => api.listWebhookOutputs(accessToken!, projectId, entityId),
-    enabled: !!accessToken,
-  });
-
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState("");
-  const [webhookEventsPerSecond, setWebhookEventsPerSecond] = useState(1);
-  const [webhookBatchSize, setWebhookBatchSize] = useState(1);
-
-  const addWebhookOutput = useMutation({
-    mutationFn: () =>
-      api.createWebhookOutput(accessToken!, projectId, entityId, {
-        url: webhookUrl,
-        secret: webhookSecret,
-        events_per_second: webhookEventsPerSecond,
-        batch_size: webhookBatchSize,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["webhook-outputs", projectId, entityId] });
-      setWebhookUrl("");
-      setWebhookSecret("");
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not create webhook output"),
-  });
-
-  const deleteWebhookOutput = useMutation({
-    mutationFn: (outputId: string) =>
-      api.deleteWebhookOutput(accessToken!, projectId, entityId, outputId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["webhook-outputs", projectId, entityId] }),
-    onError: (error: Error) => toast.error(error.message || "Could not delete webhook output"),
-  });
-
-  const outputPluginsQuery = useQuery({
-    queryKey: ["output-plugins"],
-    queryFn: () => api.listOutputPlugins(accessToken!),
-    enabled: !!accessToken,
-  });
-
-  const pluginOutputsQuery = useQuery({
-    queryKey: ["plugin-outputs", projectId, entityId],
-    queryFn: () => api.listPluginOutputs(accessToken!, projectId, entityId),
-    enabled: !!accessToken,
-  });
-
-  const [pluginOutputName, setPluginOutputName] = useState("");
-  const [pluginOutputConfig, setPluginOutputConfig] = useState("{}");
-  const [pluginOutputEventsPerSecond, setPluginOutputEventsPerSecond] = useState(2);
-  const [pluginOutputBatchSize, setPluginOutputBatchSize] = useState(1);
-
-  const addPluginOutput = useMutation({
-    mutationFn: () => {
-      let config: Record<string, unknown>;
-      try {
-        config = JSON.parse(pluginOutputConfig);
-      } catch {
-        throw new Error("Config isn't valid JSON");
-      }
-      return api.createPluginOutput(accessToken!, projectId, entityId, {
-        plugin_name: pluginOutputName,
-        config,
-        events_per_second: pluginOutputEventsPerSecond,
-        batch_size: pluginOutputBatchSize,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["plugin-outputs", projectId, entityId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not create plugin output"),
-  });
-
-  const deletePluginOutput = useMutation({
-    mutationFn: (outputId: string) =>
-      api.deletePluginOutput(accessToken!, projectId, entityId, outputId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["plugin-outputs", projectId, entityId] });
-    },
-    onError: (error: Error) => toast.error(error.message || "Could not delete plugin output"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete geo route"),
   });
 
   const downloadCsv = useMutation({
     mutationFn: () => api.generateCsv(accessToken!, projectId, entityId, count),
     onSuccess: (blob) => downloadBlob(blob, `${entity?.name ?? "export"}.csv`),
-    onError: (error: Error) => toast.error(error.message || "CSV export failed"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "CSV export failed"),
   });
 
   const downloadExcel = useMutation({
     mutationFn: () => api.generateExcel(accessToken!, projectId, entityId, count),
     onSuccess: (blob) => downloadBlob(blob, `${entity?.name ?? "export"}.xlsx`),
-    onError: (error: Error) => toast.error(error.message || "Excel export failed"),
+    onError: (error: Error) => toast.error(friendlyError(error) || "Excel export failed"),
   });
 
   if (!accessToken) return null;
@@ -537,1119 +275,749 @@ export default function EntityDetailPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto flex max-w-4xl flex-col gap-6">
-        <div>
-          <Link
-            href={`/projects/${projectId}`}
-            className="text-sm text-muted-foreground hover:underline"
-          >
-            ← Back to project
-          </Link>
-        </div>
+      <StrataProvider>
+        <div className="w-full ">
+          <EntityHeader
+            projectId={projectId}
+            entity={entity}
+            onRenamed={() =>
+              queryClient.invalidateQueries({ queryKey: ["entity", projectId, entityId] })
+            }
+          />
 
-        <h1 className="text-2xl font-semibold tracking-tight">{entity?.name ?? "…"}</h1>
+          <div className="flex gap-8">
+            <DepthRail />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Fields</CardTitle>
-            <AddFieldDialog onSubmit={(v) => addField.mutate(v)} isPending={addField.isPending} />
-          </CardHeader>
-          <CardContent>
-            {entity?.fields.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No fields yet. Add one to start generating data.
-              </p>
-            )}
-            {entity && entity.fields.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Constraints</TableHead>
-                    <TableHead className="w-10" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {entity.fields.map((field) => (
-                    <TableRow key={field.id}>
-                      <TableCell className="font-medium">{field.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{field.field_type}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {[
-                          field.required && "required",
-                          field.unique && "unique",
-                          !field.nullable && "not null",
-                          // Only when it was actually set. Showing "15% null"
-                          // on every unset field would present the engine
-                          // default as a choice somebody made.
-                          field.null_probability != null &&
-                            `${Math.round(field.null_probability * 100)}% null`,
-                          field.min_value != null && `min ${field.min_value}`,
-                          field.max_value != null && `max ${field.max_value}`,
-                          field.regex && `regex ${field.regex}`,
-                          field.preset && `preset ${field.preset.replaceAll("_", " ")}`,
-                          field.enum_values &&
-                            (field.enum_weights
-                              ? field.enum_values
-                                  .map((v, i) => `${v} (${field.enum_weights![i]})`)
-                                  .join(" | ")
-                              : field.enum_values.join(" | ")),
-                          field.formula && `= ${field.formula}`,
-                        ]
-                          .filter(Boolean)
-                          .join(", ") || "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteField.mutate(field.id)}
-                        >
-                          Delete
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+            <div className="flex min-w-0 flex-1 flex-col gap-12">
+              <CoachMark id="entity-strata">
+                <strong className="font-medium text-ink">Four layers, top to bottom.</strong>{" "}
+                Shape is what a row is made of. Behaviour is how values move and constrain each
+                other. Distortion deliberately breaks some rows to test how you handle bad data.
+                Delivery is where the rows go. Only Shape is required to generate anything.
+              </CoachMark>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Rules</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              A rule is an expression a generated row must satisfy (e.g.{" "}
-              <code className="font-mono">temperature &gt; 60</code>); rows that
-              fail are discarded and regenerated. Can also reference{" "}
-              <code className="font-mono">RelatedEntity.field</code> for an
-              entity this one has a relationship to, but only when
-              generating the whole project.
-              {pluginRuleFunctionNames.length > 0 && (
-                <>
-                  {" "}
-                  From installed plugins:{" "}
-                  <code className="font-mono">{pluginRuleFunctionNames.join(" ")}</code>.
-                </>
-              )}
-            </p>
-            <form
-              className="flex gap-2"
-              onSubmit={ruleForm.handleSubmit((v) => addRule.mutate(v.condition))}
-            >
-              <Input
-                placeholder="e.g. price > 0 and quantity <= 100"
-                {...ruleForm.register("condition", { required: true })}
-              />
-              <Button type="submit" disabled={addRule.isPending}>
-                Add
-              </Button>
-            </form>
-            {entity?.rules.length === 0 && (
-              <p className="text-sm text-muted-foreground">No rules yet.</p>
-            )}
-            {entity && entity.rules.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {entity.rules.map((rule) => (
-                  <li
-                    key={rule.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <code className="font-mono">{rule.condition}</code>
-                    <Button variant="ghost" size="sm" onClick={() => deleteRule.mutate(rule.id)}>
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Event triggers</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Unlike a rule, a matching trigger doesn&apos;t reject the row —
-              it annotates it. Every trigger whose condition is true for a
-              row appends its label to that row&apos;s{" "}
-              <code className="font-mono">_triggered_events</code> list; no
-              external notification is sent (yet). Can also reference{" "}
-              <code className="font-mono">RelatedEntity.field</code>, same
-              as a rule.
-              {pluginRuleFunctionNames.length > 0 && (
-                <>
-                  {" "}
-                  From installed plugins:{" "}
-                  <code className="font-mono">{pluginRuleFunctionNames.join(" ")}</code>.
-                </>
-              )}
-            </p>
-            <form
-              className="flex gap-2"
-              onSubmit={eventTriggerForm.handleSubmit((v) => addEventTrigger.mutate(v))}
-            >
-              <Input
-                placeholder="label, e.g. high_temperature"
-                className="max-w-48"
-                {...eventTriggerForm.register("label", { required: true })}
-              />
-              <Input
-                placeholder="e.g. temperature > 80"
-                {...eventTriggerForm.register("condition", { required: true })}
-              />
-              <Button type="submit" disabled={addEventTrigger.isPending}>
-                Add
-              </Button>
-            </form>
-            {entity?.event_triggers.length === 0 && (
-              <p className="text-sm text-muted-foreground">No event triggers yet.</p>
-            )}
-            {entity && entity.event_triggers.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {entity.event_triggers.map((trigger) => (
-                  <li
-                    key={trigger.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-medium">{trigger.label}</span>{" "}
-                      <code className="ml-1 font-mono text-muted-foreground">
-                        {trigger.condition}
-                      </code>
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteEventTrigger.mutate(trigger.id)}
-                    >
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Workflows</CardTitle>
-            {entity && (
-              <AddWorkflowDialog
-                entity={entity}
-                onSubmit={(v) => addWorkflow.mutate(v)}
-                isPending={addWorkflow.isPending}
-              />
-            )}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              A workflow turns a field into a simulated state machine: instead
-              of a random value, each row gets a random walk from an initial
-              state through the transitions you define, and the walk itself is
-              included as <code className="font-mono">&lt;field&gt;_history</code>.
-            </p>
-            {entity?.workflows.length === 0 && (
-              <p className="text-sm text-muted-foreground">No workflows yet.</p>
-            )}
-            {entity && entity.workflows.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {entity.workflows.map((workflow) => (
-                  <li key={workflow.id} className="rounded-md border px-3 py-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{fieldNameById.get(workflow.field_id)}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteWorkflow.mutate(workflow.id)}
-                      >
-                        Delete
-                      </Button>
+              <Stratum id="shape">
+                <Panel>
+                  <PanelHeader>
+                    <PanelTitle>Fields</PanelTitle>
+                    <div className="flex items-center gap-2">
+                                <AddFieldDialog
+                        onSubmit={(v) => addField.mutate(v)}
+                        isPending={addField.isPending}
+                      />
                     </div>
-                    <p className="mt-1 text-muted-foreground">
-                      States: {workflow.states.join(", ")}
-                      <br />
-                      Initial: {workflow.initial_states.join(", ")}
-                      <br />
-                      Transitions:{" "}
-                      {workflow.transitions
-                        .map((t) => `${t.source}→${t.target}${t.weight !== 1 ? ` (${t.weight})` : ""}`)
-                        .join(", ")}
-                      {workflow.stop_probabilities && (
-                        <>
-                          <br />
-                          Stop probabilities:{" "}
-                          {Object.entries(workflow.stop_probabilities)
-                            .map(([state, p]) => `${state}=${p}`)
-                            .join(", ")}
-                        </>
-                      )}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Trends</CardTitle>
-            {entity && (
-              <AddTrendDialog
-                entity={entity}
-                onSubmit={(v) => addTrend.mutate(v)}
-                isPending={addTrend.isPending}
-              />
-            )}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Makes a numeric field&apos;s value a function of its row&apos;s
-              position within the batch (0, 1, 2, …) instead of an independent
-              random draw — e.g. a linear trend rises steadily across a
-              generated batch. Position resets to 0 on every generate call.
-            </p>
-            {entity?.trends.length === 0 && (
-              <p className="text-sm text-muted-foreground">No trends yet.</p>
-            )}
-            {entity && entity.trends.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {entity.trends.map((trend) => (
-                  <li
-                    key={trend.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-medium">{fieldNameById.get(trend.field_id)}</span>
-                      <span className="ml-2 text-muted-foreground">
-                        {trend.trend_type.replaceAll("_", " ")} (
-                        {Object.entries(trend.params)
-                          .map(([k, v]) => `${k}=${v}`)
-                          .join(", ")}
-                        )
-                      </span>
-                    </span>
-                    <Button variant="ghost" size="sm" onClick={() => deleteTrend.mutate(trend.id)}>
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Error injection</CardTitle>
-            {entity && (
-              <AddErrorInjectionDialog
-                entity={entity}
-                onSubmit={(v) => addErrorInjection.mutate(v)}
-                isPending={addErrorInjection.isPending}
-              />
-            )}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Deliberately corrupts a field&apos;s value on some fraction of
-              generated rows — nulls, empty strings, duplicates, truncated
-              text, wrong types, or out-of-range numbers — to simulate the bad
-              data a real pipeline has to handle. A rule constraining the same
-              field evaluates rows after corruption, so it can end up
-              filtering the corrupted rows back out.
-            </p>
-            {entity?.error_injections.length === 0 && (
-              <p className="text-sm text-muted-foreground">No error injections yet.</p>
-            )}
-            {entity && entity.error_injections.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {entity.error_injections.map((injection) => (
-                  <li
-                    key={injection.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-medium">{fieldNameById.get(injection.field_id)}</span>
-                      <span className="ml-2 text-muted-foreground">
-                        {Math.round(injection.rate * 100)}% ·{" "}
-                        {injection.error_types.map((t) => t.replaceAll("_", " ")).join(", ")}
-                      </span>
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteErrorInjection.mutate(injection.id)}
-                    >
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Lookups</CardTitle>
-            {entity && (
-              <AddLookupAttachmentDialog
-                entity={entity}
-                lookupTables={lookupTables}
-                onSubmit={(v) => addLookupAttachment.mutate(v)}
-                isPending={addLookupAttachment.isPending}
-              />
-            )}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Draws a field&apos;s value from a column of a project-level
-              lookup table instead of randomizing it — upload reference data
-              on the project page first. Unlike a relationship, this works
-              from this entity&apos;s own Generate button too, not just
-              project-wide generation.
-            </p>
-            {lookupTables.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No lookup tables in this project yet — upload one from the
-                project page.
-              </p>
-            )}
-            {entity?.lookup_attachments.length === 0 && lookupTables.length > 0 && (
-              <p className="text-sm text-muted-foreground">No lookups attached yet.</p>
-            )}
-            {entity && entity.lookup_attachments.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {entity.lookup_attachments.map((attachment) => (
-                  <li
-                    key={attachment.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-medium">
-                        {fieldNameById.get(attachment.field_id)}
-                      </span>
-                      <span className="ml-2 text-muted-foreground">
-                        ← {lookupTableById.get(attachment.lookup_table_id)?.name ?? "?"}.
-                        {attachment.column}
-                      </span>
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteLookupAttachment.mutate(attachment.id)}
-                    >
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Geo routes</CardTitle>
-            {entity && (
-              <AddGeoRouteDialog
-                entity={entity}
-                lookupTables={lookupTables}
-                onSubmit={(v) => addGeoRoute.mutate(v)}
-                isPending={addGeoRoute.isPending}
-              />
-            )}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Makes an object/json field a {"{"}lat, lon{"}"} point walking a
-              lookup table&apos;s waypoints, interpolated across the
-              generated batch — row 0 is the route&apos;s start, the last
-              row is its end. Upload a route (a lookup table with lat/lon
-              columns) on the project page first.
-            </p>
-            {lookupTables.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No lookup tables in this project yet — upload one from the
-                project page.
-              </p>
-            )}
-            {entity?.geo_routes.length === 0 && lookupTables.length > 0 && (
-              <p className="text-sm text-muted-foreground">No geo routes attached yet.</p>
-            )}
-            {entity && entity.geo_routes.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {entity.geo_routes.map((route) => (
-                  <li
-                    key={route.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span>
-                      <span className="font-medium">{fieldNameById.get(route.field_id)}</span>
-                      <span className="ml-2 text-muted-foreground">
-                        ← {lookupTableById.get(route.lookup_table_id)?.name ?? "?"} (
-                        {route.lat_column}, {route.lon_column})
-                      </span>
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteGeoRoute.mutate(route.id)}
-                    >
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        {entity && <RecordStoresCard projectId={projectId} entity={entity} />}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">REST output</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              A public, unauthenticated URL that returns freshly generated rows
-              for this entity on every request — point a frontend&apos;s{" "}
-              <code className="font-mono">fetch()</code> straight at it during
-              development. Anyone with the link can use it, the same as a
-              webhook URL.
-            </p>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={5000}
-                value={restOutputCount}
-                onChange={(e) => setRestOutputCount(Number(e.target.value))}
-                className="w-32"
-              />
-              <Button
-                onClick={() => addRestOutput.mutate()}
-                disabled={addRestOutput.isPending || !entity?.fields.length}
-              >
-                {addRestOutput.isPending ? "Creating…" : "Create endpoint"}
-              </Button>
-            </div>
-            {restOutputsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No REST outputs yet.</p>
-            )}
-            {restOutputsQuery.data && restOutputsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {restOutputsQuery.data.map((output) => {
-                  const url = `${API_URL}/public/rest/${output.token}`;
-                  return (
-                    <li
-                      key={output.id}
-                      className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-                    >
-                      <code className="truncate font-mono">{url}</code>
-                      <div className="flex shrink-0 gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            navigator.clipboard.writeText(url);
-                            toast.success("Copied");
-                          }}
+                  </PanelHeader>
+                  <PanelBody className="flex flex-col gap-3">
+                    {entity?.fields.length === 0 && (
+                      <PanelEmpty>
+                        No fields yet. A field is one column of the generated row — add one and
+                        the specimen beside you starts producing values.
+                      </PanelEmpty>
+                    )}
+                    {entity && entity.fields.length > 0 && (
+                      <>
+                        {/* The core sample: the same device the system map uses
+                            for an entity node, at full width. You read the
+                            entity's composition before reading any of it. */}
+                        <div
+                          className="flex h-2 w-full gap-px overflow-hidden rounded-full"
+                          aria-hidden
                         >
-                          Copy
+                          {entity.fields.map((field) => (
+                            <span
+                              key={field.id}
+                              className="flex-1"
+                              style={{ background: fieldFill(field.field_type, field.preset) }}
+                            />
+                          ))}
+                        </div>
+                        <ul className="flex flex-col gap-1.5">
+                          {entity.fields.map((field) => (
+                            <FieldRow
+                              key={field.id}
+                              projectId={projectId}
+                              entityId={entityId}
+                              field={field}
+                              onChanged={() =>
+                                queryClient.invalidateQueries({
+                                  queryKey: ["entity", projectId, entityId],
+                                })
+                              }
+                            />
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </PanelBody>
+                </Panel>
+
+                {entity && <PrivacyPanel projectId={projectId} entity={entity} />}
+              </Stratum>
+
+              <Stratum
+                id="behaviour"
+                hasContent={
+                  !!entity &&
+                  (entity.rules.length > 0 ||
+                    entity.event_triggers.length > 0 ||
+                    entity.workflows.length > 0 ||
+                    entity.trends.length > 0 ||
+                    entity.lookup_attachments.length > 0 ||
+                    entity.geo_routes.length > 0)
+                }
+              >
+            <Panel>
+              <PanelHeader>
+                <PanelTitle><Term id="rule">Rules</Term></PanelTitle>
+              </PanelHeader>
+              <PanelBody className="flex flex-col gap-4">
+                <p className="text-xs leading-relaxed text-ink-dim">
+                  A rule is an expression a generated row must satisfy (e.g.{" "}
+                  <code className="font-mono">temperature &gt; 60</code>); rows that
+                  fail are discarded and regenerated. Can also reference{" "}
+                  <code className="font-mono">RelatedEntity.field</code> for an
+                  entity this one has a relationship to, but only when
+                  generating the whole project.
+                  {pluginRuleFunctionNames.length > 0 && (
+                    <>
+                      {" "}
+                      From installed plugins:{" "}
+                      <code className="font-mono">{pluginRuleFunctionNames.join(" ")}</code>.
+                    </>
+                  )}
+                </p>
+                <form
+                  className="flex gap-2"
+                  onSubmit={ruleForm.handleSubmit((v) => addRule.mutate(v.condition))}
+                >
+                  <Input
+                    placeholder="e.g. price > 0 and quantity <= 100"
+                    {...ruleForm.register("condition", { required: true })}
+                  />
+                  <Button type="submit" disabled={addRule.isPending}>
+                    Add
+                  </Button>
+                </form>
+                {entity?.rules.length === 0 && (
+                  <p className="text-xs leading-relaxed text-ink-dim">No rules yet.</p>
+                )}
+                {entity && entity.rules.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {entity.rules.map((rule) => (
+                      <li
+                        key={rule.id}
+                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                      >
+                        <code className="font-mono">{rule.condition}</code>
+                        <Button variant="ghost" size="sm" onClick={() => deleteRule.mutate(rule.id)}>
+                          Delete
                         </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PanelBody>
+            </Panel>
+
+            <Panel>
+              <PanelHeader>
+                <PanelTitle><Term id="event_trigger">Event triggers</Term></PanelTitle>
+              </PanelHeader>
+              <PanelBody className="flex flex-col gap-4">
+                <p className="text-xs leading-relaxed text-ink-dim">
+                  Unlike a rule, a matching trigger doesn&apos;t reject the row —
+                  it annotates it. Every trigger whose condition is true for a
+                  row appends its label to that row&apos;s{" "}
+                  <code className="font-mono">_triggered_events</code> list; no
+                  external notification is sent (yet). Can also reference{" "}
+                  <code className="font-mono">RelatedEntity.field</code>, same
+                  as a rule.
+                  {pluginRuleFunctionNames.length > 0 && (
+                    <>
+                      {" "}
+                      From installed plugins:{" "}
+                      <code className="font-mono">{pluginRuleFunctionNames.join(" ")}</code>.
+                    </>
+                  )}
+                </p>
+                <form
+                  className="flex gap-2"
+                  onSubmit={eventTriggerForm.handleSubmit((v) => addEventTrigger.mutate(v))}
+                >
+                  <Input
+                    placeholder="label, e.g. high_temperature"
+                    className="max-w-48"
+                    {...eventTriggerForm.register("label", { required: true })}
+                  />
+                  <Input
+                    placeholder="e.g. temperature > 80"
+                    {...eventTriggerForm.register("condition", { required: true })}
+                  />
+                  <Button type="submit" disabled={addEventTrigger.isPending}>
+                    Add
+                  </Button>
+                </form>
+                {entity?.event_triggers.length === 0 && (
+                  <p className="text-xs leading-relaxed text-ink-dim">No event triggers yet.</p>
+                )}
+                {entity && entity.event_triggers.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {entity.event_triggers.map((trigger) => (
+                      <li
+                        key={trigger.id}
+                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                      >
+                        <span>
+                          <span className="font-medium">{trigger.label}</span>{" "}
+                          <code className="ml-1 font-mono text-muted-foreground">
+                            {trigger.condition}
+                          </code>
+                        </span>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => deleteRestOutput.mutate(output.id)}
+                          onClick={() => deleteEventTrigger.mutate(trigger.id)}
                         >
                           Delete
                         </Button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PanelBody>
+            </Panel>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Live stream (WebSocket)</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              A public, unauthenticated WebSocket that pushes a fresh batch
-              every tick for as long as a client stays connected — no auth,
-              no polling. Disconnecting stops production; there&apos;s nothing
-              running in the background otherwise.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-muted-foreground">events/sec</span>
-                <Input
-                  type="number"
-                  min={0.1}
-                  max={50}
-                  step={0.1}
-                  value={streamEventsPerSecond}
-                  onChange={(e) => setStreamEventsPerSecond(Number(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-muted-foreground">rows/message</span>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={streamBatchSize}
-                  onChange={(e) => setStreamBatchSize(Number(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-              <Button
-                onClick={() => addStream.mutate()}
-                disabled={addStream.isPending || !entity?.fields.length}
-              >
-                {addStream.isPending ? "Creating…" : "Create stream"}
-              </Button>
-            </div>
-            {streamsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No streams yet.</p>
-            )}
-            {streamsQuery.data && streamsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-3">
-                {streamsQuery.data.map((stream) => {
-                  const wsUrl = `${WS_URL}/public/stream/${stream.token}`;
-                  return (
-                    <li key={stream.id} className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                        <code className="truncate font-mono">{wsUrl}</code>
-                        <div className="flex shrink-0 gap-2">
-                          <span className="text-muted-foreground">
-                            {stream.events_per_second}/s × {stream.batch_size}
-                          </span>
+            <Panel>
+              <PanelHeader>
+                <PanelTitle><Term id="workflow">Workflows</Term></PanelTitle>
+                {entity && (
+                  <AddWorkflowDialog
+                    entity={entity}
+                    onSubmit={(v) => addWorkflow.mutate(v)}
+                    isPending={addWorkflow.isPending}
+                  />
+                )}
+              </PanelHeader>
+              <PanelBody className="flex flex-col gap-4">
+                <p className="text-xs leading-relaxed text-ink-dim">
+                  A workflow turns a field into a simulated state machine: instead
+                  of a random value, each row gets a random walk from an initial
+                  state through the transitions you define, and the walk itself is
+                  included as <code className="font-mono">&lt;field&gt;_history</code>.
+                </p>
+                {entity?.workflows.length === 0 && (
+                  <p className="text-xs leading-relaxed text-ink-dim">No workflows yet.</p>
+                )}
+                {entity && entity.workflows.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {entity.workflows.map((workflow) => (
+                      <li key={workflow.id} className="rounded-md border px-3 py-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{fieldNameById.get(workflow.field_id)}</span>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => deleteStream.mutate(stream.id)}
+                            onClick={() => deleteWorkflow.mutate(workflow.id)}
                           >
                             Delete
                           </Button>
                         </div>
-                      </div>
-                      <StreamPreview wsUrl={wsUrl} />
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Kafka output</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Publishes a fresh row to a Kafka topic every tick, for as long
-              as the backend process runs — a real background producer, not
-              tied to a client connection, so it keeps going after you leave
-              this page. Doesn&apos;t survive a backend restart yet (a known
-              gap, not a silent one); delete and recreate it if that happens.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                placeholder="bootstrap servers, e.g. kafka:9092"
-                value={kafkaBootstrapServers}
-                onChange={(e) => setKafkaBootstrapServers(e.target.value)}
-                className="w-56"
-              />
-              <Input
-                placeholder="topic"
-                value={kafkaTopic}
-                onChange={(e) => setKafkaTopic(e.target.value)}
-                className="w-32"
-              />
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-muted-foreground">events/sec</span>
-                <Input
-                  type="number"
-                  min={0.1}
-                  max={50}
-                  step={0.1}
-                  value={kafkaEventsPerSecond}
-                  onChange={(e) => setKafkaEventsPerSecond(Number(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-muted-foreground">rows/message</span>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={kafkaBatchSize}
-                  onChange={(e) => setKafkaBatchSize(Number(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-              <Button
-                onClick={() => addKafkaOutput.mutate()}
-                disabled={
-                  addKafkaOutput.isPending ||
-                  !entity?.fields.length ||
-                  !kafkaBootstrapServers ||
-                  !kafkaTopic ||
-                  !kafkaAvailable
-                }
-              >
-                {addKafkaOutput.isPending ? "Creating…" : "Create output"}
-              </Button>
-            </div>
-            {!kafkaAvailable && (
-              <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                Not available in this install — the optional{" "}
-                <code className="font-mono">{kafkaFeature?.extra ?? "kafka"}</code> extra
-                isn&apos;t installed. Run{" "}
-                <code className="font-mono">synthflow init --services kafka</code>, then
-                rebuild the backend to enable it.
-              </p>
-            )}
-            {kafkaOutputsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No Kafka outputs yet.</p>
-            )}
-            {kafkaOutputsQuery.data && kafkaOutputsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {kafkaOutputsQuery.data.map((output) => (
-                  <li
-                    key={output.id}
-                    className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-                  >
-                    <code className="truncate font-mono">
-                      {output.bootstrap_servers} → {output.topic}
-                    </code>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="text-muted-foreground">
-                        {output.events_per_second}/s × {output.batch_size}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteKafkaOutput.mutate(output.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">RabbitMQ output</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              A background producer publishing one JSON message per row to a
-              RabbitMQ exchange. Leave the exchange blank to use the default
-              one, where the routing key is the queue name —{" "}
-              <strong>note that RabbitMQ silently discards messages whose
-              queue does not exist yet</strong>, so declare the queue first
-              or the messages go nowhere.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input placeholder="host" value={rabbitHost}
-                onChange={(e) => setRabbitHost(e.target.value)} className="w-36" />
-              <Input type="number" placeholder="port" value={rabbitPort}
-                onChange={(e) => setRabbitPort(Number(e.target.value))} className="w-24" />
-              <Input placeholder="username" value={rabbitUser}
-                onChange={(e) => setRabbitUser(e.target.value)} className="w-32" />
-              <Input type="password" placeholder="password" value={rabbitPassword}
-                onChange={(e) => setRabbitPassword(e.target.value)} className="w-32" />
-              <Input placeholder="exchange (blank = default)" value={rabbitExchange}
-                onChange={(e) => setRabbitExchange(e.target.value)} className="w-48" />
-              <Input placeholder="routing key / queue" value={rabbitRoutingKey}
-                onChange={(e) => setRabbitRoutingKey(e.target.value)} className="w-44" />
-              <Input type="number" placeholder="events/sec" value={rabbitEventsPerSecond}
-                onChange={(e) => setRabbitEventsPerSecond(Number(e.target.value))} className="w-28" />
-              <Button onClick={() => addRabbitOutput.mutate()}
-                disabled={addRabbitOutput.isPending || !rabbitHost || !rabbitRoutingKey}>
-                {addRabbitOutput.isPending ? "Creating…" : "Create output"}
-              </Button>
-            </div>
-            {rabbitOutputsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No RabbitMQ outputs yet.</p>
-            )}
-            {rabbitOutputsQuery.data && rabbitOutputsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {rabbitOutputsQuery.data.map((output) => (
-                  <li key={output.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                    <span className="font-mono text-xs">
-                      {output.host}:{output.port} {output.exchange || "(default)"} →{" "}
-                      {output.routing_key} @ {output.events_per_second}/s
-                    </span>
-                    <Button variant="ghost" size="sm"
-                      onClick={() => deleteRabbitOutput.mutate(output.id)}>
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Signed webhook output</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              POSTs a batch of rows to your URL on every tick. Each request
-              carries an <code className="font-mono">X-SynthFlow-Signature</code>{" "}
-              header — an HMAC-SHA256 of the timestamp and the exact body,
-              using the secret below — so the receiver can prove the request
-              came from you rather than trusting a URL nobody else is meant
-              to know. The timestamp is inside the signed value, so a captured
-              request cannot be replayed later.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input placeholder="https://example.com/hook" value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)} className="w-72" />
-              <Input type="password" placeholder="shared secret" value={webhookSecret}
-                onChange={(e) => setWebhookSecret(e.target.value)} className="w-44" />
-              <Input type="number" placeholder="events/sec" value={webhookEventsPerSecond}
-                onChange={(e) => setWebhookEventsPerSecond(Number(e.target.value))} className="w-28" />
-              <Input type="number" placeholder="rows/request" value={webhookBatchSize}
-                onChange={(e) => setWebhookBatchSize(Number(e.target.value))} className="w-28" />
-              <Button onClick={() => addWebhookOutput.mutate()}
-                disabled={addWebhookOutput.isPending || !webhookUrl || !webhookSecret}>
-                {addWebhookOutput.isPending ? "Creating…" : "Create webhook"}
-              </Button>
-            </div>
-            {webhookOutputsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No webhooks yet.</p>
-            )}
-            {webhookOutputsQuery.data && webhookOutputsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {webhookOutputsQuery.data.map((output) => (
-                  <li key={output.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                    <span className="font-mono text-xs">
-                      POST {output.url} — {output.batch_size} row(s) @{" "}
-                      {output.events_per_second}/s
-                    </span>
-                    <Button variant="ghost" size="sm"
-                      onClick={() => deleteWebhookOutput.mutate(output.id)}>
-                      Delete
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">MQTT output</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Same idea as the Kafka output above, publishing to an MQTT
-              broker instead — a real background producer that keeps
-              running independent of any client connection.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input
-                placeholder="broker host"
-                value={mqttBrokerHost}
-                onChange={(e) => setMqttBrokerHost(e.target.value)}
-                className="w-40"
-              />
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                value={mqttBrokerPort}
-                onChange={(e) => setMqttBrokerPort(Number(e.target.value))}
-                className="w-24"
-              />
-              <Input
-                placeholder="topic"
-                value={mqttTopic}
-                onChange={(e) => setMqttTopic(e.target.value)}
-                className="w-32"
-              />
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-muted-foreground">events/sec</span>
-                <Input
-                  type="number"
-                  min={0.1}
-                  max={50}
-                  step={0.1}
-                  value={mqttEventsPerSecond}
-                  onChange={(e) => setMqttEventsPerSecond(Number(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-muted-foreground">rows/message</span>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={mqttBatchSize}
-                  onChange={(e) => setMqttBatchSize(Number(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-              <Button
-                onClick={() => addMqttOutput.mutate()}
-                disabled={
-                  addMqttOutput.isPending ||
-                  !entity?.fields.length ||
-                  !mqttBrokerHost ||
-                  !mqttTopic ||
-                  !mqttAvailable
-                }
-              >
-                {addMqttOutput.isPending ? "Creating…" : "Create output"}
-              </Button>
-            </div>
-            {!mqttAvailable && (
-              <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                Not available in this install — the optional{" "}
-                <code className="font-mono">{mqttFeature?.extra ?? "mqtt"}</code> extra
-                isn&apos;t installed. Run{" "}
-                <code className="font-mono">synthflow init --services mqtt</code>, then
-                rebuild the backend to enable it.
-              </p>
-            )}
-            {mqttOutputsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No MQTT outputs yet.</p>
-            )}
-            {mqttOutputsQuery.data && mqttOutputsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {mqttOutputsQuery.data.map((output) => (
-                  <li
-                    key={output.id}
-                    className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-                  >
-                    <code className="truncate font-mono">
-                      {output.broker_host}:{output.broker_port} → {output.topic}
-                    </code>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="text-muted-foreground">
-                        {output.events_per_second}/s × {output.batch_size}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteMqttOutput.mutate(output.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Plugin output</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Same background-producer idea as Kafka/MQTT above, but delivering
-              through a third-party output plugin instead of a built-in
-              broker — install one (see the{" "}
-              <code className="font-mono">examples/example-plugin</code>{" "}
-              package) to pick it here. Config is whatever free-form JSON
-              that plugin expects.
-            </p>
-            <div className="flex flex-wrap items-start gap-2">
-              <Select
-                value={pluginOutputName}
-                onValueChange={(v) => setPluginOutputName(v ?? "")}
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="plugin" />
-                </SelectTrigger>
-                <SelectContent>
-                  {outputPluginsQuery.data?.map((p) => (
-                    <SelectItem key={p.name} value={p.name}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Textarea
-                placeholder='config, e.g. {"path": "/tmp/out.jsonl"}'
-                value={pluginOutputConfig}
-                onChange={(e) => setPluginOutputConfig(e.target.value)}
-                className="h-9 min-h-9 w-56"
-              />
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-muted-foreground">events/sec</span>
-                <Input
-                  type="number"
-                  min={0.1}
-                  max={50}
-                  step={0.1}
-                  value={pluginOutputEventsPerSecond}
-                  onChange={(e) => setPluginOutputEventsPerSecond(Number(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-muted-foreground">rows/message</span>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={pluginOutputBatchSize}
-                  onChange={(e) => setPluginOutputBatchSize(Number(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-              <Button
-                onClick={() => addPluginOutput.mutate()}
-                disabled={
-                  addPluginOutput.isPending || !entity?.fields.length || !pluginOutputName
-                }
-              >
-                {addPluginOutput.isPending ? "Creating…" : "Create output"}
-              </Button>
-            </div>
-            {outputPluginsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No output plugins installed yet.
-              </p>
-            )}
-            {pluginOutputsQuery.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">No plugin outputs yet.</p>
-            )}
-            {pluginOutputsQuery.data && pluginOutputsQuery.data.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {pluginOutputsQuery.data.map((output) => (
-                  <li
-                    key={output.id}
-                    className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-                  >
-                    <code className="truncate font-mono">
-                      {output.plugin_name} {JSON.stringify(output.config)}
-                    </code>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="text-muted-foreground">
-                        {output.events_per_second}/s × {output.batch_size}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deletePluginOutput.mutate(output.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">Generate</CardTitle>
-            <QualityReportDialog projectId={projectId} entityId={entityId} />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={5000}
-                value={count}
-                onChange={(e) => setCount(Number(e.target.value))}
-                className="w-32"
-              />
-              <Button
-                onClick={() => generate.mutate()}
-                disabled={generate.isPending || !entity?.fields.length}
-              >
-                {generate.isPending ? "Generating…" : "Generate"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => downloadCsv.mutate()}
-                disabled={downloadCsv.isPending || !entity?.fields.length}
-              >
-                {downloadCsv.isPending ? "Preparing…" : "Download CSV"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => downloadExcel.mutate()}
-                disabled={downloadExcel.isPending || !entity?.fields.length}
-              >
-                {downloadExcel.isPending ? "Preparing…" : "Download Excel"}
-              </Button>
-            </div>
-
-            {rows && rows.length > 0 && (
-              <div className="overflow-x-auto rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {columns.map((col) => (
-                        <TableHead key={col}>{col}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row, i) => (
-                      <TableRow key={i}>
-                        {columns.map((col) => (
-                          <TableCell key={col} className="font-mono text-xs">
-                            {row[col] === null || row[col] === undefined
-                              ? "null"
-                              : typeof row[col] === "object"
-                                ? JSON.stringify(row[col])
-                                : String(row[col])}
-                          </TableCell>
-                        ))}
-                      </TableRow>
+                        <p className="mt-1 text-muted-foreground">
+                          States: {workflow.states.join(", ")}
+                          <br />
+                          Initial: {workflow.initial_states.join(", ")}
+                          <br />
+                          Transitions:{" "}
+                          {workflow.transitions
+                            .map((t) => `${t.source}→${t.target}${t.weight !== 1 ? ` (${t.weight})` : ""}`)
+                            .join(", ")}
+                          {workflow.stop_probabilities && (
+                            <>
+                              <br />
+                              Stop probabilities:{" "}
+                              {Object.entries(workflow.stop_probabilities)
+                                .map(([state, p]) => `${state}=${p}`)
+                                .join(", ")}
+                            </>
+                          )}
+                        </p>
+                      </li>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  </ul>
+                )}
+              </PanelBody>
+            </Panel>
+
+            <Panel>
+              <PanelHeader>
+                <PanelTitle><Term id="trend">Trends</Term></PanelTitle>
+                {entity && (
+                  <AddTrendDialog
+                    entity={entity}
+                    onSubmit={(v) => addTrend.mutate(v)}
+                    isPending={addTrend.isPending}
+                  />
+                )}
+              </PanelHeader>
+              <PanelBody className="flex flex-col gap-4">
+                <p className="text-xs leading-relaxed text-ink-dim">
+                  Makes a numeric field&apos;s value a function of its row&apos;s
+                  position within the batch (0, 1, 2, …) instead of an independent
+                  random draw — e.g. a linear trend rises steadily across a
+                  generated batch. Position resets to 0 on every generate call.
+                </p>
+                {entity?.trends.length === 0 && (
+                  <PanelEmpty>
+                    No trends yet. A trend turns a numeric field into a curve across the batch
+                    instead of an independent random draw.
+                  </PanelEmpty>
+                )}
+                {entity && entity.trends.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {entity.trends.map((trend) => (
+                      <li
+                        key={trend.id}
+                        className="flex flex-col gap-1.5 rounded-lg border border-line-soft bg-surface-2 px-3 py-2.5"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs font-medium">
+                            {fieldNameById.get(trend.field_id)}
+                          </span>
+                          <span className="font-mono text-xs text-ink-faint">
+                            {trend.trend_type.replaceAll("_", " ")} ·{" "}
+                            {Object.entries(trend.params)
+                              .map(([k, v]) => `${k}=${v}`)
+                              .join(" ")}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            className="ml-auto"
+                            onClick={() => deleteTrend.mutate(trend.id)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                        <TrendPreview trend={trend} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PanelBody>
+            </Panel>
+
+            <Panel>
+              <PanelHeader>
+                <PanelTitle><Term id="lookup_attachment">Lookups</Term></PanelTitle>
+                {entity && (
+                  <AddLookupAttachmentDialog
+                    entity={entity}
+                    lookupTables={lookupTables}
+                    onSubmit={(v) => addLookupAttachment.mutate(v)}
+                    isPending={addLookupAttachment.isPending}
+                  />
+                )}
+              </PanelHeader>
+              <PanelBody className="flex flex-col gap-4">
+                <p className="text-xs leading-relaxed text-ink-dim">
+                  Draws a field&apos;s value from a column of a project-level
+                  lookup table instead of randomizing it — upload reference data
+                  on the project page first. Unlike a relationship, this works
+                  from this entity&apos;s own Generate button too, not just
+                  project-wide generation.
+                </p>
+                {lookupTables.length === 0 && (
+                  <p className="text-xs leading-relaxed text-ink-dim">
+                    No lookup tables in this project yet — upload one from the
+                    project page.
+                  </p>
+                )}
+                {entity?.lookup_attachments.length === 0 && lookupTables.length > 0 && (
+                  <p className="text-xs leading-relaxed text-ink-dim">No lookups attached yet.</p>
+                )}
+                {entity && entity.lookup_attachments.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {entity.lookup_attachments.map((attachment) => (
+                      <li
+                        key={attachment.id}
+                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                      >
+                        <span>
+                          <span className="font-medium">
+                            {fieldNameById.get(attachment.field_id)}
+                          </span>
+                          <span className="ml-2 text-muted-foreground">
+                            ← {lookupTableById.get(attachment.lookup_table_id)?.name ?? "?"}.
+                            {attachment.column}
+                          </span>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteLookupAttachment.mutate(attachment.id)}
+                        >
+                          Delete
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PanelBody>
+            </Panel>
+
+            <Panel>
+              <PanelHeader>
+                <PanelTitle><Term id="geo_route">Geo routes</Term></PanelTitle>
+                {entity && (
+                  <AddGeoRouteDialog
+                    entity={entity}
+                    lookupTables={lookupTables}
+                    onSubmit={(v) => addGeoRoute.mutate(v)}
+                    isPending={addGeoRoute.isPending}
+                  />
+                )}
+              </PanelHeader>
+              <PanelBody className="flex flex-col gap-4">
+                <p className="text-xs leading-relaxed text-ink-dim">
+                  Makes an object/json field a {"{"}lat, lon{"}"} point walking a
+                  lookup table&apos;s waypoints, interpolated across the
+                  generated batch — row 0 is the route&apos;s start, the last
+                  row is its end. Upload a route (a lookup table with lat/lon
+                  columns) on the project page first.
+                </p>
+                {lookupTables.length === 0 && (
+                  <p className="text-xs leading-relaxed text-ink-dim">
+                    No lookup tables in this project yet — upload one from the
+                    project page.
+                  </p>
+                )}
+                {entity?.geo_routes.length === 0 && lookupTables.length > 0 && (
+                  <p className="text-xs leading-relaxed text-ink-dim">No geo routes attached yet.</p>
+                )}
+                {entity && entity.geo_routes.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {entity.geo_routes.map((route) => (
+                      <li
+                        key={route.id}
+                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                      >
+                        <span>
+                          <span className="font-medium">{fieldNameById.get(route.field_id)}</span>
+                          <span className="ml-2 text-muted-foreground">
+                            ← {lookupTableById.get(route.lookup_table_id)?.name ?? "?"} (
+                            {route.lat_column}, {route.lon_column})
+                          </span>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteGeoRoute.mutate(route.id)}
+                        >
+                          Delete
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PanelBody>
+            </Panel>
+              </Stratum>
+
+              <Stratum id="distortion" hasContent={!!entity && entity.error_injections.length > 0}>
+            <Panel>
+              <PanelHeader>
+                <PanelTitle><Term id="error_injection">Error injection</Term></PanelTitle>
+                {entity && (
+                  <AddErrorInjectionDialog
+                    entity={entity}
+                    onSubmit={(v) => addErrorInjection.mutate(v)}
+                    isPending={addErrorInjection.isPending}
+                  />
+                )}
+              </PanelHeader>
+              <PanelBody className="flex flex-col gap-4">
+                <p className="text-xs leading-relaxed text-ink-dim">
+                  Deliberately corrupts a field&apos;s value on some fraction of
+                  generated rows — nulls, empty strings, duplicates, truncated
+                  text, wrong types, or out-of-range numbers — to simulate the bad
+                  data a real pipeline has to handle. A rule constraining the same
+                  field evaluates rows after corruption, so it can end up
+                  filtering the corrupted rows back out.
+                </p>
+                {entity?.error_injections.length === 0 && (
+                  <p className="text-xs leading-relaxed text-ink-dim">No error injections yet.</p>
+                )}
+                {entity && entity.error_injections.length > 0 && (
+                  <ul className="flex flex-col gap-2">
+                    {entity.error_injections.map((injection) => (
+                      <li
+                        key={injection.id}
+                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                      >
+                        <span>
+                          <span className="font-medium">{fieldNameById.get(injection.field_id)}</span>
+                          <span className="ml-2 text-muted-foreground">
+                            {Math.round(injection.rate * 100)}% ·{" "}
+                            {injection.error_types.map((t) => t.replaceAll("_", " ")).join(", ")}
+                          </span>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteErrorInjection.mutate(injection.id)}
+                        >
+                          Delete
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </PanelBody>
+            </Panel>
+              </Stratum>
+
+              <DeliveryStratum projectId={projectId} entityId={entityId} entity={entity}>
+                <Panel>
+                  <PanelHeader>
+                    <PanelTitle>Generate</PanelTitle>
+                    <QualityReportDialog projectId={projectId} entityId={entityId} />
+                  </PanelHeader>
+                  <PanelBody className="flex flex-col gap-4">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={5000}
+                        value={count}
+                        onChange={(e) => setCount(Number(e.target.value))}
+                        className="w-32"
+                      />
+                      <Button
+                        onClick={() => generate.mutate()}
+                        disabled={generate.isPending || !entity?.fields.length}
+                      >
+                        {generate.isPending ? "Generating…" : "Generate"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => downloadCsv.mutate()}
+                        disabled={downloadCsv.isPending || !entity?.fields.length}
+                      >
+                        {downloadCsv.isPending ? "Preparing…" : "Download CSV"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => downloadExcel.mutate()}
+                        disabled={downloadExcel.isPending || !entity?.fields.length}
+                      >
+                        {downloadExcel.isPending ? "Preparing…" : "Download Excel"}
+                      </Button>
+                    </div>
+
+                    {rows && rows.length > 0 && (
+                      <div className="overflow-x-auto rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              {columns.map((col) => (
+                                <TableHead key={col}>{col}</TableHead>
+                              ))}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {rows.map((row, i) => (
+                              <TableRow key={i}>
+                                {columns.map((col) => (
+                                  <TableCell key={col} className="font-mono text-xs">
+                                    {row[col] === null || row[col] === undefined
+                                      ? "null"
+                                      : typeof row[col] === "object"
+                                        ? JSON.stringify(row[col])
+                                        : String(row[col])}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </PanelBody>
+                </Panel>
+              </DeliveryStratum>
+
+            </div>
+
+            {/* Pinned from xl, where there is room for a third column without
+                squeezing the editor. Below that it becomes a bottom sheet —
+                see SpecimenSheet. */}
+            <div className="sticky top-24 hidden h-fit w-80 shrink-0 xl:block">
+              <Specimen
+                projectId={projectId}
+                entity={entity}
+                revision={entityQuery.dataUpdatedAt}
+              />
+            </div>
+          </div>
+
+          <SpecimenSheet
+            projectId={projectId}
+            entity={entity}
+            revision={entityQuery.dataUpdatedAt}
+          />
+        </div>
+      </StrataProvider>
     </AppShell>
+  );
+}
+
+/**
+ * The entity's name, editable, with the delete that never existed.
+ *
+ * `PATCH /entities/{id}` and `DELETE /entities/{id}` have both been live since
+ * Phase 1. The UI called neither, so an entity's name was fixed at creation and
+ * the only way to remove one was through the API directly.
+ */
+function EntityHeader({
+  projectId,
+  entity,
+  onRenamed,
+}: {
+  projectId: string;
+  entity: Entity | undefined;
+  onRenamed: () => void;
+}) {
+  const accessToken = useRequireAuth();
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+
+  const rename = useMutation({
+    mutationFn: (next: string) => api.updateEntity(accessToken!, projectId, entity!.id, next),
+    onSuccess: () => {
+      toast.success("Renamed");
+      setEditing(false);
+      onRenamed();
+    },
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not rename that entity"),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.deleteEntity(accessToken!, projectId, entity!.id),
+    onSuccess: () => {
+      toast.success("Entity deleted");
+      router.replace(`/projects/${projectId}`);
+    },
+    onError: (error: Error) => toast.error(friendlyError(error) || "Could not delete that entity"),
+  });
+
+  return (
+    <header className="mb-8 flex flex-wrap items-center gap-3">
+      {editing ? (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const next = name.trim();
+            if (next && next !== entity?.name) rename.mutate(next);
+            else setEditing(false);
+          }}
+        >
+          <Input
+            autoFocus
+            className="h-9 w-64 font-display text-lg font-bold"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <Button size="sm" type="submit" disabled={rename.isPending}>
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" type="button" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+        </form>
+      ) : (
+        <button
+          type="button"
+          disabled={!entity}
+          title="Rename"
+          onClick={() => {
+            setName(entity?.name ?? "");
+            setEditing(true);
+          }}
+          className="rounded-md font-display text-2xl font-bold tracking-tight decoration-line-soft underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          {entity?.name ?? "…"}
+        </button>
+      )}
+
+      {entity && (
+        <span className="font-mono text-xs text-ink-faint">
+          {entity.fields.length} field{entity.fields.length === 1 ? "" : "s"}
+        </span>
+      )}
+
+      <Link
+        href={`/projects/${projectId}/data`}
+        className="ml-auto text-xs text-ink-dim transition-colors hover:text-ink"
+      >
+        Record stores &amp; jobs →
+      </Link>
+
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Delete entity"
+        disabled={!entity || remove.isPending}
+        onClick={() => {
+          // Deleting an entity takes its fields, rules, workflows, outputs and
+          // any stored records with it, so the confirm names the entity rather
+          // than asking "are you sure?".
+          if (window.confirm(`Delete "${entity?.name}" and everything attached to it?`)) {
+            remove.mutate();
+          }
+        }}
+      >
+        <Trash2 />
+      </Button>
+    </header>
+  );
+}
+
+/**
+ * The specimen below xl, as a collapsible sheet docked to the bottom.
+ *
+ * Closed by default on small screens: there the editor already fills the
+ * viewport, and a panel that permanently eats a third of it would cost more
+ * than the live feedback is worth at that size.
+ */
+function SpecimenSheet({
+  projectId,
+  entity,
+  revision,
+}: {
+  projectId: string;
+  entity: Entity | undefined;
+  revision: number;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-20 xl:hidden">
+      {open && (
+        <div className="max-h-[45vh] overflow-y-auto border-t border-line bg-ground px-4 pt-3 pb-2">
+          <Specimen projectId={projectId} entity={entity} revision={revision} />
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-center gap-2 border-t border-line bg-surface py-2 text-xs text-ink-dim transition-colors hover:text-ink"
+      >
+        <ChevronUp className={cn("size-3.5 transition-transform", open && "rotate-180")} />
+        {open ? "Hide live specimen" : "Show live specimen"}
+      </button>
+    </div>
   );
 }

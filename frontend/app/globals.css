@@ -4,12 +4,91 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================================
+   SynthFlow "Strata" design tokens.
+
+   Two layers, deliberately:
+
+   1. The SynthFlow palette proper — ground/surface/ink/line/brand, the
+      field-type categorical scale, and severity. These are what new code
+      should reach for.
+   2. The shadcn contract (--background, --primary, --border, …) re-pointed
+      at layer 1, so every existing ui/* component inherits the new palette
+      without being rewritten.
+
+   Light lives on :root and dark on .dark, because that is the class strategy
+   next-themes drives. The *default* theme is dark (see providers.tsx) — this
+   is an operator's instrument, not a marketing site — but light is a real
+   second design, not an inversion.
+   ============================================================================ */
+
 @theme inline {
+  --font-sans: var(--font-instrument-sans);
+  --font-display: var(--font-bricolage);
+  --font-mono: var(--font-plex-mono);
+  --font-heading: var(--font-bricolage);
+
+  /* SynthFlow palette */
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-ink: var(--ink);
+  --color-ink-dim: var(--ink-dim);
+  --color-ink-faint: var(--ink-faint);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+
+  /* Severity — separate axis from the brand accent */
+  --color-sev-crit: var(--sev-crit);
+  --color-sev-warn: var(--sev-warn);
+  --color-sev-note: var(--sev-note);
+  --color-sev-ok: var(--sev-ok);
+
+  /* Chart series. A separate scale from the field-type hues on purpose: the
+     field scale is tuned for 13px bands and chips sitting next to their own
+     label, and it fails the categorical-chart gates outright (worst adjacent
+     CVD dE 5.8, normal-vision 9.3). These seven are the validated reference
+     order — all six checks pass on both surfaces. Use the field hues when the
+     series IS a field; use these otherwise. */
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-series-5: var(--series-5);
+  --color-series-6: var(--series-6);
+  --color-series-7: var(--series-7);
+
+  /* Field-type categorical scale. One system, used in the system map's core
+     samples, field tables, generated-data headers, the schema-import diff,
+     and the quality/privacy reports. */
+  --color-t-string: var(--t-string);
+  --color-t-integer: var(--t-integer);
+  --color-t-float: var(--t-float);
+  --color-t-boolean: var(--t-boolean);
+  --color-t-date: var(--t-date);
+  --color-t-datetime: var(--t-datetime);
+  --color-t-uuid: var(--t-uuid);
+  --color-t-enum: var(--t-enum);
+  --color-t-array: var(--t-array);
+  --color-t-object: var(--t-object);
+  --color-t-json: var(--t-json);
+
+  /* Per-section identity (VISUAL_POLISH_PLAN.md V2) — one colour per
+     top-level project section, reused for its rail link, page header, and
+     hero-panel accent. Most sections reuse an existing hue (System Map:
+     brand; Delivery: --t-string, REST's colour in OUTPUT_COLOR; Monitor:
+     --sev-ok, "this is running"); Data and Governance get a new one each
+     because nothing existing fits without creating a second meaning for
+     an already-meaningful colour. */
+  --color-sec-data: var(--sec-data);
+  --color-sec-governance: var(--sec-governance);
+
+  /* shadcn contract */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -18,11 +97,11 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -39,6 +118,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,72 +129,136 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  --ground: #fafafc;
+  --surface: #ffffff;
+  --surface-2: #f2f4f8;
+  --surface-3: #e8ebf1;
+  --line: #dfe3eb;
+  --line-soft: #ebeef3;
+  --ink: #131822;
+  --ink-dim: #5a6478;
+  --ink-faint: #8a93a3;
+  --brand: #8a6014;
+  --brand-soft: #f6ecd8;
+
+  --sev-crit: #c0392b;
+  --sev-warn: #a8620f;
+  --sev-note: #7e4fb0;
+  --sev-ok: #2e8a68;
+
+  --t-string: #2e7fa8;
+  --t-integer: #3f8f52;
+  --t-float: #2a7a6c;
+  --t-boolean: #7e56a8;
+  --t-date: #b2506a;
+  --t-datetime: #a84a79;
+  --t-uuid: #5a6480;
+  --t-enum: #b25c2a;
+  --sec-data: #1f8fa3;
+  --sec-governance: #6b6f8a;
+
+  --t-array: #6e8230;
+  --t-object: #4a5aa8;
+  --t-json: #94469f;
+
+  /* Validated categorical series order (light, surface #ffffff).
+     Three slots sit below 3:1 here — the relief rule applies, so every chart
+     using them ships direct labels and a table view of the same numbers. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+
+  --background: var(--ground);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #fffaf0;
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--ink-dim);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--ink);
+  --destructive: var(--sev-crit);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--brand);
+
+  --chart-1: var(--t-string);
+  --chart-2: var(--t-float);
+  --chart-3: var(--t-enum);
+  --chart-4: var(--t-boolean);
+  --chart-5: var(--t-integer);
+
+  --sidebar: var(--surface-2);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: #fffaf0;
+  --sidebar-accent: var(--surface-3);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--brand);
+
+  --shadow-panel: 0 1px 2px rgb(20 25 35 / 5%), 0 8px 24px rgb(20 25 35 / 7%);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --ground: #0a0d13;
+  --surface: #111621;
+  --surface-2: #18202e;
+  --surface-3: #202939;
+  --line: #242d3e;
+  --line-soft: #1a2130;
+  --ink: #e2e8f2;
+  --ink-dim: #8792a6;
+  --ink-faint: #59637a;
+  --brand: #e7b45c;
+  --brand-soft: #2b2415;
+
+  --sev-crit: #e8695c;
+  --sev-warn: #d9a441;
+  --sev-note: #b98cd9;
+  --sev-ok: #5fbf9b;
+
+  --t-string: #63b3d9;
+  --t-integer: #7fc98c;
+  --t-float: #4fae9c;
+  --t-boolean: #b98cd9;
+  --t-date: #e28a9e;
+  --t-datetime: #d97fa8;
+  --t-uuid: #8a93ad;
+  --t-enum: #e8925c;
+
+  --sec-data: #4dc4d9;
+  --sec-governance: #9498b8;
+
+  --t-array: #a8c05e;
+  --t-object: #7f8fd9;
+  --t-json: #c97fd9;
+
+  /* Same hues, stepped for the dark surface — not an automatic flip. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+
+  --primary-foreground: #161104;
+  --sidebar: var(--surface);
+  --sidebar-primary-foreground: #161104;
+
+  --shadow-panel: 0 1px 0 rgb(255 255 255 / 3%), 0 8px 30px rgb(0 0 0 / 45%);
 }
 
 @layer base {
@@ -123,8 +267,172 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv05" 1;
   }
   html {
     @apply font-sans;
   }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  /* Digits line up in columns everywhere numbers are compared, which in this
+     product is most places. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* An uppercase micro-label. Used for section eyebrows, stratum names, and
+     table headers so they read as instrument chrome rather than content. */
+  .eyebrow {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.66rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Motion primitives.
+
+   Everything here is opt-in by class and every one of them collapses under
+   prefers-reduced-motion to a *static design*, not to the animation frozen at
+   frame zero.
+   --------------------------------------------------------------------------- */
+
+@keyframes sf-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sf-fill {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes sf-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+@keyframes sf-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.sf-rise {
+  animation: sf-rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* A live indicator dot. */
+.sf-pulse {
+  animation: sf-pulse 1.8s ease-in-out infinite;
+}
+
+/* Traffic along a system-map edge. Rate is driven from JS by setting
+   --sf-dash-duration, so a busier edge visibly moves faster. */
+.sf-flow {
+  stroke-dasharray: 4 8;
+  animation: sf-dash var(--sf-dash-duration, 1s) linear infinite;
+}
+
+/* Card lift. The 3D budget: tilt is capped at 6deg and only ever applied by
+   the tilt hook, never by a hover rule. */
+.sf-lift {
+  transition:
+    transform 0.25s cubic-bezier(0.2, 0.7, 0.3, 1),
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+.sf-lift:hover {
+  transform: translateY(-3px);
+  border-color: var(--ink-faint);
+}
+
+/* The scroll-linked depth rail behind the Strata Inspector. Native CSS
+   scroll-driven animation — no scroll library, no scroll-jacking. Where
+   animation-timeline is unsupported the rail simply renders full and dim,
+   which is a legible static state rather than a broken one. */
+.sf-rail-fill {
+  transform: scaleY(1);
+  transform-origin: top;
+  opacity: 0.35;
+}
+@supports (animation-timeline: view()) {
+  .sf-rail-fill {
+    opacity: 1;
+    animation: sf-fill linear both;
+    animation-timeline: view(block);
+    animation-range: entry 0% cover 60%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .sf-rail-fill {
+    animation: none;
+    transform: scaleY(1);
+    opacity: 0.35;
+  }
+  .sf-lift:hover {
+    transform: none;
+  }
+  .sf-flow {
+    animation: none;
+    stroke-dasharray: 4 8;
+  }
+}
+
+/* React Flow overrides — the library ships a light-only default skin. */
+.react-flow {
+  --xy-background-color: var(--ground);
+  --xy-edge-stroke: var(--line);
+  --xy-edge-stroke-selected: var(--brand);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-color: var(--ink-dim);
+  --xy-controls-button-color-hover: var(--ink);
+  --xy-controls-button-border-color: var(--line);
+  --xy-minimap-background-color: var(--surface);
+  --xy-minimap-mask-background-color-props: color-mix(in srgb, var(--ground) 70%, transparent);
+  --xy-attribution-background-color: transparent;
+}
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__handle {
+  border-color: var(--line);
+  background: var(--surface-3);
 }
