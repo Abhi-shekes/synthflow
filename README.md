@@ -154,6 +154,11 @@ docker compose exec backend alembic upgrade head
 - Frontend: [http://localhost:3000](http://localhost:3000)
 - Backend API: [http://localhost:8001](http://localhost:8001) (interactive docs at `/docs`)
 
+New to the app? [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) is a
+screenshot-by-screenshot walkthrough of every page — signing in, the
+welcome flow, the system map, designing an entity, Guided vs. Advanced
+mode, and everything in the workspace settings.
+
 ### Optional services
 
 Extras are behind Compose profiles, so the default `docker compose up`
