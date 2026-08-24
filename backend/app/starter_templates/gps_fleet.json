@@ -1,7 +1,7 @@
 {
   "template_version": 1,
   "name": "GPS Fleet",
-  "description": "Delivery vehicles pinging their position along a fixed route.",
+  "description": "Delivery vehicles cycling a depot loop with real lifecycle status, speeding/idle/depot events, and occasional sensor glitches.",
   "entities": [
     {
       "name": "Vehicle",
@@ -34,6 +34,38 @@
           "max_value": null,
           "regex": null,
           "preset": "vin",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "driver_name",
+          "field_type": "string",
+          "order": 2,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": "person_name",
+          "enum_values": null,
+          "enum_weights": null,
+          "formula": null
+        },
+        {
+          "name": "status",
+          "field_type": "string",
+          "order": 3,
+          "required": true,
+          "nullable": false,
+          "unique": false,
+          "default_value": null,
+          "min_value": null,
+          "max_value": null,
+          "regex": null,
+          "preset": null,
           "enum_values": null,
           "enum_weights": null,
           "formula": null
@@ -120,8 +152,80 @@
     }
   ],
   "rules": [],
-  "event_triggers": [],
-  "workflows": [],
+  "event_triggers": [
+    {
+      "entity": "LocationPing",
+      "label": "speeding",
+      "condition": "speed_kmh > 90"
+    },
+    {
+      "entity": "LocationPing",
+      "label": "stopped",
+      "condition": "speed_kmh < 2"
+    }
+  ],
+  "workflows": [
+    {
+      "entity": "Vehicle",
+      "field": "status",
+      "states": [
+        "idle",
+        "en_route",
+        "delivering",
+        "maintenance",
+        "offline"
+      ],
+      "initial_states": [
+        "idle"
+      ],
+      "transitions": [
+        {
+          "source": "idle",
+          "target": "en_route"
+        },
+        {
+          "source": "en_route",
+          "target": "delivering",
+          "weight": 0.8
+        },
+        {
+          "source": "en_route",
+          "target": "maintenance",
+          "weight": 0.1
+        },
+        {
+          "source": "en_route",
+          "target": "offline",
+          "weight": 0.1
+        },
+        {
+          "source": "delivering",
+          "target": "idle",
+          "weight": 0.9
+        },
+        {
+          "source": "delivering",
+          "target": "maintenance",
+          "weight": 0.1
+        },
+        {
+          "source": "maintenance",
+          "target": "idle"
+        },
+        {
+          "source": "offline",
+          "target": "idle"
+        }
+      ],
+      "stop_probabilities": {
+        "idle": 0.2,
+        "en_route": 0.1,
+        "delivering": 0.15,
+        "maintenance": 0.4,
+        "offline": 0.5
+      }
+    }
+  ],
   "trends": [
     {
       "entity": "Vehicle",
@@ -133,7 +237,32 @@
       }
     }
   ],
-  "error_injections": [],
+  "error_injections": [
+    {
+      "entity": "LocationPing",
+      "field": "position",
+      "rate": 0.03,
+      "error_types": [
+        "null"
+      ]
+    },
+    {
+      "entity": "LocationPing",
+      "field": "speed_kmh",
+      "rate": 0.02,
+      "error_types": [
+        "out_of_range"
+      ]
+    },
+    {
+      "entity": "LocationPing",
+      "field": "pinged_at",
+      "rate": 0.01,
+      "error_types": [
+        "duplicate"
+      ]
+    }
+  ],
   "lookup_tables": [
     {
       "name": "DeliveryRoute",
@@ -147,20 +276,48 @@
           "lon": -97.7431
         },
         {
-          "lat": 30.2711,
-          "lon": -97.7437
+          "lat": 30.2681,
+          "lon": -97.7412
         },
         {
-          "lat": 30.2849,
-          "lon": -97.7341
+          "lat": 30.2698,
+          "lon": -97.7398
         },
         {
-          "lat": 30.2946,
-          "lon": -97.7266
+          "lat": 30.2715,
+          "lon": -97.7392
         },
         {
-          "lat": 30.3078,
-          "lon": -97.7219
+          "lat": 30.2731,
+          "lon": -97.7402
+        },
+        {
+          "lat": 30.2738,
+          "lon": -97.7421
+        },
+        {
+          "lat": 30.2732,
+          "lon": -97.7442
+        },
+        {
+          "lat": 30.2716,
+          "lon": -97.7457
+        },
+        {
+          "lat": 30.2698,
+          "lon": -97.7462
+        },
+        {
+          "lat": 30.2682,
+          "lon": -97.7453
+        },
+        {
+          "lat": 30.2670,
+          "lon": -97.7440
+        },
+        {
+          "lat": 30.2672,
+          "lon": -97.7431
         }
       ]
     }
