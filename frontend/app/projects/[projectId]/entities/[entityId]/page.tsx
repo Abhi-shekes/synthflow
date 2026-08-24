@@ -16,7 +16,6 @@ import { AddTrendDialog } from "@/components/add-trend-dialog";
 import { AddWorkflowDialog } from "@/components/add-workflow-dialog";
 import { AppShell } from "@/components/app-shell";
 import { Term } from "@/components/help/term";
-import { CoachMark } from "@/components/onboarding/coach-mark";
 import { FieldRow } from "@/components/strata/field-row";
 import { DeliveryStratum } from "@/components/strata/delivery-stratum";
 import { PrivacyPanel } from "@/components/strata/privacy-panel";
@@ -289,15 +288,8 @@ export default function EntityDetailPage() {
             <DepthRail />
 
             <div className="flex min-w-0 flex-1 flex-col gap-12">
-              <CoachMark id="entity-strata">
-                <strong className="font-medium text-ink">Four layers, top to bottom.</strong>{" "}
-                Shape is what a row is made of. Behaviour is how values move and constrain each
-                other. Distortion deliberately breaks some rows to test how you handle bad data.
-                Delivery is where the rows go. Only Shape is required to generate anything.
-              </CoachMark>
-
               <Stratum id="shape">
-                <Panel>
+                <Panel data-tour="fields-panel">
                   <PanelHeader>
                     <PanelTitle>Fields</PanelTitle>
                     <div className="flex items-center gap-2">
@@ -793,6 +785,7 @@ export default function EntityDetailPage() {
                         className="w-32"
                       />
                       <Button
+                        data-tour="generate-button"
                         onClick={() => generate.mutate()}
                         disabled={generate.isPending || !entity?.fields.length}
                       >
@@ -815,7 +808,7 @@ export default function EntityDetailPage() {
                     </div>
 
                     {rows && rows.length > 0 && (
-                      <div className="overflow-x-auto rounded-md border">
+                      <div data-tour="generated-rows" className="overflow-x-auto rounded-md border">
                         <Table>
                           <TableHeader>
                             <TableRow>
@@ -851,7 +844,7 @@ export default function EntityDetailPage() {
             {/* Pinned from xl, where there is room for a third column without
                 squeezing the editor. Below that it becomes a bottom sheet —
                 see SpecimenSheet. */}
-            <div className="sticky top-24 hidden h-fit w-80 shrink-0 xl:block">
+            <div data-tour="specimen" className="sticky top-24 hidden h-fit w-80 shrink-0 xl:block">
               <Specimen
                 projectId={projectId}
                 entity={entity}
@@ -1003,7 +996,7 @@ function SpecimenSheet({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 xl:hidden">
+    <div data-tour="specimen" className="fixed inset-x-0 bottom-0 z-20 xl:hidden">
       {open && (
         <div className="max-h-[45vh] overflow-y-auto border-t border-line bg-ground px-4 pt-3 pb-2">
           <Specimen projectId={projectId} entity={entity} revision={revision} />

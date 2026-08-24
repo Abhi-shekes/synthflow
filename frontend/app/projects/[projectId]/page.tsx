@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import { AddRelationshipDialog } from "@/components/add-relationship-dialog";
 import { AppShell } from "@/components/app-shell";
 import { SystemMap, SystemMapList, type MapSource } from "@/components/map/system-map";
-import { CoachMark } from "@/components/onboarding/coach-mark";
 import { SectionHeader } from "@/components/section-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -184,6 +183,7 @@ export default function ProjectMapPage() {
   return (
     <AppShell>
       <div className="flex w-full flex-col gap-6">
+        <div data-tour="system-map-header">
         <SectionHeader
           icon={Boxes}
           color={SECTION_COLOR.map}
@@ -260,12 +260,7 @@ export default function ProjectMapPage() {
           </div>
           }
         />
-
-        <CoachMark id="system-map">
-          <strong className="font-medium text-ink">This is the system map.</strong> Sources feed
-          entities, entities relate to each other, and entities feed destinations — left to
-          right. Click an entity to open and edit it.
-        </CoachMark>
+        </div>
 
         {/* The canvas from md up, when selected; a list otherwise — always a
             list below md, since a canvas on a phone is not a canvas. */}
@@ -290,7 +285,7 @@ export default function ProjectMapPage() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <Panel tone="marked" accent={SECTION_COLOR.map}>
+          <Panel data-tour="add-entity" tone="marked" accent={SECTION_COLOR.map}>
             <PanelHeader>
               <PanelTitle>Add an entity</PanelTitle>
             </PanelHeader>

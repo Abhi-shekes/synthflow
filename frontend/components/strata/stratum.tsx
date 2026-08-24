@@ -105,6 +105,7 @@ export function DepthRail() {
           <a
             key={stratum.id}
             href={`#${stratum.id}`}
+            data-tour={`rail-${stratum.id}`}
             aria-current={current ? "true" : undefined}
             className={cn(
               "group block rounded-md transition-all duration-300",
@@ -195,6 +196,7 @@ export function Stratum({
         <button
           type="button"
           onClick={() => setExpanded(true)}
+          data-tour={`add-${id}`}
           className={cn(
             "flex w-full items-center gap-2 rounded-lg border border-dashed border-line px-4 py-3 text-left text-xs text-ink-dim transition-colors",
             "hover:border-ink-faint hover:text-ink",

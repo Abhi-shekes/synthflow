@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 
 import { Mark } from "@/components/brand/mark";
 import { HelpPanel } from "@/components/help/help-panel";
+import { TourOverlay } from "@/components/onboarding/tour-overlay";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { ModeToggle } from "@/components/shell/mode-toggle";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
@@ -68,6 +69,10 @@ interface NavItem {
    * Settings/workspace links have none and fall
    * back to the brand colour, same as before this existed. */
   section?: SectionKey;
+  /** Spotlight target for the interactive tour (`lib/tour/steps.ts`). Set on
+   * both the desktop `RailLink` and the mobile phone-strip duplicate below —
+   * `useTourTarget` picks whichever one is actually visible. */
+  tourId?: string;
 }
 
 /**
@@ -114,8 +119,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // the section pointing at a 404.
   useEffect(() => {
     if (!projectsQuery.isSuccess || !lastProjectId) return;
+    // Never second-guess the project the URL is actively pointed at. Right
+    // after creating one (the welcome flow routes straight into it), the
+    // cached projects list is briefly stale and won't contain it yet —
+    // clearing lastProjectId here would then race the effect above, which
+    // immediately sets it right back, looping the two forever.
+    if (lastProjectId === routeProjectId) return;
     if (!projects.some((project) => project.id === lastProjectId)) setLastProject(null);
-  }, [projectsQuery.isSuccess, projects, lastProjectId, setLastProject]);
+  }, [projectsQuery.isSuccess, projects, lastProjectId, routeProjectId, setLastProject]);
 
   const mode = useViewMode();
   const [projectAdvancedOpen, setProjectAdvancedOpen] = useState(false);
@@ -130,12 +141,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           Icon: Boxes,
           exact: true,
           section: "map",
+          tourId: "nav-system-map",
         },
         {
           href: `/projects/${activeProjectId}/delivery`,
           label: "Delivery",
           Icon: Radio,
           section: "delivery",
+          tourId: "nav-delivery",
         },
         {
           href: `/projects/${activeProjectId}/data`,
@@ -143,6 +156,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           Icon: Database,
           advanced: true,
           section: "data",
+          tourId: "nav-data-jobs",
         },
         {
           href: `/projects/${activeProjectId}/monitor`,
@@ -150,6 +164,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           Icon: Gauge,
           advanced: true,
           section: "monitor",
+          tourId: "nav-monitor",
         },
         {
           href: `/projects/${activeProjectId}/governance`,
@@ -157,12 +172,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           Icon: ScrollText,
           advanced: true,
           section: "governance",
+          tourId: "nav-governance",
         },
       ]
     : [];
 
   const globalNav: NavItem[] = [
-    { href: "/projects", label: "All projects", Icon: FolderOpen, exact: true },
+    {
+      href: "/projects",
+      label: "All projects",
+      Icon: FolderOpen,
+      exact: true,
+      tourId: "nav-all-projects",
+    },
     { href: "/settings/api-keys", label: "API keys", Icon: KeyRound, advanced: true },
     { href: "/settings/organizations", label: "Organizations", Icon: Users, advanced: true },
     { href: "/settings/activity", label: "Activity", Icon: ScrollText, advanced: true },
@@ -262,7 +284,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             wraps its labels mid-word. Each gets its own row instead. */}
         <div className="mt-auto hidden flex-col gap-1.5 lg:flex">
           <ModeToggle />
-          <ThemeToggle />
+          <span data-tour="theme-toggle">
+            <ThemeToggle />
+          </span>
           {user && (
             <p className="truncate px-1.5 pt-0.5 font-mono text-xs text-ink-faint">
               {user.email}
@@ -312,7 +336,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="lg:hidden">
               <ModeToggle />
             </span>
-            <span className="lg:hidden">
+            <span className="lg:hidden" data-tour="theme-toggle">
               <ThemeToggle />
             </span>
             <Button
@@ -338,6 +362,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               key={item.href}
               href={item.href}
+              data-tour={item.tourId}
               className={cn(
                 "shrink-0 rounded-lg px-2.5 py-1 text-xs whitespace-nowrap transition-colors",
                 isActive(item) ? "bg-surface-2 text-ink" : "text-ink-dim"
@@ -350,6 +375,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <main className="min-w-0 flex-1 px-4 py-6 lg:px-6 lg:py-8">{children}</main>
       </div>
+
+      <TourOverlay hasProject={!!activeProjectId} />
     </div>
   );
 }
@@ -421,12 +448,13 @@ function ProjectSwitcher({
 }
 
 function RailLink({ item, active }: { item: NavItem; active: boolean }) {
-  const { Icon, href, label, section } = item;
+  const { Icon, href, label, section, tourId } = item;
   const activeColor = section ? SECTION_TEXT_CLASS[section] : "text-brand";
   return (
     <Link
       href={href}
       title={label}
+      data-tour={tourId}
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-[0.8rem] transition-colors",

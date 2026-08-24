@@ -122,6 +122,7 @@ export function CommandPalette() {
       <button
         type="button"
         onClick={() => setOpen(true)}
+        data-tour="command-palette-trigger"
         aria-keyshortcuts="Meta+K Control+K"
         className="group flex h-8 items-center gap-2 rounded-lg border border-line bg-surface-2 px-2.5 text-xs text-ink-faint transition-colors hover:border-ink-faint hover:text-ink-dim focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-52 lg:w-64"
       >

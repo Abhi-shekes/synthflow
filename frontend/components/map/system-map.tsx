@@ -272,10 +272,11 @@ export function SystemMapList({
 }) {
   return (
     <ul className="flex flex-col gap-2">
-      {entities.map((entity) => (
+      {entities.map((entity, index) => (
         <li key={entity.id}>
           <Link
             href={`/projects/${projectId}/entities/${entity.id}`}
+            data-tour={index === 0 ? "first-entity-card" : undefined}
             className="flex items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5"
           >
             <span className="flex h-8 w-1.5 shrink-0 flex-col gap-px">

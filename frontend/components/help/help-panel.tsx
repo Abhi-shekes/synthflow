@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { GLOSSARY } from "@/lib/glossary";
 import { helpTopicFor } from "@/components/help/help-content";
 import { Button } from "@/components/ui/button";
+import { useTourStore } from "@/lib/tour/store";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 export function HelpPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const topic = helpTopicFor(pathname);
+  const startTour = useTourStore((s) => s.start);
 
   if (!open) return null;
 
@@ -87,13 +89,25 @@ export function HelpPanel({ open, onClose }: { open: boolean; onClose: () => voi
           </p>
         )}
 
-        <Link
-          href="/learn"
-          className="mt-auto text-xs font-medium text-brand underline-offset-2 hover:underline"
-          onClick={onClose}
-        >
-          Read the Learn page →
-        </Link>
+        <div className="mt-auto flex flex-col gap-1.5">
+          <button
+            type="button"
+            className="text-left text-xs font-medium text-brand underline-offset-2 hover:underline"
+            onClick={() => {
+              onClose();
+              startTour();
+            }}
+          >
+            Replay the tour →
+          </button>
+          <Link
+            href="/learn"
+            className="text-xs font-medium text-brand underline-offset-2 hover:underline"
+            onClick={onClose}
+          >
+            Read the Learn page →
+          </Link>
+        </div>
       </aside>
     </>
   );

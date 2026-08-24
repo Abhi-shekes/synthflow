@@ -37,7 +37,7 @@ export function GettingStartedCard({ hasProject }: { hasProject: boolean }) {
   ];
 
   return (
-    <Panel tone="flat">
+    <Panel data-tour="getting-started" tone="flat">
       <PanelHeader>
         <PanelTitle>Getting started</PanelTitle>
         <Button

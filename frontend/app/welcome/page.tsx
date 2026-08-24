@@ -55,13 +55,19 @@ export default function WelcomePage() {
       const template = await api.getStarterTemplate(accessToken!, key);
       return api.importProject(accessToken!, template);
     },
-    onSuccess: (project) => finish(project.id),
+    onSuccess: (project) => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      finish(project.id);
+    },
     onError: (error: Error) => toast.error(friendlyError(error) || "Could not use that template"),
   });
 
   const startBlank = useMutation({
     mutationFn: () => api.createProject(accessToken!, { name: "My first project" }),
-    onSuccess: (project) => finish(project.id),
+    onSuccess: (project) => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      finish(project.id);
+    },
     onError: (error: Error) => toast.error(friendlyError(error) || "Could not create a project"),
   });
 
