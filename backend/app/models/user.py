@@ -22,11 +22,24 @@ class User(Base):
     # is what every new account starts on; "advanced" is the full instrument
     # panel. A plain string column rather than a DB enum — SQLite has no enum
     # type, and Postgres would need a migration to add a third mode later.
-    ui_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="guided", server_default="guided")
+    ui_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="guided", server_default="guided"
+    )
     # Whether this user has been through (or explicitly skipped) the first-run
     # welcome flow. False only until then, permanently true after — it must
     # never re-trigger uninvited.
-    has_onboarded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    has_onboarded: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    # Login lockout. A count rather than a log, and reset on any success —
+    # see app.api.routes.auth.login. Kept on the user row rather than in a
+    # cache so it survives a restart and stays correct if the API ever runs
+    # as more than one replica.
+    failed_login_attempts: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     projects: Mapped[list["Project"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"

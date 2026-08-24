@@ -1,12 +1,15 @@
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
+    # 12, not 8: this is the only thing standing between an internet-facing
+    # signup form and a trivially guessable account, since brute force is
+    # otherwise only slowed (not stopped) by rate limiting.
+    password: str = Field(min_length=12)
 
 
 class UserLogin(BaseModel):
@@ -30,16 +33,6 @@ class UserUpdate(BaseModel):
 
     ui_mode: Literal["guided", "advanced"] | None = None
     has_onboarded: bool | None = None
-
-
-class TokenPair(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
 
 
 class AccessToken(BaseModel):

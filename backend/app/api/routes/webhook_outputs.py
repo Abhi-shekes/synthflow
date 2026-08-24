@@ -1,10 +1,12 @@
 import uuid
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.api.routes.entities import _get_owned_entity
+from app.core.network import UnsafeHostError, ensure_not_internal_service
 from app.db.session import get_db
 from app.models.user import User
 from app.models.webhook_output import WebhookOutput
@@ -40,6 +42,23 @@ async def create_webhook_output(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Entity has no fields to generate"
         )
+
+    parsed = urlparse(payload.url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Only http and https URLs are supported, not '{parsed.scheme}'",
+        )
+    if not parsed.hostname:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="That URL has no host")
+    try:
+        # Only loopback/link-local are refused, not RFC1918 — a webhook to
+        # an internal service is a legitimate, common target. See
+        # app.core.network's module docstring.
+        ensure_not_internal_service(parsed.hostname)
+    except UnsafeHostError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     # No optional extra: urllib and hmac are stdlib, so a signed webhook
     # works in the smallest possible install.
     output = WebhookOutput(entity_id=entity_id, **payload.model_dump())

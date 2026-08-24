@@ -20,7 +20,9 @@ silently writes into the wrong account.
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
+from app.core.network import UnsafeHostError, ensure_not_internal_service
 from app.models.object_storage import ObjectStorageTarget
 from app.services import install
 
@@ -36,6 +38,20 @@ def _client(target: ObjectStorageTarget):
     install.require("s3")
     import boto3
     from botocore.config import Config
+
+    # No check when endpoint_url is empty — that means real AWS S3, always
+    # a public, safe endpoint. A self-hosted MinIO/R2-alike is exactly the
+    # case app.core.network's "reaching private network is the point"
+    # policy exists for, so only loopback/link-local are refused, not
+    # RFC1918 — see its module docstring.
+    if target.endpoint_url:
+        hostname = urlparse(target.endpoint_url).hostname
+        if not hostname:
+            raise ObjectStorageError(f"'{target.endpoint_url}' has no host")
+        try:
+            ensure_not_internal_service(hostname)
+        except UnsafeHostError as exc:
+            raise ObjectStorageError(str(exc)) from exc
 
     return boto3.client(
         "s3",

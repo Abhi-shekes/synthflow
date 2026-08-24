@@ -28,6 +28,7 @@ import urllib.request
 from decimal import Decimal
 from typing import Any
 
+from app.core.network import UnsafeHostError, ensure_public_host
 from app.models.database_connection import DatabaseConnection, DatabaseDialect
 from app.models.object_storage import ObjectStorageTarget
 from app.services import install
@@ -59,6 +60,15 @@ def fetch_url(url: str) -> tuple[str, bytes]:
         )
     if not parsed.netloc:
         raise IngestError("That URL has no host")
+    if not parsed.hostname:
+        raise IngestError("That URL has no host")
+    try:
+        ensure_public_host(parsed.hostname)
+    except UnsafeHostError as exc:
+        # Deliberately no more specific than this — confirming *which*
+        # private range or that a name resolved at all would help an
+        # attacker map the internal network purely from the error text.
+        raise IngestError("That URL points at a host this server won't fetch from") from exc
 
     request = urllib.request.Request(url, headers={"User-Agent": "SynthFlow"})
     try:

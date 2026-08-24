@@ -29,12 +29,12 @@ def test_project_crud(client, auth_headers):
 
 
 def test_projects_are_scoped_per_user(client):
-    u1 = {"email": "u1@example.com", "password": "hunter22"}
+    u1 = {"email": "u1@example.com", "password": "hunter222222"}
     client.post("/api/v1/auth/signup", json=u1)
     login1 = client.post("/api/v1/auth/login", json=u1)
     headers1 = {"Authorization": f"Bearer {login1.json()['access_token']}"}
 
-    u2 = {"email": "u2@example.com", "password": "hunter22"}
+    u2 = {"email": "u2@example.com", "password": "hunter222222"}
     client.post("/api/v1/auth/signup", json=u2)
     login2 = client.post("/api/v1/auth/login", json=u2)
     headers2 = {"Authorization": f"Bearer {login2.json()['access_token']}"}

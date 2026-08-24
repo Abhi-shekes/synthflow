@@ -49,6 +49,7 @@ request is a poor trade.
 
 import argparse
 import json
+import secrets
 import sys
 import urllib.error
 import urllib.request
@@ -61,6 +62,28 @@ MANAGED_KEYS = ("COMPOSE_PROFILES", "SYNTHFLOW_EXTRAS")
 # Stripped as well as re-written, so re-running the wizard replaces this
 # banner instead of stacking another copy of it on every run.
 MANAGED_COMMENT = "# Written by `synthflow init`. Re-run it to change these."
+
+# Secrets generated once and then left alone. Unlike MANAGED_KEYS these are
+# never stripped/rewritten on a re-run — losing SECRET_KEY on a second
+# `synthflow init` would invalidate every session and undecrypt every
+# stored credential, so an existing value always wins.
+#
+# SECRET_KEY is unconditional (every install needs it); the rest are keyed
+# by the compose profile that actually uses them, so `synthflow init` only
+# generates a password for a datastore this install is going to start.
+_ALWAYS_SECRETS = ("SECRET_KEY",)
+_PROFILE_SECRETS: dict[str, tuple[str, ...]] = {
+    None: ("POSTGRES_PASSWORD",),  # postgres has no profile — it's always on
+    "mysql": ("MYSQL_ROOT_PASSWORD", "MYSQL_PASSWORD"),
+    "mongo": ("MONGO_INITDB_ROOT_PASSWORD",),
+    "rabbitmq": ("RABBITMQ_DEFAULT_PASS",),
+    "s3": ("MINIO_ROOT_PASSWORD",),
+    "monitoring": ("GRAFANA_ADMIN_PASSWORD",),
+}
+
+
+def _generate_secret() -> str:
+    return secrets.token_urlsafe(32)
 
 
 @dataclass(frozen=True)
@@ -163,10 +186,29 @@ def _repo_root(start: Path) -> Path:
     return start
 
 
-def _render_env(existing: str, profiles: list[str], extras: list[str]) -> str:
+def _render_env(existing: str, profiles: list[str], extras: list[str]) -> tuple[str, list[str]]:
     """Rewrite only the two keys we own, preserving anything else already
     in the file — someone's SECRET_KEY shouldn't vanish because they
-    re-ran the wizard."""
+    re-ran the wizard.
+
+    Also fills in SECRET_KEY and, for each selected profile, that
+    datastore's password — generated once and appended alongside whatever
+    was already there. An existing value (of any of these keys) is always
+    left untouched: regenerating SECRET_KEY on a second run would
+    invalidate every session and undecrypt every stored credential, and
+    regenerating a datastore password would orphan whatever's already in
+    that volume.
+
+    Returns the rendered file plus the list of keys that were freshly
+    generated, so the caller can tell the operator what changed without
+    printing the values themselves.
+    """
+    existing_keys = {
+        line.split("=", 1)[0].strip()
+        for line in existing.splitlines()
+        if line.strip() and not line.strip().startswith("#") and "=" in line
+    }
+
     kept = [
         line
         for line in existing.splitlines()
@@ -176,15 +218,35 @@ def _render_env(existing: str, profiles: list[str], extras: list[str]) -> str:
     while kept and not kept[-1].strip():
         kept.pop()
 
+    wanted_keys = list(_ALWAYS_SECRETS)
+    for profile in (None, *profiles):
+        wanted_keys.extend(_PROFILE_SECRETS.get(profile, ()))
+
+    generated: list[str] = []
+    secret_lines: list[str] = []
+    for key in wanted_keys:
+        if key in existing_keys:
+            continue
+        secret_lines.append(f"{key}={_generate_secret()}")
+        generated.append(key)
+
     body = "\n".join(kept)
     if body:
         body += "\n\n"
-    return (
+    if secret_lines:
+        body += (
+            "# Generated once by `synthflow init` — re-running the wizard will not\n"
+            "# replace these. Back them up; losing SECRET_KEY invalidates every\n"
+            "# session and every stored connection credential.\n" + "\n".join(secret_lines) + "\n\n"
+        )
+
+    rendered = (
         body
         + f"{MANAGED_COMMENT}\n"
         + f"COMPOSE_PROFILES={','.join(profiles)}\n"
         + f"SYNTHFLOW_EXTRAS={','.join(extras)}\n"
     )
+    return rendered, generated
 
 
 def _prompt(options: tuple[Option, ...]) -> list[str]:
@@ -261,7 +323,7 @@ def init(argv: list[str] | None = None) -> int:
     root = _repo_root(Path(args.path).resolve())
     env_path = root / ENV_FILENAME
     existing = env_path.read_text() if env_path.is_file() else ""
-    rendered = _render_env(existing, profiles, extras)
+    rendered, generated_secrets = _render_env(existing, profiles, extras)
 
     print()
     if chosen:
@@ -272,6 +334,8 @@ def init(argv: list[str] | None = None) -> int:
     for line in rendered.splitlines():
         if any(line.startswith(f"{key}=") for key in MANAGED_KEYS):
             print(f"    {line}")
+    if generated_secrets:
+        print(f"\nAlso generating (values not shown): {', '.join(generated_secrets)}")
 
     if not args.yes:
         answer = input("\nWrite it? [Y/n] ").strip().lower()

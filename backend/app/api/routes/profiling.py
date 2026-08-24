@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.api.routes.projects import _get_owned_project
 from app.core.config import settings
+from app.core.uploads import read_capped
 from app.db.session import get_db
 from app.models.database_connection import DatabaseConnection
 from app.models.object_storage import ObjectStorageTarget
@@ -70,7 +71,7 @@ async def profile_sample(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Upload at least one file"
         )
 
-    payloads = [(f.filename or "sample.csv", await f.read()) for f in files]
+    payloads = [(f.filename or "sample.csv", await read_capped(f)) for f in files]
 
     try:
         result, profiles_by_entity = profile_files(

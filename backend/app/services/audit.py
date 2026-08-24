@@ -72,20 +72,30 @@ def read(
     limit: int = 100,
     offset: int = 0,
 ) -> list[AuditEvent]:
-    """This user's entries, newest first.
+    """Newest-first entries the caller is allowed to see.
 
-    Scoped to the caller because there are no organisations yet: until
-    projects can be shared, "everything I did" is the only honest question
-    this can answer, and returning anything wider would be showing one
-    person another person's activity.
+    Two different scopes, chosen by whether `project_id` is given:
+
+    * No project: "everything I did" — there is no other honest global
+      answer. Every project this user can reach might be shared with
+      people they don't otherwise know are on it, so a global feed of
+      *everyone's* activity across all of them would leak more than "my
+      own history" implies.
+    * A project: every actor's entries on *that* project, not just the
+      caller's. The route (`app.api.routes.audit`) checks the caller can
+      see the project before calling this — once that's established,
+      "who did what to this project" is exactly what a shared project's
+      audit trail is for, and filtering it down to one member's own
+      actions would hide the rest of the team's changes from each other.
 
     `id` breaks the `created_at` tie — the database clock is shared by
     everything written in one instant, and an unstable order means paging
     both repeats and skips.
     """
-    query = select(AuditEvent).where(AuditEvent.user_id == user_id)
     if project_id is not None:
-        query = query.where(AuditEvent.project_id == project_id)
+        query = select(AuditEvent).where(AuditEvent.project_id == project_id)
+    else:
+        query = select(AuditEvent).where(AuditEvent.user_id == user_id)
     return list(
         db.scalars(
             query.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())

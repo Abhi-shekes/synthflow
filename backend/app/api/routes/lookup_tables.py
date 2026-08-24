@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.api.routes.projects import _get_owned_project
 from app.core.config import settings
+from app.core.uploads import read_capped
 from app.db.session import get_db
 from app.models.lookup_table import LookupTable
 from app.models.user import User
@@ -40,7 +41,7 @@ async def create_lookup_table(
 ) -> LookupTable:
     _get_owned_project(project_id, current_user, db)
 
-    content = await file.read()
+    content = await read_capped(file)
     try:
         columns, rows = parse_upload(file.filename or "", content, settings.MAX_LOOKUP_ROWS)
     except LookupParseError as exc:

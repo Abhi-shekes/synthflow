@@ -26,6 +26,7 @@ from app.models.plugin_output import PluginOutput
 from app.models.project import Project
 from app.models.project_version import ProjectVersion
 from app.models.rabbitmq_output import RabbitMQOutput
+from app.models.refresh_session import RefreshSession
 from app.models.relationship import Relationship
 from app.models.rest_output import RestOutput
 from app.models.rule import Rule
@@ -78,4 +79,5 @@ __all__ = [
     "StorageProvider",
     "GenerationJob",
     "Schedule",
+    "RefreshSession",
 ]

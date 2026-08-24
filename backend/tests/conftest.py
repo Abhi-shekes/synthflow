@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
+from app.core.rate_limit import login_limiter, refresh_limiter, signup_limiter
 from app.db import session as db_session
 from app.db.base import Base
 from app.db.session import get_db
@@ -19,6 +20,14 @@ settings.RUN_WORKER = False
 
 @pytest.fixture()
 def client():
+    # The test client's "IP" (request.client.host) is the same synthetic
+    # value on every request in every test, so the rate limiters below
+    # would otherwise treat the whole suite as one caller and start
+    # rejecting logins a handful of tests in.
+    login_limiter.reset()
+    signup_limiter.reset()
+    refresh_limiter.reset()
+
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -90,9 +99,10 @@ def no_background_producers(monkeypatch):
 
 @pytest.fixture()
 def auth_headers(client):
-    client.post("/api/v1/auth/signup", json={"email": "user@example.com", "password": "hunter22"})
+    password = "hunter222222"
+    client.post("/api/v1/auth/signup", json={"email": "user@example.com", "password": password})
     resp = client.post(
-        "/api/v1/auth/login", json={"email": "user@example.com", "password": "hunter22"}
+        "/api/v1/auth/login", json={"email": "user@example.com", "password": password}
     )
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

@@ -42,6 +42,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.network import UnsafeHostError, ensure_not_internal_service
 from app.models.database_connection import DatabaseConnection, DatabaseDialect
 from app.models.field import EntityField, FieldType, IdentifierPreset
 from app.services import install
@@ -91,10 +92,23 @@ _SQL_URLS = {
 }
 
 
+def _guard_host(host: str) -> None:
+    """Refuses only loopback and link-local (including the cloud
+    metadata endpoint) — not RFC1918. Reaching a private-network host is
+    the entire point of a database connection; see app.core.network's
+    module docstring for why this is the more permissive of its two
+    policies, unlike app.services.ingest.fetch_url."""
+    try:
+        ensure_not_internal_service(host)
+    except UnsafeHostError as exc:
+        raise DatabaseOutputError(str(exc)) from exc
+
+
 def build_engine(connection: DatabaseConnection) -> Engine:
     """A SQLAlchemy engine for a SQL dialect. MongoDB has no engine — see
     `_mongo_client` — so asking for one is a programming error rather than
     a user-facing condition."""
+    _guard_host(connection.host)
     entry = _SQL_URLS.get(connection.dialect)
     if entry is None:
         raise DatabaseOutputError(
@@ -131,6 +145,7 @@ def _mongo_client(connection: DatabaseConnection):
     install.require("mongo")
     from pymongo import MongoClient
 
+    _guard_host(connection.host)
     url = (
         f"mongodb://{_credentials(connection)}"
         f"@{connection.host}:{connection.port}/{connection.database}"

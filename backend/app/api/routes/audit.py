@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.api.routes.projects import _get_owned_project
 from app.db.session import get_db
 from app.models.audit import AuditEvent
 from app.models.user import User
@@ -21,15 +22,14 @@ def list_audit_events(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[AuditEvent]:
-    """What this user changed, newest first.
-
-    Scoped to the caller, and that is a limit rather than a choice: until
-    projects can be shared there is nobody else whose activity would be
-    appropriate to show, and a wider answer would be showing one person
-    another person's work. When organisations land, this is the query that
-    grows a role check rather than a new endpoint.
+    """Newest-first: everyone's activity on `project_id` if given and the
+    caller can see that project (a shared project's audit trail is for the
+    whole team, not filtered down to one member's own actions — see
+    `app.services.audit.read`), otherwise just what this user changed.
 
     Paged for the same reason the API-key list is: an audit log only ever
     grows, so "all of them" stops being a sensible response.
     """
+    if project_id is not None:
+        _get_owned_project(project_id, current_user, db)
     return audit.read(db, current_user.id, project_id=project_id, limit=limit, offset=offset)

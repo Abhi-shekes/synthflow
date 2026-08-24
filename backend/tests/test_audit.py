@@ -160,6 +160,72 @@ def test_the_log_pages_without_skipping_or_repeating(client, auth_headers):
     assert [e["id"] for e in again] == seen
 
 
+def test_a_shared_projects_audit_trail_is_visible_to_the_whole_team(client, auth_headers):
+    """Filtering to a project answers "who did what to this project" —
+    every member's entries, not just the caller's own. See `audit.read`."""
+    org_id = client.post(
+        "/api/v1/organizations", json={"name": "Acme"}, headers=auth_headers
+    ).json()["id"]
+
+    client.post(
+        "/api/v1/auth/signup",
+        json={"email": "teammate@example.com", "password": "testpassword123"},
+    )
+    teammate_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "teammate@example.com", "password": "testpassword123"},
+    ).json()["access_token"]
+    teammate = {"Authorization": f"Bearer {teammate_token}"}
+
+    added = client.post(
+        f"/api/v1/organizations/{org_id}/members",
+        json={"email": "teammate@example.com", "role": "member"},
+        headers=auth_headers,
+    )
+    assert added.status_code == 201, added.text
+
+    project_id = client.post(
+        "/api/v1/projects", json={"name": "Shared"}, headers=auth_headers
+    ).json()["id"]
+    shared = client.put(
+        f"/api/v1/projects/{project_id}/organization",
+        json={"organization_id": org_id},
+        headers=auth_headers,
+    )
+    assert shared.status_code == 200, shared.text
+
+    client.post(
+        f"/api/v1/projects/{project_id}/entities", json={"name": "ByOwner"}, headers=auth_headers
+    )
+    client.post(
+        f"/api/v1/projects/{project_id}/entities", json={"name": "ByTeammate"}, headers=teammate
+    )
+
+    for headers in (auth_headers, teammate):
+        entries = _entries(client, headers, project_id=project_id)
+        actors = {e["actor_email"] for e in entries if e["route"].endswith("/entities")}
+        assert actors == {"user@example.com", "teammate@example.com"}
+
+
+def test_an_outsider_cannot_filter_the_audit_log_to_a_project_they_cant_see(client, auth_headers):
+    project_id = client.post(
+        "/api/v1/projects", json={"name": "Private"}, headers=auth_headers
+    ).json()["id"]
+
+    client.post(
+        "/api/v1/auth/signup",
+        json={"email": "outsider@example.com", "password": "testpassword123"},
+    )
+    outsider_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "outsider@example.com", "password": "testpassword123"},
+    ).json()["access_token"]
+    outsider = {"Authorization": f"Bearer {outsider_token}"}
+
+    resp = client.get(f"/api/v1/audit?project_id={project_id}", headers=outsider)
+    assert resp.status_code == 404
+
+
 def test_the_generation_and_push_routes_are_covered(client, auth_headers):
     """The roadmap asked for "who changed a schema, ran a generation, or
     pushed to a database". Deriving entries from the request is what makes

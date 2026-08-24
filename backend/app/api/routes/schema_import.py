@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.api.routes.projects import _get_owned_project
 from app.core.config import settings
+from app.core.uploads import read_capped
 from app.db.session import get_db
 from app.models.database_connection import DatabaseConnection
 from app.models.user import User
@@ -125,7 +126,7 @@ async def import_sample_file(
     entity_name: str | None = Form(None),
     current_user: User = Depends(get_current_user),
 ) -> SchemaImportResponse:
-    content = await file.read()
+    content = await read_capped(file)
     try:
         result = import_from_sample(
             file.filename or "sample.csv",
@@ -148,7 +149,7 @@ async def import_openapi_file(
 ) -> SchemaImportResponse:
     """Same importer as /json-schema, but for an uploaded file rather than
     an inlined document — OpenAPI specs are usually too large to paste."""
-    content = await file.read()
+    content = await read_capped(file)
     try:
         document = json.loads(content)
     except ValueError as exc:
