@@ -232,14 +232,44 @@ host ports (3307 and 27117) so they don't collide with a database you
 already run locally.
 
 With the `monitoring` profile up, Grafana is at
-[http://localhost:3001](http://localhost:3001) — no login, already
-provisioned with a **SynthFlow overview** dashboard showing rows/sec by
-source, active producers and connected clients, backend CPU/memory,
-generation latency, and errors. The backend exposes raw metrics at
-`/metrics` and container logs land in Loki.
+[http://localhost:3001](http://localhost:3001), already provisioned with a
+**SynthFlow overview** dashboard showing rows/sec by source, active
+producers and connected clients, backend CPU/memory, generation latency,
+and errors. No login is needed to *view* it — anonymous visitors get
+read-only access; `synthflow init` generates a real admin password
+(`GRAFANA_ADMIN_PASSWORD` in `.env`) for editing dashboards or adding data
+sources. The backend exposes raw metrics at `/metrics` and container logs
+land in Loki.
 
 See `backend/README.md` and `frontend/README.md` for running each service
 without Docker.
+
+### Production deployment
+
+`docker-compose.yml` is a development stack: bind-mounted source, hot
+reload, and credentials that default to something typeable so a fresh
+clone runs with zero setup. None of that belongs on a server.
+
+`docker-compose.prod.yml` is the alternative — real multi-stage images
+(`backend/Dockerfile.prod`, `frontend/Dockerfile.prod`, non-root, no dev
+server), no bind mounts, and no defaults for anything secret:
+
+```bash
+synthflow init --services monitoring --yes   # or whichever profile mix you want
+# Put the values it asks for — SECRET_KEY, POSTGRES_PASSWORD,
+# NEXT_PUBLIC_API_URL, CORS_ORIGINS — in .env; see docker-compose.prod.yml
+# for exactly which ones are required and why.
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+```
+
+A few things a real deployment still has to decide for itself, since they
+depend on where it's actually running: TLS (put a reverse proxy in front —
+`BIND_ADDRESS` defaults every port to `127.0.0.1` on purpose, so nothing
+is reachable until you deliberately expose it); which optional services
+(mysql/mongo/rabbitmq/minio/Grafana/Dex) it actually needs, each hardened
+the same way (generated password, loopback by default); and backups for
+the `synthflow_postgres_data` volume.
 
 ## Contributing
 
