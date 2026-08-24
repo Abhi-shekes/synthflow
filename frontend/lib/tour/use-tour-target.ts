@@ -59,16 +59,23 @@ function prefersReducedMotion(): boolean {
  */
 export function useTourTarget(selector: string | null): TourTargetState {
   const [state, setState] = useState<TourTargetState>({ status: "waiting" });
+  const [trackedSelector, setTrackedSelector] = useState(selector);
   const scrolledRef = useRef(false);
 
+  // Reset while rendering rather than from the effect — React's documented
+  // way to adjust state when an input changes. Doing it in the effect meant
+  // one committed render still carrying the *previous* step's rect before
+  // the reset landed, which for a spotlight is a visible frame of the cutout
+  // sitting over the wrong element.
+  if (selector !== trackedSelector) {
+    setTrackedSelector(selector);
+    setState({ status: "waiting" });
+  }
+
   useEffect(() => {
-    if (!selector) {
-      setState({ status: "waiting" });
-      return;
-    }
+    if (!selector) return;
 
     scrolledRef.current = false;
-    setState({ status: "waiting" });
 
     let cancelled = false;
     let rafId: number;
