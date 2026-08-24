@@ -34,6 +34,14 @@ const apiOrigin = (() => {
 // both or a live stream preview fails silently against the policy.
 const apiWsOrigin = apiOrigin.replace(/^http/, "ws");
 
+// React's development build uses eval() for debugging features — chiefly
+// reconstructing a callstack that originated in a different environment.
+// Production React never does, and says so in the error it throws when the
+// policy blocks it. So the allowance is scoped to `next dev` and can never
+// reach a deployed bundle: eval is the single biggest lever an injected
+// script has, and `next build` still ships a policy without it.
+const isDev = process.env.NODE_ENV !== "production";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -54,7 +62,7 @@ const contentSecurityPolicy = [
   // page can frame this app (frame-ancestors), and any injected script
   // still can't exfiltrate to an arbitrary origin — connect-src only
   // allows this app's own API.
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
 ].join("; ");
 

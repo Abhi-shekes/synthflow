@@ -85,6 +85,13 @@ jobs:
         run: npm run lint
 
       - name: Build
+        # frontend/next.config.ts refuses a production build without this: the
+        # value is baked into the client bundle at build time, so a missing
+        # one yields a build that silently targets localhost wherever it gets
+        # deployed. CI only needs the bundle to compile and nothing here ever
+        # calls the API, so any well-formed URL satisfies it.
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8001
         run: npm run build
 
   compose:

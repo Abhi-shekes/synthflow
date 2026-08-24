@@ -1,3 +1,6 @@
+import ipaddress
+import socket
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -16,6 +19,58 @@ from app.main import app
 # Off here: tests drive the worker explicitly through jobs.tick(), and a
 # loop running concurrently would race assertions about job status.
 settings.RUN_WORKER = False
+
+# Stands in for any hostname a test uses (see _offline_dns). Globally
+# routable on purpose — the documentation ranges read as private to
+# ipaddress, which the SSRF guard then refuses.
+_PUBLIC_STUB_IP = "93.184.216.34"
+
+
+@pytest.fixture(autouse=True)
+def _offline_dns():
+    """Resolve hostnames without touching real DNS.
+
+    The SSRF guard (app/core/network.py) resolves every hostname it is handed
+    and refuses the ones that land on an internal address. That quietly made
+    the suite depend on working DNS *and* on the test hostnames existing:
+    `db.example.com` and `example.test` resolve nowhere, so on a CI runner
+    every test that configures a database connection or a webhook died with
+    "Could not resolve host" long before reaching the behaviour it was
+    written to check.
+
+    Names answer with a single globally-routable address, which the guard
+    sees as an ordinary public host. It deliberately is *not* one of the
+    RFC 5737 documentation ranges: Python's ipaddress module reports those
+    as private, so the guard would refuse them and the stub would break the
+    very tests it exists to unblock. Nothing ever connects to it — every
+    test that gets this far has already mocked its transport.
+
+    IP literals are passed through to the real resolver untouched, so the
+    tests that assert the guard *does* refuse an internal address —
+    test_ingest's 127.0.0.1 case — still resolve honestly and still fail
+    closed.
+
+    Patched by hand rather than through the `monkeypatch` fixture, and that
+    is load-bearing: requesting `monkeypatch` from an autouse fixture makes
+    pytest build it before every explicitly-requested fixture, which reverses
+    its teardown position relative to `client`. test_metrics parks a bare
+    `object()` in a producer registry and relies on monkeypatch unwinding
+    that *before* the app's lifespan shutdown tries to `.cancel()` it.
+    """
+    real_getaddrinfo = socket.getaddrinfo
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        try:
+            ipaddress.ip_address(str(host))
+        except ValueError:
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (_PUBLIC_STUB_IP, port or 0))]
+        return real_getaddrinfo(host, port, *args, **kwargs)
+
+    socket.getaddrinfo = fake_getaddrinfo
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = real_getaddrinfo
 
 
 @pytest.fixture()

@@ -92,6 +92,52 @@ export function useTilt<T extends HTMLElement>(max = 6) {
 }
 
 /**
+ * Pointer-tracked spotlight position, written as CSS custom properties
+ * (`--sf-spot-x`, `--sf-spot-y`, percentages within the element).
+ *
+ * Same rAF-coalesced, reduced-motion-gated shape as `useTilt`, but for a
+ * decorative radial-gradient position instead of a transform — a caller reads
+ * the two properties from a `background: radial-gradient(... at var(--sf-spot-x,
+ * 50%) var(--sf-spot-y, 50%), ...)` rule, so there is nothing to clean up on
+ * pointer-leave beyond letting the properties fall back to centred.
+ */
+export function useSpotlight<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const reduced = useReducedMotion();
+  const frame = useRef<number | null>(null);
+
+  const onPointerMove = useCallback(
+    (event: React.PointerEvent<T>) => {
+      if (reduced) return;
+      const node = ref.current;
+      if (!node) return;
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+      const { clientX, clientY } = event;
+      frame.current = requestAnimationFrame(() => {
+        const box = node.getBoundingClientRect();
+        const px = ((clientX - box.left) / box.width) * 100;
+        const py = ((clientY - box.top) / box.height) * 100;
+        node.style.setProperty("--sf-spot-x", `${px.toFixed(1)}%`);
+        node.style.setProperty("--sf-spot-y", `${py.toFixed(1)}%`);
+      });
+    },
+    [reduced]
+  );
+
+  useEffect(
+    () => () => {
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+    },
+    []
+  );
+
+  return {
+    ref,
+    spotProps: reduced ? {} : { onPointerMove },
+  };
+}
+
+/**
  * Debounced value, for the Strata Inspector's live specimen.
  *
  * Every edit regenerates rows, and that is real backend load the old
