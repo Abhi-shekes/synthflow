@@ -2,34 +2,34 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import type { User } from "@/lib/types";
 
-/** Whether the persisted auth store has finished rehydrating from localStorage.
- * False on the server and on first client render, true once rehydration completes. */
-export function useAuthHydrated() {
-  return useSyncExternalStore(
-    (callback) => useAuthStore.persist.onFinishHydration(callback),
-    () => useAuthStore.persist.hasHydrated(),
-    () => false
-  );
+/** Whether the one-time silent-refresh attempt on app load has finished.
+ * False on the server and on first client render, true once
+ * `app/providers.tsx` has tried `/auth/refresh` against the httpOnly
+ * refresh cookie and either succeeded or given up. */
+export function useAuthReady() {
+  return useAuthStore((s) => s.authReady);
 }
 
-/** Waits for the persisted auth store to rehydrate before deciding to redirect,
- * so a logged-in user isn't bounced to /login on a hard refresh. */
+/** Waits for the silent-refresh attempt before deciding to redirect, so a
+ * logged-in user with a live refresh cookie isn't bounced to /login on a
+ * hard refresh just because the in-memory access token hasn't been
+ * re-fetched yet. */
 export function useRequireAuth() {
   const router = useRouter();
   const accessToken = useAuthStore((s) => s.accessToken);
-  const hydrated = useAuthHydrated();
+  const ready = useAuthReady();
 
   useEffect(() => {
-    if (hydrated && !accessToken) router.replace("/login");
-  }, [hydrated, accessToken, router]);
+    if (ready && !accessToken) router.replace("/login");
+  }, [ready, accessToken, router]);
 
-  return hydrated ? accessToken : undefined;
+  return ready ? accessToken : undefined;
 }
 
 /** "guided" (the default for every new account) hides Behaviour/Distortion/

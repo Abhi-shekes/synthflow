@@ -99,20 +99,20 @@ export class ApiError extends Error {
 // once it did. One shared in-flight refresh — concurrent 401s from several
 // requests firing at once await the *same* call rather than each starting
 // their own — swaps in a new access token via the still-valid refresh
-// token (7 days), transparently, with no user-visible interruption.
+// token (7 days). The refresh token itself is never visible to this code:
+// it lives in an httpOnly cookie the browser attaches automatically on
+// `credentials: "include"` requests to /auth/refresh, so there's no local
+// value to check before trying — a missing/expired cookie just makes the
+// request come back 401, same as any other failure mode here.
 let refreshPromise: Promise<string | null> | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = useAuthStore.getState().refreshToken;
-  if (!refreshToken) return null;
-
+export async function refreshAccessToken(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
         const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh_token: refreshToken }),
+          credentials: "include",
         });
         if (!res.ok) return null;
         const data: { access_token: string } = await res.json();
@@ -160,6 +160,10 @@ async function request<T>(
 ): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
+    // Needed for /auth/login, /auth/refresh and /auth/logout, which set or
+    // read the httpOnly refresh cookie — harmless everywhere else, since
+    // every other route authenticates via the Authorization header instead.
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -233,9 +237,8 @@ async function requestUpload<T>(
   return res.json();
 }
 
-export interface TokenPair {
+export interface LoginResponse {
   access_token: string;
-  refresh_token: string;
 }
 
 export const api = {
@@ -245,11 +248,21 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
 
+  // The refresh token never appears in this response — the backend sets it
+  // as an httpOnly cookie on the same response instead (see
+  // refreshAccessToken's comment above). credentials: "include" in
+  // request() is what makes the browser store it.
   login: (email: string, password: string) =>
-    request<TokenPair>("/api/v1/auth/login", {
+    request<LoginResponse>("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
+
+  /** Best-effort: ends the server-side session behind the refresh cookie
+   * and clears it. Callers clear client state (useAuthStore.logout())
+   * regardless of whether this succeeds — the user asked to be signed out
+   * locally either way. */
+  logout: () => request<void>("/api/v1/auth/logout", { method: "POST" }),
 
   me: (token: string) => request<User>("/api/v1/auth/me", {}, token),
 

@@ -40,26 +40,26 @@ export default function LoginPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // The SSO callback lands here with tokens in the URL *fragment*. A
-  // fragment is never sent to a server, so the credential stays out of
-  // access logs, proxy logs and Referer headers — which the query string
-  // would not.
+  // The SSO callback lands here with the access token in the URL
+  // *fragment*. A fragment is never sent to a server, so the credential
+  // stays out of access logs, proxy logs and Referer headers — which the
+  // query string would not. The refresh token doesn't travel this way at
+  // all: the backend sets it as an httpOnly cookie on the callback
+  // redirect itself, the same as a password login.
   useEffect(() => {
     if (typeof window === "undefined" || !window.location.hash) return;
     const params = new URLSearchParams(window.location.hash.slice(1));
     const accessToken = params.get("access_token");
-    const refreshToken = params.get("refresh_token");
-    if (!accessToken || !refreshToken) return;
+    if (!accessToken) return;
 
     // Cleared immediately so a bookmark, a screenshot or a back-button press
     // cannot resurrect a working credential from the address bar.
     window.history.replaceState(null, "", window.location.pathname);
 
-    const tokens = { access_token: accessToken, refresh_token: refreshToken };
     api
       .me(accessToken)
       .then((user) => {
-        setAuth(tokens, user);
+        setAuth(accessToken, user);
         router.push(user.has_onboarded ? "/projects" : "/welcome");
       })
       .catch(() => toast.error("That single sign-on session could not be completed"));
@@ -67,12 +67,12 @@ export default function LoginPage() {
 
   const mutation = useMutation({
     mutationFn: async ({ email, password }: FormValues) => {
-      const tokens = await api.login(email, password);
-      const user = await api.me(tokens.access_token);
-      return { tokens, user };
+      const { access_token } = await api.login(email, password);
+      const user = await api.me(access_token);
+      return { access_token, user };
     },
-    onSuccess: ({ tokens, user }) => {
-      setAuth(tokens, user);
+    onSuccess: ({ access_token, user }) => {
+      setAuth(access_token, user);
       router.push(user.has_onboarded ? "/projects" : "/welcome");
     },
     onError: (error: Error) => toast.error(friendlyError(error) || "Login failed"),

@@ -162,8 +162,9 @@ export function AddDatabaseConnectionDialog({
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Stored unencrypted on this server. Use a low-privilege database
-            user, the same way you would for any external tool.
+            Encrypted at rest and never returned by the API. Use a
+            low-privilege database user, the same way you would for any
+            external tool.
           </p>
 
           <DialogFooter>

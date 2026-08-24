@@ -344,6 +344,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               size="icon-sm"
               aria-label="Log out"
               onClick={() => {
+                // Best-effort: ends the server-side session too, not just
+                // this tab's copy of it. Client state clears either way.
+                api.logout().catch(() => {});
                 logout();
                 router.replace("/login");
               }}

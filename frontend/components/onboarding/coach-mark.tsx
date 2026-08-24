@@ -47,7 +47,7 @@ export function CoachMark({
 }) {
   // localStorage isn't knowable during SSR, and reading it in an effect
   // means calling setState from that effect — a pattern this codebase
-  // avoids (see useAuthHydrated in lib/hooks.ts). useSyncExternalStore reads
+  // avoids (see useAuthReady in lib/hooks.ts). useSyncExternalStore reads
   // it synchronously during render instead, with no subscription needed
   // since nothing else changes this value out from under the component.
   const seenOnLoad = useSyncExternalStore(

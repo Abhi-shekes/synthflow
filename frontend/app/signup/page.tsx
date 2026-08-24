@@ -32,12 +32,12 @@ export default function SignupPage() {
   const mutation = useMutation({
     mutationFn: async ({ email, password }: FormValues) => {
       await api.signup(email, password);
-      const tokens = await api.login(email, password);
-      const user = await api.me(tokens.access_token);
-      return { tokens, user };
+      const { access_token } = await api.login(email, password);
+      const user = await api.me(access_token);
+      return { access_token, user };
     },
-    onSuccess: ({ tokens, user }) => {
-      setAuth(tokens, user);
+    onSuccess: ({ access_token, user }) => {
+      setAuth(access_token, user);
       router.push(user.has_onboarded ? "/projects" : "/welcome");
     },
     onError: (error: Error) => toast.error(friendlyError(error) || "Sign up failed"),
@@ -78,7 +78,7 @@ export default function SignupPage() {
                 autoComplete="new-password"
                 {...register("password", {
                   required: "Password is required",
-                  minLength: { value: 8, message: "At least 8 characters" },
+                  minLength: { value: 12, message: "At least 12 characters" },
                 })}
               />
               {errors.password && (

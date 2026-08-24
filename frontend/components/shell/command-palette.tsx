@@ -367,6 +367,7 @@ export function CommandPalette() {
               kind="action"
               onSelect={() =>
                 run(() => {
+                  api.logout().catch(() => {});
                   logout();
                   router.replace("/login");
                 })

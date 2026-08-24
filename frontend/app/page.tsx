@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { FlowField } from "@/components/landing/flow-field";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/panel";
-import { useAuthHydrated } from "@/lib/hooks";
+import { useAuthReady } from "@/lib/hooks";
 import { useAuthStore } from "@/lib/store";
 
 const CAPABILITIES = [
@@ -22,11 +22,11 @@ const CAPABILITIES = [
 export default function Home() {
   const router = useRouter();
   const accessToken = useAuthStore((s) => s.accessToken);
-  const hydrated = useAuthHydrated();
+  const ready = useAuthReady();
 
   useEffect(() => {
-    if (hydrated && accessToken) router.replace("/projects");
-  }, [hydrated, accessToken, router]);
+    if (ready && accessToken) router.replace("/projects");
+  }, [ready, accessToken, router]);
 
   return (
     <div className="flex flex-1 flex-col">

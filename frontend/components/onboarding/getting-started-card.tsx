@@ -19,7 +19,7 @@ export function GettingStartedCard({ hasProject }: { hasProject: boolean }) {
   // Read via useSyncExternalStore, not an effect + setState — localStorage
   // isn't knowable on the server, and reading it in an effect means calling
   // setState from inside that effect, a pattern this codebase avoids (see
-  // useAuthHydrated in lib/hooks.ts).
+  // useAuthReady in lib/hooks.ts).
   const persistedDismissed = useSyncExternalStore(noopSubscribe, isChecklistDismissed, () => true);
   const entityDone = useSyncExternalStore(noopSubscribe, () => readChecklistStep("entity"), () => false);
   const generatedDone = useSyncExternalStore(noopSubscribe, () => readChecklistStep("generated"), () => false);
