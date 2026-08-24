@@ -1,0 +1,95 @@
+# A production deployment shape, kept as its own file rather than an
+# override of docker-compose.yml: an override that merges compose files
+# concatenates list values (volumes, ports) instead of replacing them,
+# which would leave the dev file's bind mounts active over a production
+# image's baked-in code — silently breaking the container, or worse,
+# silently *not* breaking it while running host source nobody rebuilt.
+# A standalone file has no merge semantics to get subtly wrong.
+#
+# Run with:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Everything below that has no fallback (`${VAR:?...}`) is required —
+# unlike docker-compose.yml, this file has no "just works" dev defaults,
+# on purpose. Put real values in .env (same file `synthflow init` writes
+# to) or the environment before running this.
+#
+# This does not include the optional broker/database/monitoring services
+# from docker-compose.yml (mysql, mongo, rabbitmq, minio, Grafana, Dex,
+# ...) — add the ones a real deployment needs following the same pattern:
+# a real image tag, a generated password, 127.0.0.1-only unless a reverse
+# proxy or VPN is meant to reach it directly.
+services:
+  postgres:
+    container_name: synthflow-postgres
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: synthflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: synthflow
+    volumes:
+      - synthflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synthflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  backend:
+    container_name: synthflow-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      args:
+        SYNTHFLOW_EXTRAS: ${SYNTHFLOW_EXTRAS:-}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://synthflow:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/synthflow
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env — see README's production section}
+      ENVIRONMENT: production
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env, e.g. ["https://your-domain"]}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  frontend:
+    container_name: synthflow-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env, e.g. https://api.your-domain}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+volumes:
+  synthflow_postgres_data:

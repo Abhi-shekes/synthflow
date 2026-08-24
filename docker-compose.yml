@@ -1,13 +1,21 @@
+# Every published port below binds to 127.0.0.1 by default (see
+# BIND_ADDRESS), and every credential below reads from an environment
+# variable with a dev-only fallback. `synthflow init` generates real
+# random values for both the SECRET_KEY and every datastore password
+# an install actually starts — see backend/app/cli.py. Overriding
+# BIND_ADDRESS to 0.0.0.0 to expose a service beyond localhost is a
+# deliberate, individual choice; there is no "make it all public" switch
+# on purpose.
 services:
   postgres:
     container_name: synthflow-postgres
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: synthflow
-      POSTGRES_PASSWORD: synthflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-synthflow}
       POSTGRES_DB: synthflow
     ports:
-      - "5433:5432"
+      - "${BIND_ADDRESS:-127.0.0.1}:5433:5432"
     volumes:
       - synthflow_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +23,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks: [app]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   backend:
     container_name: synthflow-backend
@@ -27,9 +40,10 @@ services:
         # doesn't carry their dependencies.
         SYNTHFLOW_EXTRAS: ${SYNTHFLOW_EXTRAS:-}
     environment:
-      DATABASE_URL: postgresql+psycopg://synthflow:synthflow@postgres:5432/synthflow
-      SECRET_KEY: change-me-in-production
-      CORS_ORIGINS: '["http://localhost:3000"]'
+      DATABASE_URL: postgresql+psycopg://synthflow:${POSTGRES_PASSWORD:-synthflow}@postgres:5432/synthflow
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-'["http://localhost:3000"]'}
       # Single sign-on. Empty by default, which turns SSO off and leaves the
       # password login as the only way in — the right default for a local
       # install. Filled in here from .env when the `sso` profile is running.
@@ -37,7 +51,7 @@ services:
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
     ports:
-      - "8001:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:8001:8000"
     volumes:
       # The source is bind-mounted and uvicorn runs with --reload (see the
       # Dockerfile's CMD), so editing a .py file on the host restarts the
@@ -52,6 +66,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # On every optional service's network, not just `app`: it's the one
+    # thing that talks to all of them (Kafka producer, MQTT publisher,
+    # Mongo/MySQL push, MinIO upload, Dex token exchange, Prometheus
+    # scrape target). That's what makes the segmentation below meaningful
+    # rather than cosmetic — e.g. mosquitto and postgres share no network
+    # with each other, only each with backend.
+    networks: [app, mqtt, kafka, mysql, mongo, rabbitmq, s3, monitoring, sso]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
 
   frontend:
     container_name: synthflow-frontend
@@ -66,7 +97,7 @@ services:
       WATCHPACK_POLLING: ${WATCHPACK_POLLING:-false}
       CHOKIDAR_USEPOLLING: ${WATCHPACK_POLLING:-false}
     ports:
-      - "3000:3000"
+      - "${BIND_ADDRESS:-127.0.0.1}:3000:3000"
     volumes:
       # Source is bind-mounted and the container runs `next dev`, so a saved
       # .tsx file is live in the browser in about a second — no rebuild. A
@@ -79,7 +110,13 @@ services:
       - /app/node_modules
       - /app/.next
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    networks: [app]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   # Optional — only for exercising KafkaOutput (see
   # app.services.stream_producers). Not started by `docker compose up`;
@@ -97,8 +134,13 @@ services:
       - --advertise-kafka-addr
       - redpanda:9092
     ports:
-      - "9092:9092"
+      - "${BIND_ADDRESS:-127.0.0.1}:9092:9092"
     profiles: ["kafka"]
+    networks: [kafka]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
 
   # Optional — only for exercising MQTTOutput. Not started by `docker
   # compose up`; bring it up explicitly with `docker compose --profile mqtt up`.
@@ -108,8 +150,13 @@ services:
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     ports:
-      - "1883:1883"
+      - "${BIND_ADDRESS:-127.0.0.1}:1883:1883"
     profiles: ["mqtt"]
+    networks: [mqtt]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
 
   # Optional push *targets* — these exist so you can try a MySQL or MongoDB
   # connection against a real server instead of trusting that the driver
@@ -128,38 +175,48 @@ services:
     # push target where the I/O cost of turning it off is irrelevant.
     command: ["--innodb-use-native-aio=0"]
     environment:
-      MYSQL_ROOT_PASSWORD: synthflow
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-synthflow}
       MYSQL_DATABASE: synthflow_target
       MYSQL_USER: synthflow
-      MYSQL_PASSWORD: synthflow
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-synthflow}
     ports:
-      - "3307:3306"
+      - "${BIND_ADDRESS:-127.0.0.1}:3307:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-psynthflow"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
       timeout: 5s
       retries: 20
     profiles: ["mysql"]
+    networks: [mysql]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   mongo:
     container_name: synthflow-mongo
     image: mongo:7
     environment:
       MONGO_INITDB_ROOT_USERNAME: synthflow
-      MONGO_INITDB_ROOT_PASSWORD: synthflow
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-synthflow}
       MONGO_INITDB_DATABASE: synthflow_target
     ports:
       # Non-default host ports for both of these (3307, 27018): they are
       # throwaway push targets, and a developer with a real MySQL or
       # MongoDB already running locally should not have to stop it to try
       # SynthFlow. Inside the compose network they still use 3306/27017.
-      - "27117:27017"
+      - "${BIND_ADDRESS:-127.0.0.1}:27117:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 20
     profiles: ["mongo"]
+    networks: [mongo]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   # A RabbitMQ broker to publish into. Management UI on 15673 so you can
   # watch messages arrive.
@@ -169,16 +226,21 @@ services:
     image: rabbitmq:4-management-alpine
     environment:
       RABBITMQ_DEFAULT_USER: synthflow
-      RABBITMQ_DEFAULT_PASS: synthflow
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-synthflow}
     ports:
-      - "5673:5672"
-      - "15673:15672"
+      - "${BIND_ADDRESS:-127.0.0.1}:5673:5672"
+      - "${BIND_ADDRESS:-127.0.0.1}:15673:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 10s
       retries: 20
     profiles: ["rabbitmq"]
+    networks: [rabbitmq]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   # An S3-compatible server to push job artifacts into, so the object
   # storage connector can be exercised without an AWS account. MinIO speaks
@@ -192,16 +254,21 @@ services:
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: synthflow
-      MINIO_ROOT_PASSWORD: synthflow123
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-synthflow123}
     ports:
-      - "9100:9000"
-      - "9101:9001"
+      - "${BIND_ADDRESS:-127.0.0.1}:9100:9000"
+      - "${BIND_ADDRESS:-127.0.0.1}:9101:9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 20
     profiles: ["s3"]
+    networks: [s3]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   # Optional monitoring stack — Prometheus scrapes the backend's /metrics,
   # Grafana renders the bundled dashboard, Loki + promtail collect
@@ -216,29 +283,46 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "9090:9090"
+      - "${BIND_ADDRESS:-127.0.0.1}:9090:9090"
     depends_on:
       - backend
     profiles: ["monitoring"]
+    networks: [monitoring]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   grafana:
     container_name: synthflow-grafana
     image: grafana/grafana:11.5.1
     environment:
-      # Dev-only: anonymous admin access so the dashboard is one click
-      # from `docker compose --profile monitoring up`, no login step.
+      # Anonymous visitors can view the bundled dashboard with no login
+      # step, but only as Viewer — not Admin. Editing dashboards, adding
+      # data sources, or installing plugins requires signing in with
+      # GF_SECURITY_ADMIN_PASSWORD below, which `synthflow init` generates
+      # a real value for (see backend/app/cli.py). Anonymous Admin was the
+      # previous default; it turned "reachable" into "fully owned" for
+      # anyone who could hit this port, which is a worse trade than one
+      # login prompt for the rare dashboard edit.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
-      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_DEFAULT_THEME: light
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "3001:3000"
+      - "${BIND_ADDRESS:-127.0.0.1}:3001:3000"
     depends_on:
       - prometheus
     profiles: ["monitoring"]
+    networks: [monitoring]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   loki:
     container_name: synthflow-loki
@@ -247,8 +331,38 @@ services:
     volumes:
       - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
     ports:
-      - "3100:3100"
+      - "${BIND_ADDRESS:-127.0.0.1}:3100:3100"
     profiles: ["monitoring"]
+    networks: [monitoring]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # A minimal, read-only proxy in front of the Docker socket, so promtail
+  # never touches it directly. CONTAINERS=1 is the only surface enabled —
+  # container listing plus the per-container logs endpoint, which is all
+  # Docker service discovery + log shipping need. Everything else (image
+  # management, exec, volumes, starting/stopping containers, the daemon's
+  # own info) stays off. The alternative — mounting the raw socket into
+  # promtail, a general-purpose log shipper — hands anything that
+  # compromises that container the full Docker API, including every other
+  # container's environment variables (SECRET_KEY, database passwords)
+  # visible via `docker inspect`.
+  docker-socket-proxy:
+    container_name: synthflow-docker-socket-proxy
+    image: tecnativa/docker-socket-proxy:0.2
+    environment:
+      CONTAINERS: 1
+      LOG_LEVEL: warning
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    profiles: ["monitoring"]
+    networks: [monitoring]
+    deploy:
+      resources:
+        limits:
+          memory: 64m
 
   promtail:
     container_name: synthflow-promtail
@@ -256,12 +370,15 @@ services:
     command: -config.file=/etc/promtail/promtail-config.yml
     volumes:
       - ./monitoring/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
-      # Needed for Docker service discovery — see promtail-config.yml for
-      # why this is opt-in only.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - loki
+      - docker-socket-proxy
     profiles: ["monitoring"]
+    networks: [monitoring]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
 
   # A real OpenID Connect provider, so single sign-on is verified against
   # something that implements the spec rather than a mock that agrees with
@@ -277,7 +394,31 @@ services:
     ports:
       # Non-default on the host, like every other test target here, so it
       # cannot collide with something already running.
-      - "5556:5556"
+      - "${BIND_ADDRESS:-127.0.0.1}:5556:5556"
+    networks: [sso]
+    deploy:
+      resources:
+        limits:
+          memory: 128m
 
 volumes:
   synthflow_postgres_data:
+
+# One network per optional service, plus `app` for the always-on core —
+# not one flat default network for everything. Without this, a compromised
+# low-value container (mosquitto, say) has direct network reach to
+# postgres and every other unrelated service just by being on the same
+# compose project. `backend` is the one service that legitimately talks to
+# all of them (see its own networks: list above), so it's the only thing
+# every optional network has in common — mosquitto and postgres, for
+# example, share no network with each other.
+networks:
+  app:
+  mqtt:
+  kafka:
+  mysql:
+  mongo:
+  rabbitmq:
+  s3:
+  monitoring:
+  sso:

@@ -1,0 +1,50 @@
+# Production image: a real `next build` + `next start`, no bind mount, no
+# dev toolchain left behind, non-root. Dockerfile (the other one) stays
+# exactly as it is — docker-compose.yml's default `docker compose up`
+# depends on its `next dev` + bind-mount workflow. This file is what
+# docker-compose.prod.yml builds instead; see that file for how to run it.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+FROM node:22-slim AS deps
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM node:22-slim AS builder
+
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+# Baked in at build time, not runtime: Next.js inlines every NEXT_PUBLIC_*
+# value into the client bundle during `next build`, so it has to be
+# present *now* or the shipped JS falls back to next.config.ts's default.
+# docker-compose.prod.yml passes both through as build args.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+RUN npm run build
+
+FROM node:22-slim AS runtime
+
+RUN groupadd --system synthflow && useradd --system --gid synthflow synthflow
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# `output: "standalone"` (next.config.ts) traces the actual runtime
+# dependency graph and copies only that — the alternative, shipping the
+# full node_modules from the builder stage, would be several times larger
+# for no benefit in a container that never runs `npm install` again.
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+RUN chown -R synthflow:synthflow /app
+
+USER synthflow
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]

@@ -1,0 +1,53 @@
+# Production image: no --reload, no bind mount, no build toolchain left
+# behind, and a non-root user. Dockerfile (the other one) stays exactly as
+# it is — it's what docker-compose.yml's default `docker compose up` uses
+# for the bind-mount-and-hot-reload dev workflow, and changing its CMD in
+# place would break that. This file is what docker-compose.prod.yml builds
+# instead; see that file for how to actually run it.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+RUN pip install --no-cache-dir uv
+
+ARG SYNTHFLOW_EXTRAS=""
+
+COPY pyproject.toml ./
+# Installed into a venv, not --system: it's the one thing this stage
+# produces that the final stage actually copies, so it needs to be a
+# self-contained directory rather than scattered across the base image's
+# site-packages.
+RUN uv venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN if [ -n "$SYNTHFLOW_EXTRAS" ]; then \
+        uv pip install --no-cache -e ".[$SYNTHFLOW_EXTRAS]"; \
+    else \
+        uv pip install --no-cache -e .; \
+    fi
+
+FROM python:3.12-slim AS runtime
+
+RUN groupadd --system synthflow && useradd --system --gid synthflow --create-home synthflow
+
+WORKDIR /app
+COPY --from=builder /opt/venv /opt/venv
+# The editable install above needs the source to already be at /app for
+# its .pth file to resolve, so it's copied into *this* stage too — the
+# builder stage's copy of it isn't reused, only the venv it produced is.
+COPY . .
+RUN chown -R synthflow:synthflow /app
+
+ENV PATH="/opt/venv/bin:$PATH"
+ENV ENVIRONMENT=production
+
+USER synthflow
+
+EXPOSE 8000
+
+# No --reload (this is not a filesystem-watching dev server), and
+# multiple workers since this is the actual deployment target, not a
+# throwaway container recreated on every code change. Tune --workers to
+# the host's core count; 4 is a reasonable default, not a measured one.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

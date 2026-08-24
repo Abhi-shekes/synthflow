@@ -20,7 +20,12 @@ oauth2:
 # Development credentials, and only that. This file exists so the OIDC
 # flow can be run against a real provider on a laptop; nothing here is a
 # secret worth protecting, and nothing here should be copied into a
-# deployment.
+# deployment. Concretely: this client secret and this password are public
+# (they're sitting in a file in the repo), storage is in-memory (nothing
+# here survives a restart or gets an audit trail), and the issuer above is
+# http://. Backend Settings (app.core.config) refuses to start with an
+# http:// OIDC_ISSUER when ENVIRONMENT=production, specifically so this
+# config can't quietly become a real deployment's identity provider.
 staticClients:
   - id: synthflow
     name: SynthFlow
