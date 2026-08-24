@@ -57,7 +57,7 @@ can always change course later.
 - **Import an existing schema** — from a SQL file, a JSON Schema document, a
   live database connection, or a sample data file (CSV/Excel/JSON). Good if
   you're modelling something that already exists.
-- **Use a starter template** — twelve ready-made domains (Banking, CCTV,
+- **Use a starter template** — eleven ready-made domains (Banking, CCTV,
   GPS Fleet, Hospital, IoT, Logistics, Manufacturing, Retail, Smart City,
   Stock Market, Weather) each pre-populated with realistic entities,
   relationships, and simulation config. Good for exploring what the product
